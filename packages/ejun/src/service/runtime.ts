@@ -1565,9 +1565,24 @@ function mergeDomainModels(body: RpcBody, sections: Record<string, Record<string
     return withRpcValue(body, { ...result, groups, routable });
 }
 
+function installedAgentAddonIds(settings: AgentDomainSettings): Set<string> {
+    const section = settings.sections['agent-addons'];
+    if (!section || !Object.prototype.hasOwnProperty.call(section, 'installed')) {
+        return new Set(listAgentAddons().map((addon) => addon.addonId));
+    }
+    const installed = section.installed;
+    if (!Array.isArray(installed)) return new Set();
+    const registered = new Set(listAgentAddons().map((addon) => addon.addonId));
+    return new Set(installed.filter((addonId): addonId is string => typeof addonId === 'string' && registered.has(addonId)));
+}
+
+function agentAddonInstalled(settings: AgentDomainSettings, addonId: string): boolean {
+    return installedAgentAddonIds(settings).has(addonId);
+}
+
 function agentAddonEnabled(settings: AgentDomainSettings, addonId: string): boolean {
     const addon = listAgentAddons().find((item) => item.addonId === addonId);
-    if (!addon) return false;
+    if (!addon || !agentAddonInstalled(settings, addonId)) return false;
     const currentEnabled = settings.sections['agent-addons']?.enabled;
     const legacyEnabled = settings.sections['agent-plugins']?.enabled;
     const currentOverrides = currentEnabled && typeof currentEnabled === 'object' && !Array.isArray(currentEnabled)
@@ -1634,6 +1649,7 @@ async function initialAddonSnapshotForPrompt(sessionId: string): Promise<{ addon
 
 async function agentAddonsList(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const settings = await agentDataAdapter.getDomainSettings(scope.domainId);
+    const installed = installedAgentAddonIds(settings);
     const toolsByAddon = new Map<string, { name: string; description: string }[]>();
     for (const { addonId, name, description } of toolRegistry().list(undefined, scope.domainId)) {
         const tools = toolsByAddon.get(addonId) ?? [];
@@ -1642,10 +1658,73 @@ async function agentAddonsList(envelope: RpcEnvelope, scope: AgentScope): Promis
     }
     const addons = listAgentAddons().map((addon) => ({
         ...addon,
+        installed: installed.has(addon.addonId),
         enabled: agentAddonEnabled(settings, addon.addonId),
         tools: (toolsByAddon.get(addon.addonId) ?? []).sort((left, right) => left.name.localeCompare(right.name)),
     }));
     return rpcOk(envelope.rpcId, { addons });
+}
+
+async function setAgentAddonInstalled(
+    envelope: RpcEnvelope,
+    scope: AgentScope,
+    publishState: (change: AgentAddonStateChange) => void | Promise<unknown>,
+    shouldInstall: boolean,
+): Promise<RpcBody> {
+    const payload = envelope.payload ?? {};
+    const addonId = typeof payload.addonId === 'string' ? payload.addonId : '';
+    const addon = listAgentAddons().find((item) => item.addonId === addonId);
+    if (!addon) return rpcError(envelope.rpcId, 'Agent add-on not found');
+
+    const current = await agentDataAdapter.getDomainSettings(scope.domainId);
+    const installed = installedAgentAddonIds(current);
+    const wasInstalled = installed.has(addonId);
+    if (wasInstalled === shouldInstall) {
+        return rpcOk(envelope.rpcId, {
+            addonId,
+            installed: wasInstalled,
+            enabled: agentAddonEnabled(current, addonId),
+        });
+    }
+    if (shouldInstall) installed.add(addonId);
+    else installed.delete(addonId);
+
+    const sections = cloneSettingsSections(current.sections);
+    const legacySection = sections['agent-plugins'] ?? {};
+    const addonSection = sections['agent-addons'] ?? {};
+    const section: Record<string, unknown> = { ...legacySection, ...addonSection, installed: [...installed].sort() };
+    const enabled = {
+        ...(legacySection.enabled && typeof legacySection.enabled === 'object' && !Array.isArray(legacySection.enabled)
+            ? legacySection.enabled as Record<string, unknown>
+            : {}),
+        ...(addonSection.enabled && typeof addonSection.enabled === 'object' && !Array.isArray(addonSection.enabled)
+            ? addonSection.enabled as Record<string, unknown>
+            : {}),
+    };
+    if (!shouldInstall) delete enabled[addonId];
+    if (Object.keys(enabled).length) section.enabled = enabled;
+    else delete section.enabled;
+    sections['agent-addons'] = section;
+    delete sections['agent-plugins'];
+
+    const saved = await agentDataAdapter.updateDomainSettings(scope.domainId, sections, current.revision);
+    if (!saved) return rpcError(envelope.rpcId, 'settings revision conflict');
+
+    const nextSettings = { ...current, sections };
+    const isEnabled = agentAddonEnabled(nextSettings, addonId);
+    const change: AgentAddonStateChange = {
+        domainId: scope.domainId,
+        userId: scope.userId,
+        ...(scope.agentId === undefined ? {} : { agentId: scope.agentId }),
+        addonId,
+        enabled: isEnabled,
+    };
+    try {
+        await publishState(change);
+    } catch (error) {
+        logger.warn('[addons] state-change event failed addon=%s domain=%s error=%s', addonId, scope.domainId, error instanceof Error ? error.message : String(error));
+    }
+    return rpcOk(envelope.rpcId, { addonId, installed: shouldInstall, enabled: isEnabled });
 }
 
 async function recordAddonStateForSessions(change: AgentAddonStateChange): Promise<void> {
@@ -1688,6 +1767,7 @@ async function agentAddonSet(
     if (typeof payload.enabled !== 'boolean') return rpcError(envelope.rpcId, 'enabled must be a boolean');
 
     const current = await agentDataAdapter.getDomainSettings(scope.domainId);
+    if (!agentAddonInstalled(current, addonId)) return rpcError(envelope.rpcId, 'Agent add-on is not installed in this domain');
     const sections = cloneSettingsSections(current.sections);
     const legacySection = sections['agent-plugins'] ?? {};
     const addonSection = sections['agent-addons'] ?? {};
@@ -3203,7 +3283,7 @@ export const agentRuntimeHandlerContext = {
     modelReady: () => modelReady,
     requireBridgeToken, baseSessionScope, toolRegistry,
     scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, upstreamValue,
-    nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList,
+    nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, setAgentAddonInstalled,
     agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,
     baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems,
     runtimeRelabel, runtimeRemove, sessionCardCreate, sessionCardUpdate, sessionCreate, sessionHistory, sessionMessageCount,

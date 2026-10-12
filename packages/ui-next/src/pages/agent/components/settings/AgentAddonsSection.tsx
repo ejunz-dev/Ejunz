@@ -6,13 +6,15 @@ interface AgentAddon {
     addonId: string;
     displayName: string;
     description: string;
+    installed: boolean;
     enabled: boolean;
+    tools?: { name: string; description: string }[];
 }
 
 interface AgentAddonsSectionProps {
     rpc: SettingsRpc;
     sessionId?: string;
-    onAddonChange?: (addonId: string, enabled: boolean) => void;
+    onAddonChange?: (addonId: string, enabled: boolean, installed: boolean) => void;
 }
 
 export function AgentAddonsSection({ rpc, sessionId, onAddonChange }: AgentAddonsSectionProps) {
@@ -37,7 +39,7 @@ export function AgentAddonsSection({ rpc, sessionId, onAddonChange }: AgentAddon
     useEffect(() => { void load(); }, [load]);
 
     const toggle = async (addon: AgentAddon) => {
-        if (busy !== null) return;
+        if (busy !== null || !addon.installed) return;
         const enabled = !addon.enabled;
         setBusy(addon.addonId);
         setError('');
@@ -48,7 +50,7 @@ export function AgentAddonsSection({ rpc, sessionId, onAddonChange }: AgentAddon
                 ...(sessionId ? { sessionId } : {}),
             });
             setAddons((items) => items.map((item) => item.addonId === addon.addonId ? { ...item, enabled } : item));
-            onAddonChange?.(addon.addonId, enabled);
+            onAddonChange?.(addon.addonId, enabled, addon.installed);
         } catch (cause) {
             setError(cause instanceof Error ? cause.message : 'Agent Addon设置失败');
         } finally {
@@ -56,30 +58,67 @@ export function AgentAddonsSection({ rpc, sessionId, onAddonChange }: AgentAddon
         }
     };
 
+    const install = async (addon: AgentAddon) => {
+        if (busy !== null) return;
+        const shouldInstall = !addon.installed;
+        setBusy(addon.addonId);
+        setError('');
+        try {
+            const result = await rpc<{ installed: boolean; enabled: boolean }>(
+                shouldInstall ? 'agent.addons.install' : 'agent.addons.uninstall',
+                { addonId: addon.addonId },
+            );
+            setAddons((items) => items.map((item) => item.addonId === addon.addonId
+                ? { ...item, installed: result.installed, enabled: result.enabled }
+                : item));
+            onAddonChange?.(addon.addonId, result.enabled, result.installed);
+        } catch (cause) {
+            setError(cause instanceof Error ? cause.message : 'Agent Addon安装状态更新失败');
+        } finally {
+            setBusy(null);
+        }
+    };
+
     return <section className={css.section} aria-busy={loading || busy !== null}>
-        <h2 className={css.heading}>Agent Addon</h2>
-        <p className={css.intro}>选择会话上下文中可用的 Agent Addon。关闭后，该 Addon不会出现在上下文选项中。</p>
+        <h2 className={css.heading}>Agent Addon 市场</h2>
+        <p className={css.intro}>浏览服务端已上架的 Agent Addon。安装后，该 addon 对当前 domain 可用；关闭开关只会停用它，不会卸载。</p>
         {error && <p className={css.error} role="alert">{error}</p>}
         {loading ? <p className={css.status}>正在读取 Agent Addon…</p> : null}
-        {!loading && addons.length === 0 ? <p className={css.status}>当前没有已注册的 Agent Addon。</p> : null}
+        {!loading && addons.length === 0 ? <p className={css.status}>当前没有已上架的 Agent Addon。</p> : null}
         {!loading && addons.length > 0 ? <ul className={css.list}>
             {addons.map((addon) => (
                 <li className={css.row} key={addon.addonId}>
                     <div className={css.copy}>
                         <div className={css.name}>{addon.displayName}</div>
                         <p className={css.description}>{addon.description}</p>
+                        {addon.tools?.length ? <p className={css.tools}>工具：{addon.tools.map((tool) => tool.name).join('、')}</p> : null}
                     </div>
-                    <button
-                        type="button"
-                        className={css.toggle}
-                        role="switch"
-                        aria-checked={addon.enabled}
-                        aria-label={`${addon.displayName} Addon`}
-                        disabled={busy !== null}
-                        onClick={() => { void toggle(addon); }}
-                    >
-                        <span className={css.toggleThumb} />
-                    </button>
+                    <div className={css.actions}>
+                        {addon.installed ? <>
+                            <button
+                                type="button"
+                                className={css.toggle}
+                                role="switch"
+                                aria-checked={addon.enabled}
+                                aria-label={`${addon.displayName} Addon`}
+                                disabled={busy !== null}
+                                onClick={() => { void toggle(addon); }}
+                            >
+                                <span className={css.toggleThumb} />
+                            </button>
+                            <button
+                                type="button"
+                                className={css.installButton}
+                                disabled={busy !== null}
+                                onClick={() => { void install(addon); }}
+                            >卸载</button>
+                        </> : <button
+                            type="button"
+                            className={css.installButton}
+                            disabled={busy !== null}
+                            onClick={() => { void install(addon); }}
+                        >安装</button>}
+                    </div>
                 </li>
             ))}
         </ul> : null}

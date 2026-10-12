@@ -48,6 +48,7 @@ export interface AgentAddonView {
     addonId: string;
     displayName: string;
     description: string;
+    installed: boolean;
     enabled: boolean;
     toolPrefixes?: readonly string[];
     contextSources?: readonly string[];

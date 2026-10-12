@@ -1989,15 +1989,15 @@ export default function AgentPage() {
                     { id: 'agent-presets', label: 'Agent 预设', render: () => <AgentPresetSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} onCreatorDraft={startCreatorDraft} /> },
                     { id: 'tools', label: '工具', render: () => <ToolsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} sessionId={isUnstartedCurrent ? undefined : current ?? undefined} refreshKey={currentSession?.agentPreset} /> },
                     { id: 'plugins', label: '插件', render: () => <PluginsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} /> },
-                    { id: 'agent-addons', label: 'Agent Addons', render: () => <AgentAddonsSection
+                    { id: 'agent-addons', label: 'Addon 市场', render: () => <AgentAddonsSection
                         rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>}
                         sessionId={isUnstartedCurrent ? undefined : current ?? undefined}
-                        onAddonChange={(addonId, enabled) => {
+                        onAddonChange={(addonId, enabled, installed) => {
                             const nextIds = new Set(enabledAgentAddonIds);
                             if (enabled) nextIds.add(addonId);
                             else nextIds.delete(addonId);
                             setEnabledAgentAddonIds(nextIds);
-                            setAgentAddons((items) => items.map((addon) => addon.addonId === addonId ? { ...addon, enabled } : addon));
+                            setAgentAddons((items) => items.map((addon) => addon.addonId === addonId ? { ...addon, enabled, installed } : addon));
                             void setEnabledAgentPluginSlots(nextIds);
                             if (addonId === 'base') {
                                 void loadBases();
