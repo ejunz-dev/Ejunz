@@ -1174,9 +1174,9 @@ export default function AgentPage() {
         const requestedSessionId = existingSession?.sessionId ?? newSessionId();
         let optimisticKey: string | undefined;
         let optimisticMessage: ChatMessage | undefined;
-        setCreatingSession(true);
+        setCreatingSession(!existingSession);
         setNewSessionConfigOpen(false);
-        setDetailsOpen(true);
+        if (!existingSession) setDetailsOpen(true);
         try {
             const selectedBaseId = existingSession ? baseId : baseId ?? draftBaseId;
             const selectedNodeId = existingSession ? existingSession.nodeId : draftNodeId;
@@ -1254,7 +1254,7 @@ export default function AgentPage() {
                 : session));
             setCreatingSession(false);
             setNewSessionConfigOpen(false);
-            setDetailsOpen(true);
+            if (!existingSession) setDetailsOpen(true);
             if (!hasContent) setMessages([]);
             if (hasContent) {
                 setSessions((items) => items.map((session) => session.sessionId === value.sessionId ? { ...session, blank: false, updatedAt: Date.now() } : session));
