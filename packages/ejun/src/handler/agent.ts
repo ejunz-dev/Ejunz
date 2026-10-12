@@ -16,11 +16,11 @@ interface RpcEnvelope {
     domainId?: string;
     agentId?: number | null;
 }
-const { requireBridgeToken, baseSessionScope, toolRegistry, scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, setAgentAddonInstalled, agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, baseTutorEnsure, baseTutorList, baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems, runtimeRelabel, runtimeRemove, sessionCardCreate, sessionCardUpdate, sessionCreate, sessionHistory, sessionMessageCount, sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink, logger, RUNTIME_HELLO_TIMEOUT_MS, addLink, rememberRuntime, reportRuntime, agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider, SystemModel, randomUUID, WebSocket, parseRuntimeFrame, createSocketLink, followLinks, runtimeLinks, runtimeFacts, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels, cloneSettingsSections } = service;
+const { requireBridgeToken, baseSessionScope, toolRegistry, scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled, agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, baseTutorEnsure, baseTutorList, baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems, runtimeRelabel, runtimeRemove, sessionCardCreate, sessionCardUpdate, sessionCreate, sessionHistory, sessionMessageCount, sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink, logger, RUNTIME_HELLO_TIMEOUT_MS, addLink, rememberRuntime, reportRuntime, agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider, SystemModel, randomUUID, WebSocket, parseRuntimeFrame, createSocketLink, followLinks, runtimeLinks, runtimeFacts, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels, cloneSettingsSections } = service;
 const dataOk = (value: unknown): Record<string, unknown> => ({ ok: true, value });
 const dataError = (message: string): Record<string, unknown> => ({ ok: false, error: { message } });
 
-async function mountedAddonsForSession(session: { domainId: string; userId: number; sessionId: string }): Promise<Set<string>> {
+async function mountedAddonsForSession(session: { domainId: string; userId: number; sessionId: string; agentId?: number }): Promise<Set<string>> {
     const addonIds = new Set(listAgentAddons().map((addon) => addon.addonId));
     const states = new Map<string, boolean>();
     const recordState = (addonId: unknown, enabled: unknown) => {
@@ -42,7 +42,7 @@ async function mountedAddonsForSession(session: { domainId: string; userId: numb
             : entry.type === 'session/plugins' ? data.pluginId : undefined;
         recordState(addonId, data.enabled);
     }
-    const domainEnabled = await enabledAgentAddonIds(session.domainId);
+    const domainEnabled = await enabledAgentAddonIds(session.domainId, session.agentId);
     return new Set([...addonIds].filter((addonId) =>
         (states.get(addonId) ?? domainEnabled.has(addonId)) && domainEnabled.has(addonId)));
 }
@@ -274,6 +274,13 @@ export class EjunzAgentChatPageHandler extends Handler<Context> {
     }
 }
 
+export class EjunzAgentMarketPageHandler extends Handler<Context> {
+    async get() {
+        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.response.template = 'market';
+    }
+}
+
 export class EjunzAgentWorkspacePageHandler extends Handler<Context> {
     async get() {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
@@ -418,6 +425,11 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             this.response.body = JSON.stringify(await agentAddonsList(envelope, scope));
             return;
         }
+        if (method === 'agent.addons.market.list') {
+            this.response.type = 'application/json';
+            this.response.body = JSON.stringify(await agentAddonsMarketList(envelope, scope));
+            return;
+        }
         if (method === 'agent.addons.install' || method === 'agent.addons.uninstall') {
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await setAgentAddonInstalled(
@@ -470,7 +482,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             return;
         }
         if (method === 'base.list') {
-            if (!await isAgentAddonEnabled(scope.domainId, 'base')) {
+            if (!await isAgentAddonEnabled(scope.domainId, 'base', scope.agentId)) {
                 this.response.type = 'application/json';
                 this.response.body = JSON.stringify(rpcOk(envelope.rpcId, { items: [] }));
                 return;
@@ -1080,6 +1092,7 @@ export class EjunzAgentRuntimeConnectionHandler extends ConnectionHandler<Contex
 export async function apply(ctx: Context): Promise<void> {
     ctx.Route('agent_domain', '/agent', EjunzAgentPageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_chat', '/agent/chat', EjunzAgentChatPageHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('agent_market', '/market', EjunzAgentMarketPageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ejunz_agent_status', '/agent/status', EjunzAgentStatusPageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ejunz_agent_link', '/agent-link/:code', EjunzAgentLinkPageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_workspace', '/agent/:docId', EjunzAgentWorkspacePageHandler, PRIV.PRIV_USER_PROFILE);

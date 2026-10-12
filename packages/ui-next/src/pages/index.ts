@@ -6,6 +6,7 @@ registerPage('user_login', () => import('./login'));
 registerPage('base_detail', () => import('./base_detail'));
 registerPage('lesson', () => import('./lesson'));
 registerPage('learn_lesson', () => import('./lesson'));
+registerPage('market', () => import('./market'));
 registerPage('agent', () => import('./agent/page'));
 registerPage('agent_workspace', () => import('./agent/page'));
 registerPage('agent_list', () => import('./agent/list'));

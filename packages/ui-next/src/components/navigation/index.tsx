@@ -138,7 +138,7 @@ export function Navigation() {
   const { mobileNavLeft, mobileNavRight } = useNavigationActions();
   const ui = useUiContext();
   const pageRoute = typeof template === 'string' ? template.replace(/\.html$/, '') : name;
-  const domainTargetRoute = pageRoute === 'ejunz_agent' ? 'ejunz_agent' : 'homepage';
+  const domainTargetRoute = pageRoute === 'market' ? 'market' : pageRoute === 'ejunz_agent' ? 'ejunz_agent' : 'homepage';
   const user = useUserContext();
   const navItems = Array.isArray(ui.navItems) ? ui.navItems as NavItem[] : [];
   const brandLogo = ui.navBrandLogo || navLogo;

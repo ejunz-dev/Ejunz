@@ -454,7 +454,7 @@ async function sessionCardCreate(envelope: RpcEnvelope, scope: AgentScope): Prom
     if (nodeId && !await agentDataAdapter.getNode(scope, nodeId)) return rpcError(envelope.rpcId, 'node not found in this Agent');
 
     const selectedBaseDocId = baseDocIdOf(payload.baseDocId);
-    if (selectedBaseDocId && !await isAgentAddonEnabled(scope.domainId, 'base')) {
+    if (selectedBaseDocId && !await isAgentAddonEnabled(scope.domainId, 'base', scope.agentId)) {
         return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
     }
     if (selectedBaseDocId) {
@@ -536,7 +536,7 @@ async function sessionCardUpdate(envelope: RpcEnvelope, scope: AgentScope): Prom
     }
     if (Object.prototype.hasOwnProperty.call(rawPatch, 'baseDocId')) {
         const baseDocId = baseDocIdOf(rawPatch.baseDocId);
-        if (baseDocId && !await isAgentAddonEnabled(scope.domainId, 'base')) return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
+        if (baseDocId && !await isAgentAddonEnabled(scope.domainId, 'base', scope.agentId)) return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
         if (baseDocId) {
             const baseModel = (global as any).Ejunz?.model?.base;
             const base = baseModel ? await baseModel.get(scope.domainId, Number(baseDocId)) : null;
@@ -576,7 +576,7 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
         selectedAgentRoot = await AgentModel.ensureAgentRoot(scope.domainId, scope.userId, scope.agentId, selectedAgent.title);
     }
     const selectedBaseDocId = metadata.baseDocId ?? baseDocIdOf(payload.baseDocId);
-    if (selectedBaseDocId && metadata.type !== 'base_detail' && !await isAgentAddonEnabled(scope.domainId, 'base')) {
+    if (selectedBaseDocId && metadata.type !== 'base_detail' && !await isAgentAddonEnabled(scope.domainId, 'base', scope.agentId)) {
         return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
     }
     let selectedBase: { docId: number; title?: string } | undefined;
@@ -699,7 +699,7 @@ async function sessionContextSave(envelope: RpcEnvelope, scope: AgentScope): Pro
     }
     let selectedBase: { docId: number; title?: string } | undefined;
     if (selectedBaseDocId !== undefined) {
-        if (session.type !== 'base_detail' && !await isAgentAddonEnabled(scope.domainId, 'base')) {
+        if (session.type !== 'base_detail' && !await isAgentAddonEnabled(scope.domainId, 'base', scope.agentId)) {
             return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
         }
         const baseModel = (global as any).Ejunz?.model?.base;
@@ -1266,7 +1266,7 @@ async function baseSessionScope(sessionId: string, optional = false) {
         throw new Error('Base session not found');
     }
     if (session.archived) throw new Error('Base session not found');
-    if (!await isAgentAddonEnabled(session.domainId, 'base')) {
+    if (!await isAgentAddonEnabled(session.domainId, 'base', session.agentId)) {
         if (optional) return { session, scope: undefined };
         throw new Error('Ejunz Base Agent plugin is disabled');
     }
@@ -1331,7 +1331,11 @@ async function onBaseSelect(payload: {
     baseDocId: number;
     baseName?: string;
 }): Promise<void> {
-    if (!await isAgentAddonEnabled(payload.domainId, 'base')) {
+    const session = await AgentModel.getSessionAny(payload.sessionId);
+    if (!session || session.domainId !== payload.domainId || session.userId !== payload.owner) {
+        throw new Error('Base session not found');
+    }
+    if (!await isAgentAddonEnabled(payload.domainId, 'base', session.agentId)) {
         throw new Error('Ejunz Base Agent plugin is disabled');
     }
     const scope = { domainId: payload.domainId, userId: payload.owner };
@@ -1580,10 +1584,21 @@ function agentAddonInstalled(settings: AgentDomainSettings, addonId: string): bo
     return installedAgentAddonIds(settings).has(addonId);
 }
 
-function agentAddonEnabled(settings: AgentDomainSettings, addonId: string): boolean {
+function agentAddonEnabled(settings: AgentDomainSettings, addonId: string, agentId?: number | null): boolean {
     const addon = listAgentAddons().find((item) => item.addonId === addonId);
     if (!addon || !agentAddonInstalled(settings, addonId)) return false;
-    const currentEnabled = settings.sections['agent-addons']?.enabled;
+    const section = settings.sections['agent-addons'] ?? {};
+    const enabledByAgent = section.enabledByAgent && typeof section.enabledByAgent === 'object' && !Array.isArray(section.enabledByAgent)
+        ? section.enabledByAgent as Record<string, unknown>
+        : {};
+    const agentKey = typeof agentId === 'number' ? String(agentId) : 'default';
+    const agentOverrides = enabledByAgent[agentKey] && typeof enabledByAgent[agentKey] === 'object' && !Array.isArray(enabledByAgent[agentKey])
+        ? enabledByAgent[agentKey] as Record<string, unknown>
+        : {};
+    if (Object.prototype.hasOwnProperty.call(agentOverrides, addonId)) {
+        return agentOverrides[addonId] === true;
+    }
+    const currentEnabled = section.enabled;
     const legacyEnabled = settings.sections['agent-plugins']?.enabled;
     const currentOverrides = currentEnabled && typeof currentEnabled === 'object' && !Array.isArray(currentEnabled)
         ? currentEnabled as Record<string, unknown>
@@ -1637,7 +1652,7 @@ async function initialAddonSnapshotForPrompt(sessionId: string): Promise<{ addon
             return undefined;
         }
         const settings = await agentDataAdapter.getDomainSettings(session.domainId);
-        return addons.map((addon) => ({ addonId: addon.addonId, enabled: agentAddonEnabled(settings, addon.addonId) }));
+        return addons.map((addon) => ({ addonId: addon.addonId, enabled: agentAddonEnabled(settings, addon.addonId, session.agentId) }));
     })();
     pendingAddonSnapshots.set(sessionId, preparation);
     try {
@@ -1659,7 +1674,24 @@ async function agentAddonsList(envelope: RpcEnvelope, scope: AgentScope): Promis
     const addons = listAgentAddons().map((addon) => ({
         ...addon,
         installed: installed.has(addon.addonId),
-        enabled: agentAddonEnabled(settings, addon.addonId),
+        enabled: agentAddonEnabled(settings, addon.addonId, scope.agentId),
+        tools: (toolsByAddon.get(addon.addonId) ?? []).sort((left, right) => left.name.localeCompare(right.name)),
+    }));
+    return rpcOk(envelope.rpcId, { addons });
+}
+
+async function agentAddonsMarketList(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
+    const settings = await agentDataAdapter.getDomainSettings(scope.domainId);
+    const installed = installedAgentAddonIds(settings);
+    const toolsByAddon = new Map<string, { name: string; description: string }[]>();
+    for (const { addonId, name, description } of toolRegistry().list(undefined, scope.domainId)) {
+        const tools = toolsByAddon.get(addonId) ?? [];
+        tools.push({ name, description });
+        toolsByAddon.set(addonId, tools);
+    }
+    const addons = listAgentAddons().map((addon) => ({
+        ...addon,
+        installed: installed.has(addon.addonId),
         tools: (toolsByAddon.get(addon.addonId) ?? []).sort((left, right) => left.name.localeCompare(right.name)),
     }));
     return rpcOk(envelope.rpcId, { addons });
@@ -1680,11 +1712,7 @@ async function setAgentAddonInstalled(
     const installed = installedAgentAddonIds(current);
     const wasInstalled = installed.has(addonId);
     if (wasInstalled === shouldInstall) {
-        return rpcOk(envelope.rpcId, {
-            addonId,
-            installed: wasInstalled,
-            enabled: agentAddonEnabled(current, addonId),
-        });
+        return rpcOk(envelope.rpcId, { addonId, installed: wasInstalled });
     }
     if (shouldInstall) installed.add(addonId);
     else installed.delete(addonId);
@@ -1693,47 +1721,31 @@ async function setAgentAddonInstalled(
     const legacySection = sections['agent-plugins'] ?? {};
     const addonSection = sections['agent-addons'] ?? {};
     const section: Record<string, unknown> = { ...legacySection, ...addonSection, installed: [...installed].sort() };
-    const enabled = {
-        ...(legacySection.enabled && typeof legacySection.enabled === 'object' && !Array.isArray(legacySection.enabled)
-            ? legacySection.enabled as Record<string, unknown>
-            : {}),
-        ...(addonSection.enabled && typeof addonSection.enabled === 'object' && !Array.isArray(addonSection.enabled)
-            ? addonSection.enabled as Record<string, unknown>
-            : {}),
-    };
-    if (!shouldInstall) delete enabled[addonId];
-    if (Object.keys(enabled).length) section.enabled = enabled;
-    else delete section.enabled;
     sections['agent-addons'] = section;
     delete sections['agent-plugins'];
 
     const saved = await agentDataAdapter.updateDomainSettings(scope.domainId, sections, current.revision);
     if (!saved) return rpcError(envelope.rpcId, 'settings revision conflict');
 
-    const nextSettings = { ...current, sections };
-    const isEnabled = agentAddonEnabled(nextSettings, addonId);
     const change: AgentAddonStateChange = {
         domainId: scope.domainId,
         userId: scope.userId,
-        ...(scope.agentId === undefined ? {} : { agentId: scope.agentId }),
         addonId,
-        enabled: isEnabled,
+        enabled: shouldInstall,
     };
     try {
         await publishState(change);
     } catch (error) {
         logger.warn('[addons] state-change event failed addon=%s domain=%s error=%s', addonId, scope.domainId, error instanceof Error ? error.message : String(error));
     }
-    return rpcOk(envelope.rpcId, { addonId, installed: shouldInstall, enabled: isEnabled });
+    return rpcOk(envelope.rpcId, { addonId, installed: shouldInstall });
 }
 
 async function recordAddonStateForSessions(change: AgentAddonStateChange): Promise<void> {
-    const scope: AgentScope = {
-        domainId: change.domainId,
-        userId: change.userId,
-        ...(change.agentId === undefined ? {} : { agentId: change.agentId }),
-    };
-    const sessions = await agentDataAdapter.listSessions(scope);
+    const sessions = (await AgentModel.listAllSessions()).filter((session) =>
+        session.domainId === change.domainId
+        && !session.archived
+        && (change.agentId === undefined || (session.agentId ?? null) === change.agentId));
     for (let offset = 0; offset < sessions.length; offset += 8) {
         const batch = sessions.slice(offset, offset + 8);
         await Promise.all(batch.map(async (session) => {
@@ -1771,20 +1783,21 @@ async function agentAddonSet(
     const sections = cloneSettingsSections(current.sections);
     const legacySection = sections['agent-plugins'] ?? {};
     const addonSection = sections['agent-addons'] ?? {};
-    const section = { ...legacySection, ...addonSection };
-    const legacyEnabled = legacySection.enabled && typeof legacySection.enabled === 'object' && !Array.isArray(legacySection.enabled)
-        ? legacySection.enabled as Record<string, unknown>
+    const section: Record<string, unknown> = { ...legacySection, ...addonSection };
+    const currentEnabledByAgent = addonSection.enabledByAgent && typeof addonSection.enabledByAgent === 'object' && !Array.isArray(addonSection.enabledByAgent)
+        ? addonSection.enabledByAgent as Record<string, unknown>
         : {};
-    const currentEnabled = addonSection.enabled && typeof addonSection.enabled === 'object' && !Array.isArray(addonSection.enabled)
-        ? addonSection.enabled as Record<string, unknown>
+    const agentId = typeof scope.agentId === 'number' ? scope.agentId : null;
+    const agentKey = agentId === null ? 'default' : String(agentId);
+    const currentAgentEnabled = currentEnabledByAgent[agentKey] && typeof currentEnabledByAgent[agentKey] === 'object' && !Array.isArray(currentEnabledByAgent[agentKey])
+        ? currentEnabledByAgent[agentKey] as Record<string, unknown>
         : {};
-    const enabled = { ...legacyEnabled, ...currentEnabled };
-    if (payload.enabled === (addon.defaultEnabled !== false)) delete enabled[addonId];
-    else enabled[addonId] = payload.enabled;
-    if (Object.keys(enabled).length) section.enabled = enabled;
-    else delete section.enabled;
-    if (Object.keys(section).length) sections['agent-addons'] = section;
-    else delete sections['agent-addons'];
+    const nextEnabledByAgent = {
+        ...currentEnabledByAgent,
+        [agentKey]: { ...currentAgentEnabled, [addonId]: payload.enabled },
+    };
+    section.enabledByAgent = nextEnabledByAgent;
+    sections['agent-addons'] = section;
     delete sections['agent-plugins'];
 
     const saved = await agentDataAdapter.updateDomainSettings(scope.domainId, sections, current.revision);
@@ -1793,7 +1806,7 @@ async function agentAddonSet(
     const change: AgentAddonStateChange = {
         domainId: scope.domainId,
         userId: scope.userId,
-        ...(scope.agentId === undefined ? {} : { agentId: scope.agentId }),
+        agentId,
         addonId,
         enabled: payload.enabled,
     };
@@ -1805,13 +1818,13 @@ async function agentAddonSet(
     return rpcOk(envelope.rpcId, { addonId, enabled: payload.enabled });
 }
 
-export async function isAgentAddonEnabled(domainId: string, addonId: string): Promise<boolean> {
-    return agentAddonEnabled(await agentDataAdapter.getDomainSettings(domainId), addonId);
+export async function isAgentAddonEnabled(domainId: string, addonId: string, agentId?: number | null): Promise<boolean> {
+    return agentAddonEnabled(await agentDataAdapter.getDomainSettings(domainId), addonId, agentId);
 }
 
-async function enabledAgentAddonIds(domainId: string): Promise<Set<string>> {
+async function enabledAgentAddonIds(domainId: string, agentId?: number | null): Promise<Set<string>> {
     const settings = await agentDataAdapter.getDomainSettings(domainId);
-    return new Set(listAgentAddons().filter((addon) => agentAddonEnabled(settings, addon.addonId)).map((addon) => addon.addonId));
+    return new Set(listAgentAddons().filter((addon) => agentAddonEnabled(settings, addon.addonId, agentId)).map((addon) => addon.addonId));
 }
 
 export const isAgentContextPluginEnabled = isAgentAddonEnabled;
@@ -3283,7 +3296,7 @@ export const agentRuntimeHandlerContext = {
     modelReady: () => modelReady,
     requireBridgeToken, baseSessionScope, toolRegistry,
     scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, upstreamValue,
-    nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, setAgentAddonInstalled,
+    nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled,
     agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,
     baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems,
     runtimeRelabel, runtimeRemove, sessionCardCreate, sessionCardUpdate, sessionCreate, sessionHistory, sessionMessageCount,
