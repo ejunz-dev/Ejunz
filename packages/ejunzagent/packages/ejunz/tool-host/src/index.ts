@@ -103,9 +103,17 @@ function toolDefinition(spec: HostToolSpec, client: HostToolClient): ToolDefinit
  * @returns a disposer that removes every tool this call registered.
  */
 export function registerHostTools(options: RegisterHostToolsOptions): () => void {
-  const disposers = options.catalog.tools.map(spec => options.registry.register(toolDefinition(spec, options.client)))
+  const disposers: (() => void)[] = []
+  try {
+    for (const spec of options.catalog.tools) {
+      disposers.push(options.registry.register(toolDefinition(spec, options.client)))
+    }
+  } catch (error) {
+    for (const dispose of [...disposers].reverse()) dispose()
+    throw error
+  }
   return () => {
-    for (const dispose of disposers) dispose()
+    for (const dispose of [...disposers].reverse()) dispose()
   }
 }
 
@@ -122,37 +130,95 @@ export interface InstallHostToolsOptions {
 }
 
 /**
- * Install the host's tools for one Agent.
+/** Per-Agent host tool registrations and serialized catalog refresh state. */
+interface HostToolInstallation {
+  readonly client: HostToolClient
+  queue: Promise<void>
+  catalog?: HostCatalog
+  dispose?: () => void
+}
+
+const installations = new WeakMap<Context, HostToolInstallation>()
+
+function installCatalog(agentCtx: Context, client: HostToolClient, catalog: HostCatalog): () => void {
+  const registry = agentCtx.get('tools') as ToolRegistry | undefined
+  if (registry === undefined) throw new Error('tool-host: the tool registry is unavailable in this Agent scope')
+  const disposeTools = registerHostTools({ registry, client, catalog })
+  try {
+    const guidance = catalog.guidance
+    const disposeContext = guidance !== undefined && guidance.length > 0
+      ? agentCtx.get('systemPrompt')?.context({
+        name: 'host-tools',
+        order: 120,
+        text: () => guidance,
+      })
+      : undefined
+    return () => {
+      disposeContext?.()
+      disposeTools()
+    }
+  } catch (error) {
+    disposeTools()
+    throw error
+  }
+}
+
+/** Refresh the tools and guidance already installed for one live Agent. */
+export async function refreshHostTools(agentCtx: Context): Promise<void> {
+  const installation = installations.get(agentCtx)
+  if (installation === undefined) return
+  const update = installation.queue.then(async () => {
+    const agent = agentCtx.agent
+    if (agent === undefined) throw new Error('tool-host: host tools require an Agent scope')
+    const sessionId = agent.session.id
+    const catalog = await installation.client.catalog(AbortSignal.timeout(CATALOG_TIMEOUT_MS), { sessionId })
+    const previousCatalog = installation.catalog
+    if (previousCatalog !== undefined && JSON.stringify(previousCatalog) === JSON.stringify(catalog)) return
+    const disposePrevious = installation.dispose
+    disposePrevious?.()
+    try {
+      installation.dispose = installCatalog(agentCtx, installation.client, catalog)
+      installation.catalog = catalog
+    } catch (error) {
+      if (previousCatalog !== undefined) {
+        installation.dispose = installCatalog(agentCtx, installation.client, previousCatalog)
+      } else {
+        delete installation.dispose
+      }
+      if (previousCatalog === undefined) delete installation.catalog
+      else installation.catalog = previousCatalog
+      throw error
+    }
+    agentCtx.logger.info(`tool-host: refreshed ${catalog.tools.length} host tool(s) for session ${sessionId}`)
+  })
+  installation.queue = update.then(() => undefined, () => undefined)
+  await update
+}
+
+/**
+ * Install the host catalog for one Agent and retain its client for live refreshes.
  *
- * The host declares its catalog per domain, so the catalog is read for this Agent's own
- * session: a tool another domain owns is never declared here, and every other Agent in the
- * process stays without it.
- *
- * Both the tools and their prompt section are registered through values read from
- * `agentCtx`, whose scope is what a scoped registry resolves its layer from: the Agent's
- * model sees the host's guidance for its own session, and no other Agent's.
+ * The host resolves the Agent's own session id to select the domain-specific catalog. Tools
+ * and guidance are registered in that Agent's scope alone.
  * @param options - the Agent scope and the client.
- * @throws when the scope carries no Agent or no tool registry, or the host catalog round
- *   trip fails — Agent creation rolls back rather than publishing an Agent without its tools.
+ * @throws when the scope carries no Agent or tool registry, or the host catalog round trip
+ *   fails — Agent creation rolls back rather than publishing an Agent without its tools.
  */
 export async function installHostTools(options: InstallHostToolsOptions): Promise<void> {
   const { agentCtx, client } = options
-  const agent = agentCtx.agent
-  if (agent === undefined) throw new Error('tool-host: host tools require an Agent scope')
-  const registry = agentCtx.get('tools') as ToolRegistry | undefined
-  if (registry === undefined) throw new Error('tool-host: the tool registry is unavailable in this Agent scope')
-  const sessionId = agent.session.id
-  const catalog = await client.catalog(AbortSignal.timeout(CATALOG_TIMEOUT_MS), { sessionId })
-  registerHostTools({ registry, client, catalog })
-  const guidance = catalog.guidance
-  if (guidance !== undefined && guidance.length > 0) {
-    agentCtx.get('systemPrompt')?.context({
-      name: 'host-tools',
-      order: 120,
-      text: () => guidance,
-    })
+  if (agentCtx.agent === undefined) throw new Error('tool-host: host tools require an Agent scope')
+  const existing = installations.get(agentCtx)
+  if (existing !== undefined && existing.client !== client) {
+    throw new Error('tool-host: a different client is already installed for this Agent')
   }
-  agentCtx.logger.info(`tool-host: installed ${catalog.tools.length} host tool(s) for session ${sessionId}`)
+  const installation = existing ?? { client, queue: Promise.resolve() }
+  installations.set(agentCtx, installation)
+  try {
+    await refreshHostTools(agentCtx)
+  } catch (error) {
+    if (existing === undefined) installations.delete(agentCtx)
+    throw error
+  }
 }
 
 /**

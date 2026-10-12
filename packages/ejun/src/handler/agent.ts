@@ -116,9 +116,17 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                     const user = UserModel ? await UserModel.getById(scope.domain, scope.owner) : null;
                     if (user) access = { priv: user.priv, perm: user.perm, scope: user.scope };
                 }
+                const addonGuidance = listAgentAddons()
+                    .filter((addon) => mountedAddons.has(addon.addonId))
+                    .sort((left, right) => left.addonId.localeCompare(right.addonId))
+                    .map((addon) => `- ${addon.displayName}: ${addon.description}`);
+                const guidance = [
+                    ...(addonGuidance.length ? [`Active Agent add-ons for this session:\n${addonGuidance.join('\n')}`] : []),
+                    ...(await tools.instructions(context, undefined, mountedAddons)),
+                ].join('\n\n');
                 this.response.body = JSON.stringify(dataOk({
                     tools: tools.list(undefined, scope?.domain, access, mountedAddons),
-                    guidance: (await tools.instructions(context, undefined, mountedAddons)).join('\n\n'),
+                    guidance,
                 }));
             } else if (method === 'tools/call') {
                 const sessionId = String(body.sessionId || '');

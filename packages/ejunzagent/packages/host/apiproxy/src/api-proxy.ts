@@ -29,7 +29,7 @@ import {
 } from '@ejunz/agent-presets'
 import type { PresetBearingSession } from '@ejunz/agent-presets'
 import type {} from '@ejunz/tools'
-import { createHostToolBridge, createHostToolClient, installHostTools } from '@ejunz/tool-host'
+import { createHostToolBridge, createHostToolClient, installHostTools, refreshHostTools } from '@ejunz/tool-host'
 import type {
   ApiProxy, ConfigurableProviderView, CredentialView, GoalRef, HistoryEntry, HostFrame,
   ModelCatalogFailure, ModelProviderGroup,
@@ -2571,14 +2571,16 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
               : previous.data.snapshot.find(state => state.addonId === addonId)?.enabled
             : undefined
           if (previous && previousEnabled === enabled) {
+            await refreshHostTools(found.agent.ctx)
             return ok(request, { accepted: true as const, seq: previous.seq })
           }
           const event = found.agent.session.append('session/addons', { addonId, enabled })
+          await refreshHostTools(found.agent.ctx)
           return ok(request, { accepted: true as const, seq: event.seq })
         } catch (error: unknown) {
           return err(request, {
             code: 'internal',
-            message: 'addon mount event append failed',
+            message: 'addon state update failed',
             details: { reason: String(error) },
           })
         }

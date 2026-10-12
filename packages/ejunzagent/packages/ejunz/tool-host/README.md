@@ -2,7 +2,7 @@
 
 Registers the tool set a host declares, scoped to each Agent session.
 
-The package keeps no tool list of its own. The attached host client declares the set, so a deployment registers exactly the tools its host exposes, with the host's names, descriptions, and parameter schemas. A host serves its catalog per domain, so the install runs while one Agent is composed: the current Agent session id is what lets the host resolve the acting domain, and the tools land in that Agent's scope alone.
+The package keeps no tool list of its own. The attached host client declares the set, so a deployment registers exactly the tools its host exposes, with the host's names, descriptions, and parameter schemas. A host serves its catalog per domain, so the catalog is read for one Agent session: the current session id lets the host resolve the acting domain, and the tools land in that Agent's scope alone. When the session's add-on state changes, the live Agent refreshes its catalog and guidance before the update is acknowledged.
 
 ## Configuration
 
@@ -50,7 +50,7 @@ Every declared tool occupies one entry of the request's `tools` array, and the h
 
 #### KV Cache effect
 
-Each composition reads the catalog for its own session and installs it into its own Agent scope, so a change in the host's catalog alters the tool block from the first request after the next composition.
+Each Agent reads the catalog for its own session and installs it into its own scope. A session add-on change refreshes that scope's tool block before the next model request; the changed tool block invalidates the prior prompt-cache prefix for that request.
 
 ### System prompt section
 
@@ -70,7 +70,7 @@ The section costs exactly the host's guidance text, which the host builds while 
 
 #### KV Cache effect
 
-The guidance is registered per Agent, so it stays stable across a session's turns and changes only when the Agent is composed again under another domain.
+The guidance is registered per Agent and stays stable across turns until that session's add-on state changes; the host refreshes it together with the tool catalog before acknowledging the change.
 
 ## Known Limitations and Deferred Work
 
