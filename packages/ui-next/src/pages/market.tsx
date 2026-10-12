@@ -58,7 +58,7 @@ export default function AgentAddonMarketPage() {
         <header className={css.hero}>
             <div className={css.heroCopy}>
                 <h1 className={css.title}>Addon 市场</h1>
-                <p className={css.intro}>先在 domain 安装，再到各 Agent 设置中选择要启用的能力。</p>
+                <p className={css.intro}>安装只开放给当前 domain，不会自动启用；每个 Agent 都需在自己的设置中单独开启。</p>
             </div>
             <aside className={css.scope} aria-label="安装范围">
                 <span className={css.scopeMark} aria-hidden="true" />

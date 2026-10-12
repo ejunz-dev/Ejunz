@@ -1584,6 +1584,31 @@ function agentAddonInstalled(settings: AgentDomainSettings, addonId: string): bo
     return installedAgentAddonIds(settings).has(addonId);
 }
 
+function resetAgentAddonEnablement(section: Record<string, unknown>, addonId: string): void {
+    const defaultsDisabled = new Set(
+        Array.isArray(section.marketDefaultsDisabled)
+            ? section.marketDefaultsDisabled.filter((value): value is string => typeof value === 'string')
+            : [],
+    );
+    defaultsDisabled.add(addonId);
+    section.marketDefaultsDisabled = [...defaultsDisabled].sort();
+
+    const enabledByAgent = section.enabledByAgent;
+    if (!enabledByAgent || typeof enabledByAgent !== 'object' || Array.isArray(enabledByAgent)) return;
+    const nextEnabledByAgent: Record<string, unknown> = {};
+    for (const [agentId, value] of Object.entries(enabledByAgent as Record<string, unknown>)) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            nextEnabledByAgent[agentId] = value;
+            continue;
+        }
+        const overrides = { ...(value as Record<string, unknown>) };
+        delete overrides[addonId];
+        if (Object.keys(overrides).length) nextEnabledByAgent[agentId] = overrides;
+    }
+    if (Object.keys(nextEnabledByAgent).length) section.enabledByAgent = nextEnabledByAgent;
+    else delete section.enabledByAgent;
+}
+
 function agentAddonEnabled(settings: AgentDomainSettings, addonId: string, agentId?: number | null): boolean {
     const addon = listAgentAddons().find((item) => item.addonId === addonId);
     if (!addon || !agentAddonInstalled(settings, addonId)) return false;
@@ -1598,6 +1623,8 @@ function agentAddonEnabled(settings: AgentDomainSettings, addonId: string, agent
     if (Object.prototype.hasOwnProperty.call(agentOverrides, addonId)) {
         return agentOverrides[addonId] === true;
     }
+    const marketDefaultsDisabled = section.marketDefaultsDisabled;
+    if (Array.isArray(marketDefaultsDisabled) && marketDefaultsDisabled.includes(addonId)) return false;
     const currentEnabled = section.enabled;
     const legacyEnabled = settings.sections['agent-plugins']?.enabled;
     const currentOverrides = currentEnabled && typeof currentEnabled === 'object' && !Array.isArray(currentEnabled)
@@ -1721,6 +1748,7 @@ async function setAgentAddonInstalled(
     const legacySection = sections['agent-plugins'] ?? {};
     const addonSection = sections['agent-addons'] ?? {};
     const section: Record<string, unknown> = { ...legacySection, ...addonSection, installed: [...installed].sort() };
+    resetAgentAddonEnablement(section, addonId);
     sections['agent-addons'] = section;
     delete sections['agent-plugins'];
 
