@@ -1159,28 +1159,6 @@ async function nodeConfigForNode(scope: AgentScope, nodeId?: string): Promise<Ag
     return owner?.config;
 }
 
-async function propagateNodeConfig(
-    scope: AgentScope,
-    rootNodeId: string,
-): Promise<{ updatedSessionIds: string[]; failedSessionIds: string[] }> {
-    const nodes = await agentDataAdapter.listNodes(scope);
-    const descendantIds = new Set([rootNodeId]);
-    let added = true;
-    while (added) {
-        added = false;
-        for (const node of nodes) {
-            if (node.parentId && descendantIds.has(node.parentId) && !descendantIds.has(node.nodeId)) {
-                descendantIds.add(node.nodeId);
-                added = true;
-            }
-        }
-    }
-    const updatedSessionIds = (await agentDataAdapter.listSessions(scope))
-        .filter((session) => session.nodeId !== undefined && descendantIds.has(session.nodeId))
-        .map((session) => session.sessionId);
-    return { updatedSessionIds, failedSessionIds: [] };
-}
-
 async function nodeConfigSave(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const payload = envelope.payload ?? {};
     const nodeId = typeof payload.nodeId === 'string' ? payload.nodeId : '';
@@ -1192,7 +1170,7 @@ async function nodeConfigSave(envelope: RpcEnvelope, scope: AgentScope): Promise
     if (!node) return rpcError(envelope.rpcId, 'node not found');
     if (node.isRoot) return rpcError(envelope.rpcId, 'Agent root node cannot own Agent configuration');
 
-    const config: AgentNodeConfig = { ...(node.config ?? {}) };
+    const config: AgentNodeConfig = node.config?.addons ? { addons: node.config.addons } : {};
     const patch: Partial<AgentNodeConfig> = {};
     if (Object.prototype.hasOwnProperty.call(rawPatch, 'addonIds')) {
         if (!Array.isArray(rawPatch.addonIds) || rawPatch.addonIds.some((id) => typeof id !== 'string')) {
@@ -1215,23 +1193,17 @@ async function nodeConfigSave(envelope: RpcEnvelope, scope: AgentScope): Promise
     const nextConfig = { ...config, ...patch };
     const updated = await agentDataAdapter.updateNodeConfig(scope, nodeId, nextConfig);
     if (!updated) return rpcError(envelope.rpcId, 'node not found');
-    const propagation = await propagateNodeConfig(scope, nodeId);
+    const updatedSessionIds: string[] = [];
+    const failedSessionIds: string[] = [];
     if (Object.prototype.hasOwnProperty.call(patch, 'addons')) {
-        const nodes = await agentDataAdapter.listNodes(scope);
-        const affected = new Set([nodeId]);
-        let expanded = true;
-        while (expanded) {
-            expanded = false;
-            for (const candidate of nodes) {
-                if (candidate.parentId && affected.has(candidate.parentId) && !affected.has(candidate.nodeId)) {
-                    affected.add(candidate.nodeId);
-                    expanded = true;
-                }
+        const sessions = (await agentDataAdapter.listSessions(scope)).filter((session) => session.nodeId === nodeId);
+        for (const session of sessions) {
+            if (session.started === false) {
+                // The initial addon snapshot will use the node config when this card starts.
+                updatedSessionIds.push(session.sessionId);
+                continue;
             }
-        }
-        for (const session of (await agentDataAdapter.listSessions(scope)).filter((item) => item.nodeId && affected.has(item.nodeId))) {
-            const effectiveConfig = await nodeConfigForNode(scope, session.nodeId);
-            const selected = effectiveConfig?.addons;
+            let failed = false;
             for (const addon of listAgentAddons()) {
                 try {
                     const link = await linkForSession(scope, session.sessionId);
@@ -1239,16 +1211,18 @@ async function nodeConfigSave(envelope: RpcEnvelope, scope: AgentScope): Promise
                         sessionId: session.sessionId,
                         addonId: addon.addonId,
                         enabled: await isAgentAddonEnabled(scope.domainId, addon.addonId, scope.agentId)
-                            && (selected === undefined || selected[addon.addonId] === true),
+                            && patch.addons?.[addon.addonId] === true,
                     }, link);
                     if (!result.body.result?.ok) throw new Error(result.body.error?.message || 'add-on state event failed');
                 } catch (error) {
+                    failed = true;
                     logger.warn('[agent-node] add-on state update failed session=%s addon=%s error=%s', session.sessionId, addon.addonId, error instanceof Error ? error.message : String(error));
                 }
             }
+            (failed ? failedSessionIds : updatedSessionIds).push(session.sessionId);
         }
     }
-    return rpcOk(envelope.rpcId, { node: nodeView(updated), ...propagation });
+    return rpcOk(envelope.rpcId, { node: nodeView(updated), updatedSessionIds, failedSessionIds });
 }
 
 async function nodeRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {

@@ -192,13 +192,14 @@ export function SessionTree({
     }, [agentNodes, agentRootNode, ungroupedSessions.length]);
     const renderedRootNodeIds = activeNodeId && rootNodeIds.includes(activeNodeId) ? [activeNodeId] : rootNodeIds;
     const requestNodeSwitch = useCallback((nodeId: string) => {
+        if (agentNodes.some((node) => node.nodeId === nodeId && node.isRoot)) return;
         if (nodeId !== visibleSelectedNodeId) setPendingNodeId(nodeId);
         else onSelectNode(nodeId);
-    }, [onSelectNode, visibleSelectedNodeId]);
+    }, [agentNodes, onSelectNode, visibleSelectedNodeId]);
     const confirmNodeSwitch = useCallback(() => {
-        if (pendingNodeId) onSelectNode(pendingNodeId);
+        if (pendingNodeId && !agentNodes.some((node) => node.nodeId === pendingNodeId && node.isRoot)) onSelectNode(pendingNodeId);
         setPendingNodeId(null);
-    }, [onSelectNode, pendingNodeId]);
+    }, [agentNodes, onSelectNode, pendingNodeId]);
     const cancelNodeSwitch = useCallback(() => setPendingNodeId(null), []);
     const pendingNodeLabel = pendingNodeId === SESSION_GROUP_ID
         ? '未分组'
@@ -350,7 +351,10 @@ export function SessionTree({
             selectedNodeId={visibleSelectedNodeId}
             selectedCardId={current}
             onToggle={toggleNodeExpansion}
-            onSelectNode={(nodeId) => { onSelectNode(nodeId); onCloseTree(); }}
+            onSelectNode={(nodeId) => {
+                if (!agentNodes.some((node) => node.nodeId === nodeId && node.isRoot)) onSelectNode(nodeId);
+                onCloseTree();
+            }}
             onSelectCard={(card) => { selectSessionCard(card, true); onCloseTree(); }}
             onClose={onCloseTree}
             filter={query}

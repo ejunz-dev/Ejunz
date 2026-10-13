@@ -1378,8 +1378,8 @@ export default function AgentPage() {
         setCurrent(null);
         setDetailsOpen(false);
         setSelectedTool(null);
-        const selectedNodeId = nodes.some((node) => node.nodeId === activeTreeNodeId) ? activeTreeNodeId : rootNodeId;
-        setActiveTreeNodeId(selectedNodeId);
+        const selectedNodeId = nodes.some((node) => node.nodeId === activeTreeNodeId && !node.isRoot) ? activeTreeNodeId : undefined;
+        setActiveTreeNodeId(selectedNodeId ?? null);
         updateAgentSelectionUrl({ nodeId: selectedNodeId, cardId: null });
         setNewSessionConfigOpen(true);
         setNewSessionConfigLoading(true);
@@ -1397,7 +1397,7 @@ export default function AgentPage() {
         setDraftModelSelection(undefined);
         await loadModelCatalog();
         if (newSessionLoadRef.current === loadId) setNewSessionConfigLoading(false);
-    }, [activeTreeNodeId, fallbackHostId, hosts, loadModelCatalog, nodes, rootNodeId]);
+    }, [activeTreeNodeId, fallbackHostId, hosts, loadModelCatalog, nodes]);
 
     /**
      * Move the open session to another host.
@@ -1957,7 +1957,6 @@ export default function AgentPage() {
             <DeepSeekOnboarding rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} />
             {newSessionConfigOpen && <InputConfigDialog
                 hosts={hosts}
-                addons={agentAddons.filter((addon) => addon.enabled)}
                 selectedHostId={draftHostId}
                 onPickHost={setDraftHostId}
                 bases={bases}

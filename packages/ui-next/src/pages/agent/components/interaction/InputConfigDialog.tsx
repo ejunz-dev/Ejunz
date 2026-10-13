@@ -7,15 +7,8 @@ import type { SessionModels } from '../types';
 import { InputBar } from '../conversation/skeleton/InputBar';
 import type { AgentPresetOption } from '../settings/AgentPresetSeat';
 
-interface NewSessionAddonOption {
-    addonId: string;
-    displayName: string;
-    description: string;
-}
-
 interface InputConfigDialogProps {
     hosts: readonly HostOption[];
-    addons: readonly NewSessionAddonOption[];
     selectedHostId: string;
     onPickHost: (runtimeId: string) => void;
     bases: readonly BaseView[];
@@ -63,7 +56,7 @@ function buttonClass(selected: boolean): string {
 }
 
 export function InputConfigDialog({
-    hosts, addons, selectedHostId, onPickHost,
+    hosts, selectedHostId, onPickHost,
     bases, selectedBaseId, onPickBase, nodes, selectedNodeId, onPickNode, models, selectModel, agentPresetOptions, agentPresetChoice, onSelectAgentPreset, agentPresetError,
     input, setInput, attachments, onAddFiles, onRemoveAttachment, modelMenuOpen, setModelMenuOpen,
     notice, onCancel, sending, loading, onConfirm, onCreateOnly, onClose,
@@ -106,13 +99,6 @@ export function InputConfigDialog({
                         </div>
                     )) : <div className="eza-sessionSettingsLoading" role="status"><span className="eza-sessionSettingsLoadingSpinner" aria-hidden="true" />模型加载中…</div>}
                 </div>
-                <div className="bd-edit-field">
-                    <h3>Addons</h3>
-                    <div className="bd-edit-tags">
-                        {addons.map((addon) => <span className="eza-inputConfigPluginTag" key={addon.addonId} title={addon.description}>{addon.displayName}</span>)}
-                        {addons.length === 0 && <span className="bd-muted">当前没有可挂载的 Addon</span>}
-                    </div>
-                </div>
                 <NewSessionContextSlot
                     bases={bases}
                     selectedBaseId={selectedBaseId}
@@ -123,7 +109,7 @@ export function InputConfigDialog({
                     <h3>节点</h3>
                     <div className="bd-edit-tags">
                         <button type="button" className={buttonClass(selectedNodeId === undefined)} disabled={sending} onClick={() => onPickNode(undefined)}>未分组</button>
-                        {nodes.map((node) => <button type="button" className={buttonClass(selectedNodeId === node.nodeId)} disabled={sending} key={node.nodeId} onClick={() => onPickNode(node.nodeId)}>{node.text}</button>)}
+                        {nodes.filter((node) => !node.isRoot).map((node) => <button type="button" className={buttonClass(selectedNodeId === node.nodeId)} disabled={sending} key={node.nodeId} onClick={() => onPickNode(node.nodeId)}>{node.text}</button>)}
                     </div>
                 </div>
                 <div className="bd-edit-field">
