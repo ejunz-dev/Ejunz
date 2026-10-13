@@ -1378,8 +1378,8 @@ export default function AgentPage() {
         setCurrent(null);
         setDetailsOpen(false);
         setSelectedTool(null);
-        const selectedNodeId = nodes.some((node) => node.nodeId === activeTreeNodeId && !node.isRoot) ? activeTreeNodeId : undefined;
-        setActiveTreeNodeId(selectedNodeId ?? null);
+        const selectedNodeId = nodes.some((node) => node.nodeId === activeTreeNodeId) ? activeTreeNodeId : rootNodeId;
+        setActiveTreeNodeId(selectedNodeId);
         updateAgentSelectionUrl({ nodeId: selectedNodeId, cardId: null });
         setNewSessionConfigOpen(true);
         setNewSessionConfigLoading(true);
@@ -1397,7 +1397,7 @@ export default function AgentPage() {
         setDraftModelSelection(undefined);
         await loadModelCatalog();
         if (newSessionLoadRef.current === loadId) setNewSessionConfigLoading(false);
-    }, [activeTreeNodeId, fallbackHostId, hosts, loadModelCatalog, nodes]);
+    }, [activeTreeNodeId, fallbackHostId, hosts, loadModelCatalog, nodes, rootNodeId]);
 
     /**
      * Move the open session to another host.
@@ -1924,7 +1924,6 @@ export default function AgentPage() {
         setDialog({ kind: 'delete-selected', sessionIds, nodeIds });
     }, [nodes, selectedCardIds, selectedNodeIds]);
     const selectTreeNode = useCallback((nodeId: string) => {
-        if (nodes.some((node) => node.nodeId === nodeId && node.isRoot)) return;
         setActiveTreeNodeId(nodeId);
         setCurrent(null);
         setDetailsOpen(false);
@@ -2120,7 +2119,7 @@ export default function AgentPage() {
                         />
                     </main>
                 </div>
-                {nodeSettingsNode && !nodeSettingsNode.isRoot && <SessionDrawer
+                {nodeSettingsNode && <SessionDrawer
                     loading={nodeConfigSaving}
                     loadingLabel="正在同步节点配置…"
                     drawerWidth={sessionDrawerWidth}

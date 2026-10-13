@@ -109,7 +109,7 @@ export function InputConfigDialog({
                     <h3>节点</h3>
                     <div className="bd-edit-tags">
                         <button type="button" className={buttonClass(selectedNodeId === undefined)} disabled={sending} onClick={() => onPickNode(undefined)}>未分组</button>
-                        {nodes.filter((node) => !node.isRoot).map((node) => <button type="button" className={buttonClass(selectedNodeId === node.nodeId)} disabled={sending} key={node.nodeId} onClick={() => onPickNode(node.nodeId)}>{node.text}</button>)}
+                        {nodes.map((node) => <button type="button" className={buttonClass(selectedNodeId === node.nodeId)} disabled={sending} key={node.nodeId} onClick={() => onPickNode(node.nodeId)}>{node.text}</button>)}
                     </div>
                 </div>
                 <div className="bd-edit-field">

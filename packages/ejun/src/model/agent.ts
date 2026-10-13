@@ -1094,7 +1094,6 @@ export class AgentSessionModel {
         const filter = agentNodeFilter(domainId, userId, agentId, nodeId);
         const node = await nodes.findOne(filter) as AgentNodeDoc | null;
         if (!node) return null;
-        if (node.isRoot) throw new Error('Agent root node cannot own Agent configuration');
         await nodes.updateOne(filter, { $set: { config, updatedAt: new Date() } });
         return await nodes.findOne(filter) as AgentNodeDoc | null;
     }

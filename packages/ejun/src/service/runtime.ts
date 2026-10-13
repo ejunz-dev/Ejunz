@@ -1150,7 +1150,7 @@ function nodeConfigOwnerFor(nodes: readonly AgentNodeDoc[], nodeId?: string): Ag
     if (!nodeId) return undefined;
     const byId = new Map(nodes.map((node) => [node.nodeId, node]));
     const node = byId.get(nodeId);
-    return node && !node.isRoot ? node : undefined;
+    return node;
 }
 
 async function nodeConfigForNode(scope: AgentScope, nodeId?: string): Promise<AgentNodeConfig | undefined> {
@@ -1168,8 +1168,6 @@ async function nodeConfigSave(envelope: RpcEnvelope, scope: AgentScope): Promise
     if (!nodeId) return rpcError(envelope.rpcId, 'nodeId is required');
     const node = await agentDataAdapter.getNode(scope, nodeId);
     if (!node) return rpcError(envelope.rpcId, 'node not found');
-    if (node.isRoot) return rpcError(envelope.rpcId, 'Agent root node cannot own Agent configuration');
-
     const config: AgentNodeConfig = node.config?.addons ? { addons: node.config.addons } : {};
     const patch: Partial<AgentNodeConfig> = {};
     if (Object.prototype.hasOwnProperty.call(rawPatch, 'addonIds')) {
