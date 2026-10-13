@@ -43,12 +43,12 @@ export const Remove = Schema.object({
 
 export const NodeList = Schema.object({
     agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-}).description('List the current user’s workspace nodes for an Agent, including its root node.');
+}).description('List the current user’s workspace nodes for an Agent, including each node’s Addon configuration and its root node.');
 
 export const NodeGet = Schema.object({
     agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
     nodeId: Schema.string().required().description('Node id.'),
-}).description('Read one workspace node belonging to an Agent, including its direct child nodes and the session cards attached to it.');
+}).description('Read one workspace node belonging to an Agent, including its Addon configuration, direct child nodes, and attached session cards.');
 
 export const NodeCreate = Schema.object({
     agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
@@ -59,9 +59,10 @@ export const NodeCreate = Schema.object({
 export const NodeUpdate = Schema.object({
     agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
     nodeId: Schema.string().required().description('Node id.'),
-    text: Schema.string().required().description('New node title.'),
+    text: Schema.string().description('New node title (optional).'),
     parentId: Schema.string().description('Existing parent node id (optional; omit to keep the current parent).'),
-}).description('Rename and/or move a workspace node belonging to an Agent. Pass parentId to move it under an existing node. The root node cannot be renamed or moved.');
+    addonIds: Schema.array(Schema.string()).description('Replace the Addons enabled for this node. Pass an empty array to disable all Addons. Addons must already be installed and enabled for this Agent.'),
+}).description('Rename or move an Agent workspace node with text and/or parentId, or configure its Addons by passing addonIds alone. Node-local Addon configuration does not change Agent-wide Addon switches. Existing sessions on the node are updated, and new sessions use the selection when they start. The root node may have Addons configured but cannot be renamed or moved.');
 
 export const NodeRemove = Schema.object({
     agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
@@ -84,7 +85,7 @@ export const NodeCreateMany = Schema.object({
 export const NodeGetMany = Schema.object({
     agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
     nodeIds: Schema.array(Schema.string()).min(1).max(MAX_NODES_PER_CALL).required().description('Node ids to read, in order.'),
-}).description('Read several workspace nodes of one Agent, each with its direct child nodes and session cards. '
+}).description('Read several workspace nodes of one Agent, each with its Addon configuration, direct child nodes, and session cards. '
     + `A missing id is listed in \`missingNodeIds\` and \`ok\` is false. One call reads at most ${MAX_NODES_PER_CALL} nodes.`);
 
 export const NodeUpdateMany = Schema.object({
@@ -212,6 +213,7 @@ function nodeView(node: AgentNodeDoc) {
         ...(node.isRoot ? { isRoot: true } : {}),
         text: node.text,
         order: node.order,
+        ...(node.config === undefined ? {} : { config: node.config }),
         createdAt: node.createdAt.toISOString(),
         updatedAt: node.updatedAt.toISOString(),
     };
@@ -428,15 +430,46 @@ export async function updateNode(ctx: ToolContext, args: ToolArgs) {
     const { agentId, agent } = await requireAgent(ctx, args, 'edit');
     await ensureAgentRoot(ctx, agentId, agent.title);
     const nodeId = String(args.nodeId || '').trim();
-    const text = String(args.text || '').trim();
     if (!nodeId) throw new Error('nodeId is required');
-    if (!text) throw new Error('text is required');
+
+    const hasText = Object.prototype.hasOwnProperty.call(args, 'text');
+    const text = hasText ? String(args.text || '').trim() : undefined;
+    if (hasText && !text) throw new Error('text cannot be empty');
     const hasParent = Object.prototype.hasOwnProperty.call(args, 'parentId');
     const parentId = hasParent ? asText(args.parentId) : undefined;
     if (hasParent && !parentId) throw new Error('parentId cannot be empty');
-    const node = await AgentSessionModel.updateNode(ctx.domainId, ctx.owner, nodeId, text, agentId, parentId);
+    const hasAddonIds = Object.prototype.hasOwnProperty.call(args, 'addonIds');
+    if (!hasText && !hasParent && !hasAddonIds) throw new Error('Nothing to update (text, parentId, or addonIds required)');
+    if (hasAddonIds && (hasText || hasParent)) throw new Error('Update Addon configuration separately from node text or placement');
+
+    let node = await AgentSessionModel.getNode(ctx.domainId, ctx.owner, nodeId, agentId);
     if (!node) throw new Error(`Node not found in Agent ${agentId}: ${nodeId}`);
-    return { ok: true, agentId, node: nodeView(node) };
+    if (hasText || hasParent) {
+        node = await AgentSessionModel.updateNode(ctx.domainId, ctx.owner, nodeId, text ?? node.text, agentId, parentId);
+        if (!node) throw new Error(`Node not found in Agent ${agentId}: ${nodeId}`);
+    }
+
+    let configUpdate: Record<string, unknown> = {};
+    let resultNode: unknown = nodeView(node);
+    if (hasAddonIds) {
+        if (!Array.isArray(args.addonIds) || args.addonIds.some((id: unknown) => typeof id !== 'string' || !id.trim())) {
+            throw new Error('addonIds must be an array of non-empty add-on ids');
+        }
+        const addonIds = [...new Set((args.addonIds as string[]).map((id) => id.trim()))];
+        const response = await agentRuntimeHandlerContext.nodeRpc({
+            rpcId: 'agent_node_update',
+            method: 'node.config.save',
+            payload: { nodeId, patch: { addonIds } },
+        }, sessionScope(ctx, agentId));
+        if (!response.result?.ok) throw new Error(response.error?.message || 'Failed to update node Addon configuration');
+        const value = response.result.value as Record<string, unknown> | undefined;
+        if (value?.node !== undefined) resultNode = value.node;
+        configUpdate = {
+            ...(value?.updatedSessionIds === undefined ? {} : { updatedSessionIds: value.updatedSessionIds }),
+            ...(value?.failedSessionIds === undefined ? {} : { failedSessionIds: value.failedSessionIds }),
+        };
+    }
+    return { ok: true, agentId, node: resultNode, ...configUpdate };
 }
 
 export async function removeNode(ctx: ToolContext, args: ToolArgs) {
