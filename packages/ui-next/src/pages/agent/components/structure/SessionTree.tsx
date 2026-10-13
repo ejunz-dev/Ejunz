@@ -193,7 +193,8 @@ export function SessionTree({
     const renderedRootNodeIds = activeNodeId && rootNodeIds.includes(activeNodeId) ? [activeNodeId] : rootNodeIds;
     const requestNodeSwitch = useCallback((nodeId: string) => {
         if (nodeId !== visibleSelectedNodeId) setPendingNodeId(nodeId);
-    }, [visibleSelectedNodeId]);
+        else onSelectNode(nodeId);
+    }, [onSelectNode, visibleSelectedNodeId]);
     const confirmNodeSwitch = useCallback(() => {
         if (pendingNodeId) onSelectNode(pendingNodeId);
         setPendingNodeId(null);

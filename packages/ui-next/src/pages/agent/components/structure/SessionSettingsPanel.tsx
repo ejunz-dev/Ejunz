@@ -28,11 +28,14 @@ interface SessionSettingsPanelProps {
     onModel: (provider: string, model: string) => Promise<void>;
     onBase: (value: number | undefined) => Promise<void>;
     onHost: (runtimeId: string) => Promise<void>;
+    readOnly?: boolean;
+    readOnlyMessage?: string;
 }
 
 export function SessionSettingsPanel({
     section, models, bases, selectedBaseId,
     hosts = [], selectedHostId = '', onModel, onBase, onHost,
+    readOnly = false, readOnlyMessage,
 }: SessionSettingsPanelProps) {
     const [saving, setSaving] = useState<string | null>(null);
     const [modelSelection, setModelSelection] = useState(models?.current);
@@ -55,25 +58,26 @@ export function SessionSettingsPanel({
     const onlineHosts = hosts.filter((host) => host.online !== false);
     const label = section === 'model' ? '模型' : section === 'host' ? '主机' : '上下文';
     return <section className="eza-sessionSettingsPanel" aria-label={label}>
+        {readOnly && readOnlyMessage ? <p className="bd-muted">{readOnlyMessage}</p> : null}
         {error && <div className="bd-edit-dialog__error" role="alert">{error}</div>}
         {section === 'model' ? <div className="bd-edit-field">
             <h2>模型</h2>
             {models ? models.groups.map((group) => <div className="eza-sessionSettingsGroup" key={group.id}>
                 <span className="eza-sessionSettingsGroupName">{group.name}</span>
                 <div className="bd-edit-tags">
-                    {group.models.map((item) => <button type="button" className={`bd-edit-tag${modelSelection?.provider === group.id && modelSelection.model === item.id ? ' is-selected' : ''}`} disabled={saving !== null} key={`${group.id}:${item.id}`} onClick={() => void apply(`${group.id}:${item.id}`, () => { setModelSelection({ provider: group.id, model: item.id }); return onModel(group.id, item.id); })} title={item.description || item.name}>{item.name}</button>)}
+                    {group.models.map((item) => <button type="button" className={`bd-edit-tag${modelSelection?.provider === group.id && modelSelection.model === item.id ? ' is-selected' : ''}`} disabled={saving !== null || readOnly} key={`${group.id}:${item.id}`} onClick={() => void apply(`${group.id}:${item.id}`, () => { setModelSelection({ provider: group.id, model: item.id }); return onModel(group.id, item.id); })} title={item.description || item.name}>{item.name}</button>)}
                 </div>
             </div>) : <span className="bd-muted">模型加载中…</span>}
         </div> : section === 'host' ? <div className="bd-edit-field">
             <h2>主机</h2>
             <div className="bd-edit-tags">
-                {onlineHosts.map((host) => <button type="button" className={`bd-edit-tag${hostSelection === host.runtimeId ? ' is-selected' : ''}`} disabled={saving !== null} key={host.runtimeId} title={host.runtimeId} onClick={() => void apply(host.runtimeId, () => { setHostSelection(host.runtimeId); return onHost(host.runtimeId); })}>{host.label}</button>)}
+                {onlineHosts.map((host) => <button type="button" className={`bd-edit-tag${hostSelection === host.runtimeId ? ' is-selected' : ''}`} disabled={saving !== null || readOnly} key={host.runtimeId} title={host.runtimeId} onClick={() => void apply(host.runtimeId, () => { setHostSelection(host.runtimeId); return onHost(host.runtimeId); })}>{host.label}</button>)}
                 {onlineHosts.length === 0 && <span className="bd-muted">没有在线的 host</span>}
             </div>
         </div> : <AgentSessionContextSlot
             bases={bases}
             selectedBaseId={selectedBaseId}
-            disabled={saving !== null}
+            disabled={saving !== null || readOnly}
             onSelectBase={(value) => { void apply(`context:${value ?? 'none'}`, () => onBase(value)); }}
         />}
     </section>;

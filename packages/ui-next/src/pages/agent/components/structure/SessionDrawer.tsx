@@ -17,6 +17,8 @@ interface SessionDrawerProps {
     loadingLabel?: string;
     drawerWidth: number;
     view: SessionDrawerView;
+    title?: string;
+    hideTabs?: boolean;
     onViewChange: (view: SessionDrawerView) => void;
     onResize: (delta: number) => void;
     onClose: () => void;
@@ -57,7 +59,7 @@ function ResizeHandle({ onResize }: { onResize: (delta: number) => void }) {
     return <div className="eza-sessionDrawerResize" data-dragging={dragging || undefined} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} />;
 }
 
-export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWidth, view, onViewChange, onResize, onClose, children, overlay }: SessionDrawerProps) {
+export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWidth, view, title = '会话历史', hideTabs = false, onViewChange, onResize, onClose, children, overlay }: SessionDrawerProps) {
     const contextTabRegistered = useSyncExternalStore(
         (listener) => store.subscribe('component:agent-context-tab', listener),
         () => store.getInterceptors('component:agent-context-tab').length > 0,
@@ -111,23 +113,23 @@ export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWi
         swipeRef.current = null;
     };
     return <>
-        <button type="button" className="bd-backdrop bd-card-backdrop eza-sessionDrawerBackdrop" data-closing={closing || undefined} onClick={requestClose} aria-label="关闭会话历史" />
-        <aside className="bd-drawer bd-card-drawer eza-sessionDrawer" data-closing={closing || undefined} style={{ '--eza-session-drawer-width': `${drawerWidth}px` } as CSSProperties} role="dialog" aria-modal="true" aria-label="会话历史" onWheel={(event) => event.stopPropagation()} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerCancel}>
+        <button type="button" className="bd-backdrop bd-card-backdrop eza-sessionDrawerBackdrop" data-closing={closing || undefined} onClick={requestClose} aria-label={`关闭${title}`} />
+        <aside className="bd-drawer bd-card-drawer eza-sessionDrawer" data-closing={closing || undefined} style={{ '--eza-session-drawer-width': `${drawerWidth}px` } as CSSProperties} role="dialog" aria-modal="true" aria-label={title} onWheel={(event) => event.stopPropagation()} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerCancel}>
             <ResizeHandle onResize={onResize} />
             <header className="bd-drawer__header">
-                <div className="bd-drawer__tabs" role="tablist">
+                {hideTabs ? <div className="bd-drawer__tabs"><strong>{title}</strong></div> : <div className="bd-drawer__tabs" role="tablist">
                     <button type="button" role="tab" className={view === 'chat' ? 'is-active' : ''} aria-selected={view === 'chat'} onClick={() => onViewChange('chat')}>对话</button>
                     <button type="button" role="tab" className={view === 'trajectory' ? 'is-active' : ''} aria-selected={view === 'trajectory'} onClick={() => onViewChange('trajectory')}>轨迹</button>
                     <button type="button" role="tab" className={view === 'model' ? 'is-active' : ''} aria-selected={view === 'model'} onClick={() => onViewChange('model')}>模型</button>
                     <ContextTabSlot view={view} onViewChange={onViewChange} />
                     <button type="button" role="tab" className={view === 'host' ? 'is-active' : ''} aria-selected={view === 'host'} onClick={() => onViewChange('host')}>主机</button>
-                </div>
+                </div>}
                 <div className="bd-drawer__header-actions">
                     <button type="button" className="bd-drawer__close" onClick={requestClose} aria-label="关闭">×</button>
                 </div>
             </header>
             <div className="bd-drawer__body eza-sessionDrawerBody">
-                {loading ? <div className="eza-sessionDrawerLoading" role="status" aria-label="加载会话历史"><span />{loadingLabel}</div> : children}
+                {loading ? <div className="eza-sessionDrawerLoading" role="status" aria-label={`加载${title}`}><span />{loadingLabel}</div> : children}
             </div>
             {overlay}
         </aside>

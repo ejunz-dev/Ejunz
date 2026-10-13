@@ -98,6 +98,17 @@ function sessionTitle(session: SessionSummary): string {
     return `会话 ${session.sessionId.slice(8, 16)}`;
 }
 
+function topLevelNodeFor(nodes: readonly AgentNode[], nodeId?: string): AgentNode | undefined {
+    const byId = new Map(nodes.map((node) => [node.nodeId, node]));
+    let node = nodeId ? byId.get(nodeId) : undefined;
+    const seen = new Set<string>();
+    while (node?.parentId && !seen.has(node.nodeId)) {
+        seen.add(node.nodeId);
+        node = byId.get(node.parentId);
+    }
+    return node;
+}
+
 function newSessionId(): string {
     const id = typeof window !== 'undefined' && typeof window.crypto?.randomUUID === 'function'
         ? window.crypto.randomUUID()
@@ -444,6 +455,8 @@ export default function AgentPage() {
     const [models, setModels] = useState<SessionModels | null>(null);
     const [modelMenuOpen, setModelMenuOpen] = useState(false);
     const [detailsOpen, setDetailsOpen] = useState(false);
+    const [nodeSettingsId, setNodeSettingsId] = useState<string | null>(null);
+    const [nodeConfigSaving, setNodeConfigSaving] = useState(false);
     const [selectedTool, setSelectedTool] = useState<ChatMessage | null>(null);
     const [newSessionConfigOpen, setNewSessionConfigOpen] = useState(false);
     const [newSessionConfigLoading, setNewSessionConfigLoading] = useState(false);
@@ -549,6 +562,19 @@ export default function AgentPage() {
             setLoadError(error instanceof Error ? error.message : String(error));
         }
     }, [rpc]);
+
+    const saveNodeConfig = useCallback(async (nodeId: string, patch: Record<string, unknown>) => {
+        setNodeConfigSaving(true);
+        try {
+            const result = await rpc('node.config.save', { nodeId, patch }) as { failedSessionIds?: string[] };
+            await Promise.all([loadNodes(), loadSessions()]);
+            if (result.failedSessionIds?.length) {
+                throw new Error(`${result.failedSessionIds.length} 个已有会话未能立即同步，请检查主机状态后重试。`);
+            }
+        } finally {
+            setNodeConfigSaving(false);
+        }
+    }, [loadNodes, loadSessions, rpc]);
 
     const loadHosts = useCallback(async () => {
         try {
@@ -1141,6 +1167,30 @@ export default function AgentPage() {
         const now = Date.now();
         return { sessionId: current, createdAt: now, updatedAt: now, running: false, blank: true };
     }, [sessions, current]);
+    const nodeSettingsNode = nodeSettingsId ? nodes.find((node) => node.nodeId === nodeSettingsId) : undefined;
+    const nodeSettingsRoot = nodeSettingsNode ? topLevelNodeFor(nodes, nodeSettingsNode.nodeId) : undefined;
+    const draftNodeRoot = draftNodeId ? topLevelNodeFor(nodes, draftNodeId) : undefined;
+    const nodeSettingsConfig = nodeSettingsRoot?.config ?? {};
+    const canEditNodeConfig = nodeSettingsNode !== undefined && nodeSettingsRoot?.nodeId === nodeSettingsNode.nodeId;
+    const nodeSettingsModels = useMemo(() => {
+        const groups = modelCatalog?.groups ?? models?.groups ?? [];
+        if (groups.length === 0) return null;
+        return {
+            current: nodeSettingsConfig.model ?? { provider: '', model: '' },
+            routable: true,
+            groups,
+        };
+    }, [modelCatalog, models?.groups, nodeSettingsConfig.model]);
+    const currentSessionConfigRoot = currentSession?.nodeId ? topLevelNodeFor(nodes, currentSession.nodeId) : undefined;
+    const inheritedSessionConfig = currentSessionConfigRoot?.config;
+    const inheritedSessionMessage = currentSessionConfigRoot
+        ? `此项继承自顶层节点“${currentSessionConfigRoot.text}”，请在该节点配置中修改。`
+        : undefined;
+    const inheritedSessionFields = {
+        model: inheritedSessionConfig?.model !== undefined,
+        context: currentSession?.type !== 'base_detail' && inheritedSessionConfig !== undefined && Object.prototype.hasOwnProperty.call(inheritedSessionConfig, 'baseDocId'),
+        host: inheritedSessionConfig?.runtimeId !== undefined,
+    };
     const loadedHistoryMessages = useMemo(() => history.filter((entry) => entry.event.type === 'user/message' || entry.event.type === 'assistant/message').length, [history]);
     const historyLoadingRangeEnd = historyTotalMessages === null ? null : Math.max(0, historyTotalMessages - historyProgress);
     const historyLoadingLabel = historyLoadingRangeEnd === null
@@ -1151,6 +1201,13 @@ export default function AgentPage() {
         : draftBaseId;
     const running = currentSession?.running === true;
     const fallbackHostId = hosts.find((host) => host.fallback === true)?.runtimeId ?? '';
+    const nodeSettingsBaseId = nodeSettingsConfig.baseDocId === undefined || nodeSettingsConfig.baseDocId === null
+        ? undefined
+        : Number(nodeSettingsConfig.baseDocId);
+    const nodeSettingsHostId = nodeSettingsConfig.runtimeId ?? '';
+    const nodeSettingsMessage = canEditNodeConfig
+        ? '此顶层节点的配置会同步到子节点和 card，已有会话也会立即应用。'
+        : `此节点继承自顶层节点“${nodeSettingsRoot?.text ?? ''}”；要修改配置，请打开顶层节点。`;
     const currentSessionError = current ? sessionErrors[current] : undefined;
     const pendingSendVisible = current !== null && messages.some((message) => message.role === 'user' && message.pendingSessionId === current && message.sendStatus !== undefined);
     const runningTurnStart = useMemo(() => runningTurnStartTime(history), [history]);
@@ -1312,6 +1369,16 @@ export default function AgentPage() {
         await startSession(input, agentPresetChoice, draftBaseId, title, selectedDraftModel);
     }, [agentPresetChoice, draftBaseId, input, selectedDraftModel, startSession]);
 
+    const selectDraftNode = useCallback((nodeId: string | undefined) => {
+        setDraftNodeId(nodeId);
+        const config = nodeId ? topLevelNodeFor(nodes, nodeId)?.config : undefined;
+        setDraftModelSelection(config?.model);
+        setDraftBaseId(config && Object.prototype.hasOwnProperty.call(config, 'baseDocId')
+            ? config.baseDocId === null ? undefined : Number(config.baseDocId)
+            : undefined);
+        setDraftHostId(config?.runtimeId ?? fallbackHostId);
+    }, [fallbackHostId, nodes]);
+
     const createSessionOnly = useCallback(async (title: string) => {
         const sessionId = newSessionId();
         const nodeId = draftNodeId;
@@ -1359,6 +1426,7 @@ export default function AgentPage() {
         setDetailsOpen(false);
         setSelectedTool(null);
         const selectedNodeId = nodes.some((node) => node.nodeId === activeTreeNodeId) ? activeTreeNodeId : rootNodeId;
+        const inheritedConfig = selectedNodeId ? topLevelNodeFor(nodes, selectedNodeId)?.config : undefined;
         setActiveTreeNodeId(selectedNodeId);
         updateAgentSelectionUrl({ nodeId: selectedNodeId, cardId: null });
         setNewSessionConfigOpen(true);
@@ -1366,16 +1434,18 @@ export default function AgentPage() {
         setModelCatalog(null);
         setInput('');
         clearAttachments();
-        setDraftBaseId(baseId);
+        setDraftBaseId(inheritedConfig && Object.prototype.hasOwnProperty.call(inheritedConfig, 'baseDocId')
+            ? inheritedConfig.baseDocId === null ? undefined : Number(inheritedConfig.baseDocId)
+            : baseId);
         setDraftNodeId(selectedNodeId ?? undefined);
-        // The host the dialog opens on: the last one chosen, else the server's
-        // own fallback, so the choice is stated rather than left to chance.
-        setDraftHostId((previous) => (previous !== '' && hosts.some((host) => host.runtimeId === previous && host.online !== false)
+        // The host the dialog opens on: the node's inherited choice, the last
+        // online choice, or the server fallback, in that order.
+        setDraftHostId(inheritedConfig?.runtimeId ?? ((previous) => (previous !== '' && hosts.some((host) => host.runtimeId === previous && host.online !== false)
             ? previous
             : fallbackHostId !== ''
                 ? fallbackHostId
-                : hosts.find((host) => host.online !== false)?.runtimeId ?? ''));
-        setDraftModelSelection(undefined);
+                : hosts.find((host) => host.online !== false)?.runtimeId ?? '')));
+        setDraftModelSelection(inheritedConfig?.model);
         await loadModelCatalog();
         if (newSessionLoadRef.current === loadId) setNewSessionConfigLoading(false);
     }, [activeTreeNodeId, fallbackHostId, hosts, loadModelCatalog, nodes, rootNodeId]);
@@ -1909,9 +1979,11 @@ export default function AgentPage() {
         setCurrent(null);
         setDetailsOpen(false);
         setSelectedTool(null);
+        setNodeSettingsId(nodes.some((node) => node.nodeId === nodeId) ? nodeId : null);
         updateAgentSelectionUrl({ nodeId, cardId: null });
-    }, []);
+    }, [nodes]);
     const selectSession = useCallback((sessionId: string) => {
+        setNodeSettingsId(null);
         const session = sessions.find((item) => item.sessionId === sessionId);
         const selectedNodeId = session?.nodeId && nodes.some((node) => node.nodeId === session.nodeId)
             ? session.nodeId
@@ -1943,7 +2015,9 @@ export default function AgentPage() {
                 onPickBase={setDraftBaseId}
                 nodes={nodes}
                 selectedNodeId={draftNodeId}
-                onPickNode={setDraftNodeId}
+                inheritedConfig={draftNodeRoot?.config}
+                inheritedConfigSource={draftNodeRoot?.text}
+                onPickNode={selectDraftNode}
                 models={newSessionConfigLoading ? null : composerModels}
                 selectModel={(provider, model) => { setDraftModelSelection({ provider, model }); }}
                 agentPresetOptions={agentPresetOptions}
@@ -2099,6 +2173,57 @@ export default function AgentPage() {
                         />
                     </main>
                 </div>
+                {nodeSettingsNode && nodeSettingsRoot && <SessionDrawer
+                    loading={nodeConfigSaving}
+                    loadingLabel="正在同步节点配置…"
+                    drawerWidth={sessionDrawerWidth}
+                    view="model"
+                    title={`${nodeSettingsNode.text} · 配置`}
+                    hideTabs
+                    onViewChange={() => {}}
+                    onResize={(delta) => setSessionDrawerWidth((width) => Math.max(SESSION_DRAWER_MIN, width + delta))}
+                    onClose={() => setNodeSettingsId(null)}
+                >
+                    <div className="eza-sessionSettingsColumn">
+                        <p className="bd-muted">{nodeSettingsMessage}</p>
+                        <SessionSettingsPanel
+                            section="model"
+                            models={nodeSettingsModels}
+                            bases={bases}
+                            selectedBaseId={bases.some((base) => base.docId === nodeSettingsBaseId) ? nodeSettingsBaseId : undefined}
+                            hosts={hosts}
+                            selectedHostId={nodeSettingsHostId}
+                            onModel={(provider, model) => saveNodeConfig(nodeSettingsRoot.nodeId, { model: { provider, model } })}
+                            onBase={(value) => saveNodeConfig(nodeSettingsRoot.nodeId, { baseDocId: value === undefined ? null : String(value) })}
+                            onHost={(runtimeId) => saveNodeConfig(nodeSettingsRoot.nodeId, { runtimeId })}
+                            readOnly={!canEditNodeConfig}
+                        />
+                        <SessionSettingsPanel
+                            section="context"
+                            models={nodeSettingsModels}
+                            bases={bases}
+                            selectedBaseId={bases.some((base) => base.docId === nodeSettingsBaseId) ? nodeSettingsBaseId : undefined}
+                            hosts={hosts}
+                            selectedHostId={nodeSettingsHostId}
+                            onModel={(provider, model) => saveNodeConfig(nodeSettingsRoot.nodeId, { model: { provider, model } })}
+                            onBase={(value) => saveNodeConfig(nodeSettingsRoot.nodeId, { baseDocId: value === undefined ? null : String(value) })}
+                            onHost={(runtimeId) => saveNodeConfig(nodeSettingsRoot.nodeId, { runtimeId })}
+                            readOnly={!canEditNodeConfig}
+                        />
+                        <SessionSettingsPanel
+                            section="host"
+                            models={nodeSettingsModels}
+                            bases={bases}
+                            selectedBaseId={bases.some((base) => base.docId === nodeSettingsBaseId) ? nodeSettingsBaseId : undefined}
+                            hosts={hosts}
+                            selectedHostId={nodeSettingsHostId}
+                            onModel={(provider, model) => saveNodeConfig(nodeSettingsRoot.nodeId, { model: { provider, model } })}
+                            onBase={(value) => saveNodeConfig(nodeSettingsRoot.nodeId, { baseDocId: value === undefined ? null : String(value) })}
+                            onHost={(runtimeId) => saveNodeConfig(nodeSettingsRoot.nodeId, { runtimeId })}
+                            readOnly={!canEditNodeConfig}
+                        />
+                    </div>
+                </SessionDrawer>}
                 {detailsOpen && (currentSession || creatingSession) && <SessionDrawer
                             loading={creatingSession || (historyLoading && !pendingSendVisible)}
                             loadingLabel={creatingSession ? '正在创建会话…' : historyLoadingLabel}
@@ -2122,6 +2247,8 @@ export default function AgentPage() {
                                     selectedHostId={currentSession.runtimeId ?? fallbackHostId}
                                     onBase={saveBaseSetting}
                                     onHost={switchHost}
+                                    readOnly={view === 'model' ? inheritedSessionFields.model : view === 'context' ? inheritedSessionFields.context : inheritedSessionFields.host}
+                                    readOnlyMessage={inheritedSessionMessage}
                                 />
                                 : <ConversationRoot
                                     blank={false}

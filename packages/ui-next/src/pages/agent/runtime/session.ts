@@ -1,5 +1,11 @@
 import type { SessionEvent } from './conversation';
 
+export interface AgentNodeConfig {
+    model?: { provider: string; model: string };
+    baseDocId?: string | null;
+    runtimeId?: string;
+}
+
 export interface AgentNode {
     nodeId: string;
     agentId?: number;
@@ -7,6 +13,7 @@ export interface AgentNode {
     isRoot?: boolean;
     text: string;
     order: number;
+    config?: AgentNodeConfig;
     createdAt: string;
     updatedAt: string;
 }

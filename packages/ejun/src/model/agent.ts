@@ -589,6 +589,12 @@ export interface AgentWorkspaceDoc {
     updatedAt: Date;
 }
 
+export interface AgentNodeConfig {
+    model?: { provider: string; model: string };
+    baseDocId?: string | null;
+    runtimeId?: string;
+}
+
 export interface AgentNodeDoc {
     _id: ObjectId;
     domainId: string;
@@ -599,6 +605,7 @@ export interface AgentNodeDoc {
     isRoot?: boolean;
     text: string;
     order: number;
+    config?: AgentNodeConfig;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -1083,6 +1090,15 @@ export class AgentSessionModel {
 
     static async getNode(domainId: string, userId: number, nodeId: string, agentId?: number | null): Promise<AgentNodeDoc | null> {
         return await nodes.findOne(agentNodeFilter(domainId, userId, agentId, nodeId)) as AgentNodeDoc | null;
+    }
+
+    static async updateNodeConfig(domainId: string, userId: number, nodeId: string, config: AgentNodeConfig, agentId?: number | null): Promise<AgentNodeDoc | null> {
+        const filter = agentNodeFilter(domainId, userId, agentId, nodeId);
+        const node = await nodes.findOne(filter) as AgentNodeDoc | null;
+        if (!node) return null;
+        if (node.parentId) throw new Error('Only top-level nodes can own Agent configuration');
+        await nodes.updateOne(filter, { $set: { config, updatedAt: new Date() } });
+        return await nodes.findOne(filter) as AgentNodeDoc | null;
     }
 
     static async updateNode(domainId: string, userId: number, nodeId: string, text: string, agentId?: number | null, parentId?: string): Promise<AgentNodeDoc | null> {
