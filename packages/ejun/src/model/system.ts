@@ -5,7 +5,6 @@ import { SYSTEM_SETTINGS } from './setting';
 
 class SystemModelService extends Service {
     static readonly inject = ['db'];
-    static readonly name = 'model:system';
 
     coll = this.ctx.db.collection('system');
     cache: Record<string, any> = Object.create(null);
@@ -69,6 +68,7 @@ class SystemModelService extends Service {
     }
 }
 
+Object.defineProperty(SystemModelService, 'name', { value: 'model:system' });
 const SystemModel = serviceInstance(SystemModelService);
 export default SystemModel;
 global.Ejunz.model.system = SystemModel;
