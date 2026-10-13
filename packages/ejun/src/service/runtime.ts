@@ -452,11 +452,8 @@ async function sessionCardCreate(envelope: RpcEnvelope, scope: AgentScope): Prom
     const requestedNodeId = typeof payload.nodeId === 'string' && payload.nodeId.trim() ? payload.nodeId.trim() : undefined;
     const nodeId = requestedNodeId ?? (hasNodeId ? undefined : agentRootNode?.nodeId);
     if (nodeId && !await agentDataAdapter.getNode(scope, nodeId)) return rpcError(envelope.rpcId, 'node not found in this Agent');
-    const inheritedConfig = await inheritedNodeConfigForNode(scope, nodeId);
 
-    const selectedBaseDocId = inheritedConfig && Object.prototype.hasOwnProperty.call(inheritedConfig, 'baseDocId')
-        ? inheritedConfig.baseDocId ?? null
-        : baseDocIdOf(payload.baseDocId);
+    const selectedBaseDocId = baseDocIdOf(payload.baseDocId);
     if (selectedBaseDocId && !await isAgentAddonEnabled(scope.domainId, 'base', scope.agentId)) {
         return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
     }
@@ -465,11 +462,11 @@ async function sessionCardCreate(envelope: RpcEnvelope, scope: AgentScope): Prom
         const base = baseModel ? await baseModel.get(scope.domainId, Number(selectedBaseDocId)) : null;
         if (!base) return rpcError(envelope.rpcId, 'Base not found in current domain');
     }
-    const provider = inheritedConfig?.model?.provider ?? (typeof payload.provider === 'string' ? payload.provider.trim() : '');
-    const model = inheritedConfig?.model?.model ?? (typeof payload.model === 'string' ? payload.model.trim() : '');
+    const provider = typeof payload.provider === 'string' ? payload.provider.trim() : '';
+    const model = typeof payload.model === 'string' ? payload.model.trim() : '';
     if ((provider === '') !== (model === '')) return rpcError(envelope.rpcId, 'provider and model must be selected together');
     const agentPreset = typeof payload.agentPreset === 'string' && payload.agentPreset.trim() ? payload.agentPreset.trim() : undefined;
-    const runtimeId = inheritedConfig?.runtimeId ?? (typeof payload.runtimeId === 'string' && payload.runtimeId.trim() ? payload.runtimeId.trim() : undefined);
+    const runtimeId = typeof payload.runtimeId === 'string' && payload.runtimeId.trim() ? payload.runtimeId.trim() : undefined;
     const createdAt = Date.now();
     const summary: AgentSessionSummary = {
         sessionId,
@@ -513,13 +510,6 @@ async function sessionCardUpdate(envelope: RpcEnvelope, scope: AgentScope): Prom
         : {};
     const existing = sessionId ? await agentDataAdapter.getSession(scope, sessionId) : null;
     if (!existing || existing.started !== false) return rpcError(envelope.rpcId, 'unstarted session card not found');
-    const inherited = await inheritedNodeConfigForSession(scope, sessionId);
-    if ((Object.prototype.hasOwnProperty.call(rawPatch, 'model') && inherited?.model)
-        || (existing.type !== 'base_detail' && Object.prototype.hasOwnProperty.call(rawPatch, 'baseDocId') && inherited && Object.prototype.hasOwnProperty.call(inherited, 'baseDocId'))
-        || (Object.prototype.hasOwnProperty.call(rawPatch, 'runtimeId') && inherited?.runtimeId)) {
-        return rpcError(envelope.rpcId, 'This setting is inherited from the top-level node; change it there.');
-    }
-
     const patch: Partial<AgentSessionSummary> = { updatedAt: Date.now() };
     if (Object.prototype.hasOwnProperty.call(rawPatch, 'title')) {
         const title = typeof rawPatch.title === 'string' ? rawPatch.title.trim() : '';
@@ -592,16 +582,7 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
     const nodeId = requestedNodeId ?? (hasRequestedNodeId ? undefined : selectedAgentRoot?.nodeId);
     const node = nodeId ? await agentDataAdapter.getNode(scope, nodeId) : null;
     if (nodeId && !node) return rpcError(envelope.rpcId, 'node not found in this Agent');
-    const inheritedConfig = await inheritedNodeConfigForNode(scope, nodeId);
-    if (inheritedConfig?.model) {
-        payload.provider = inheritedConfig.model.provider;
-        payload.model = inheritedConfig.model.model;
-    }
-    const selectedBaseDocId = metadata.type === 'base_detail'
-        ? metadata.baseDocId ?? baseDocIdOf(payload.baseDocId)
-        : inheritedConfig && Object.prototype.hasOwnProperty.call(inheritedConfig, 'baseDocId')
-            ? inheritedConfig.baseDocId ?? null
-            : baseDocIdOf(payload.baseDocId);
+    const selectedBaseDocId = metadata.baseDocId ?? baseDocIdOf(payload.baseDocId);
     if (selectedBaseDocId && metadata.type !== 'base_detail' && !await isAgentAddonEnabled(scope.domainId, 'base', scope.agentId)) {
         return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
     }
@@ -614,7 +595,7 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
     }
     // The host is chosen with the session and recorded here, so every later call
     // for this session reaches the host that owns it.
-    const requestedHost = inheritedConfig?.runtimeId ?? (typeof payload.runtimeId === 'string' ? payload.runtimeId.trim() : '');
+    const requestedHost = typeof payload.runtimeId === 'string' ? payload.runtimeId.trim() : '';
     const link = linkForCreate(requestedHost);
     const sessionId = requestedSessionId ?? `session-${domainKey(scope.domainId)}-${randomUUID()}`;
     delete payload.domainId;
@@ -703,18 +684,11 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
     return rpcOk(envelope.rpcId, { sessionId: summary.sessionId, ...(summary.agentPreset ? { agentPreset: summary.agentPreset } : {}), ...(nodeId ? { nodeId } : {}) });
 }
 
-async function sessionContextSave(envelope: RpcEnvelope, scope: AgentScope, options?: { nodeConfigUpdate?: boolean }): Promise<RpcBody> {
+async function sessionContextSave(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const payload = envelope.payload ?? {};
     const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId : '';
     const session = sessionId ? await agentDataAdapter.getSession(scope, sessionId) : null;
     if (!session) return rpcError(envelope.rpcId, 'session not found');
-    if (!options?.nodeConfigUpdate) {
-        const inherited = await inheritedNodeConfigForSession(scope, sessionId);
-        if (session.type !== 'base_detail' && inherited && Object.prototype.hasOwnProperty.call(inherited, 'baseDocId')) {
-            return rpcError(envelope.rpcId, 'Context is inherited from the top-level node; change it there.');
-        }
-    }
-
     const hasBase = Object.prototype.hasOwnProperty.call(payload, 'baseDocId');
     const existingBaseDocId = baseDocIdOf(session.baseDocId) ?? undefined;
     const selectedBaseDocId = hasBase ? baseDocIdOf(payload.baseDocId) ?? undefined : existingBaseDocId;
@@ -1172,32 +1146,22 @@ function nodeView(node: AgentNodeDoc) {
     };
 }
 
-function topLevelNodeFor(nodes: readonly AgentNodeDoc[], nodeId: string): AgentNodeDoc | undefined {
-    const byId = new Map(nodes.map((node) => [node.nodeId, node]));
-    let node = byId.get(nodeId);
-    const seen = new Set<string>();
-    while (node?.parentId && !seen.has(node.nodeId)) {
-        seen.add(node.nodeId);
-        node = byId.get(node.parentId);
-    }
-    return node;
-}
-
-async function inheritedNodeConfigForNode(scope: AgentScope, nodeId?: string): Promise<AgentNodeConfig | undefined> {
+function nodeConfigOwnerFor(nodes: readonly AgentNodeDoc[], nodeId?: string): AgentNodeDoc | undefined {
     if (!nodeId) return undefined;
-    const root = topLevelNodeFor(await agentDataAdapter.listNodes(scope), nodeId);
-    return root?.config;
+    const byId = new Map(nodes.map((node) => [node.nodeId, node]));
+    const node = byId.get(nodeId);
+    return node && !node.isRoot ? node : undefined;
 }
 
-async function inheritedNodeConfigForSession(scope: AgentScope, sessionId: string): Promise<AgentNodeConfig | undefined> {
-    const session = await agentDataAdapter.getSession(scope, sessionId);
-    return session ? inheritedNodeConfigForNode(scope, session.nodeId) : undefined;
+async function nodeConfigForNode(scope: AgentScope, nodeId?: string): Promise<AgentNodeConfig | undefined> {
+    if (!nodeId) return undefined;
+    const owner = nodeConfigOwnerFor(await agentDataAdapter.listNodes(scope), nodeId);
+    return owner?.config;
 }
 
 async function propagateNodeConfig(
     scope: AgentScope,
     rootNodeId: string,
-    patch: Partial<AgentNodeConfig>,
 ): Promise<{ updatedSessionIds: string[]; failedSessionIds: string[] }> {
     const nodes = await agentDataAdapter.listNodes(scope);
     const descendantIds = new Set([rootNodeId]);
@@ -1211,60 +1175,10 @@ async function propagateNodeConfig(
             }
         }
     }
-    const sessions = (await agentDataAdapter.listSessions(scope))
-        .filter((session) => session.nodeId !== undefined && descendantIds.has(session.nodeId));
-    const updatedSessionIds: string[] = [];
-    const failedSessionIds: string[] = [];
-
-    for (const session of sessions) {
-        try {
-            if (patch.model && (session.model?.provider !== patch.model.provider || session.model?.model !== patch.model.model)) {
-                if (session.started !== false) {
-                    const link = await linkForSession(scope, session.sessionId);
-                    const selected = await callUpstream('session.selectModel', {
-                        sessionId: session.sessionId,
-                        provider: patch.model.provider,
-                        model: patch.model.model,
-                        persistDefault: false,
-                    }, link);
-                    if (!selected.body.result?.ok) throw new Error(selected.body.error?.message || '会话模型更新失败');
-                }
-                await agentDataAdapter.updateSession(scope, session.sessionId, { model: patch.model });
-            }
-            if (Object.prototype.hasOwnProperty.call(patch, 'runtimeId') && session.runtimeId !== patch.runtimeId) {
-                if (session.started === false) {
-                    await agentDataAdapter.updateSession(scope, session.sessionId, { runtimeId: patch.runtimeId });
-                } else {
-                    const moved = await sessionSetHost({
-                        rpcId: `node-config-${randomUUID()}`,
-                        method: 'session.setHost',
-                        payload: { sessionId: session.sessionId, runtimeId: patch.runtimeId },
-                    }, scope, { nodeConfigUpdate: true });
-                    if (!moved.result?.ok) throw new Error(moved.error?.message || '会话主机更新失败');
-                }
-            }
-            if (session.type !== 'base_detail' && Object.prototype.hasOwnProperty.call(patch, 'baseDocId')) {
-                const nextBaseId = patch.baseDocId === null ? undefined : patch.baseDocId;
-                if ((session.baseDocId ?? undefined) !== nextBaseId) {
-                    if (session.started === false) {
-                        await agentDataAdapter.updateSessionContext(scope, session.sessionId, nextBaseId);
-                    } else {
-                        const saved = await sessionContextSave({
-                            rpcId: `node-config-${randomUUID()}`,
-                            method: 'session.context.save',
-                            payload: { sessionId: session.sessionId, baseDocId: nextBaseId ?? null },
-                        }, scope, { nodeConfigUpdate: true });
-                        if (!saved.result?.ok) throw new Error(saved.error?.message || '会话上下文更新失败');
-                    }
-                }
-            }
-            updatedSessionIds.push(session.sessionId);
-        } catch (error) {
-            failedSessionIds.push(session.sessionId);
-            logger.warn('[agent-node] inherited config update failed session=%s error=%s', session.sessionId, error instanceof Error ? error.message : String(error));
-        }
-    }
-    return { updatedSessionIds, failedSessionIds };
+    const updatedSessionIds = (await agentDataAdapter.listSessions(scope))
+        .filter((session) => session.nodeId !== undefined && descendantIds.has(session.nodeId))
+        .map((session) => session.sessionId);
+    return { updatedSessionIds, failedSessionIds: [] };
 }
 
 async function nodeConfigSave(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
@@ -1276,46 +1190,64 @@ async function nodeConfigSave(envelope: RpcEnvelope, scope: AgentScope): Promise
     if (!nodeId) return rpcError(envelope.rpcId, 'nodeId is required');
     const node = await agentDataAdapter.getNode(scope, nodeId);
     if (!node) return rpcError(envelope.rpcId, 'node not found');
-    if (node.parentId) return rpcError(envelope.rpcId, 'Only top-level nodes can own Agent configuration');
+    if (node.isRoot) return rpcError(envelope.rpcId, 'Agent root node cannot own Agent configuration');
 
     const config: AgentNodeConfig = { ...(node.config ?? {}) };
     const patch: Partial<AgentNodeConfig> = {};
-    if (Object.prototype.hasOwnProperty.call(rawPatch, 'model')) {
-        const model = rawPatch.model && typeof rawPatch.model === 'object' && !Array.isArray(rawPatch.model)
-            ? rawPatch.model as Record<string, unknown>
-            : {};
-        if (typeof model.provider !== 'string' || !model.provider.trim() || typeof model.model !== 'string' || !model.model.trim()) {
-            return rpcError(envelope.rpcId, 'provider and model are required');
+    if (Object.prototype.hasOwnProperty.call(rawPatch, 'addonIds')) {
+        if (!Array.isArray(rawPatch.addonIds) || rawPatch.addonIds.some((id) => typeof id !== 'string')) {
+            return rpcError(envelope.rpcId, 'addonIds must be an array of add-on ids');
         }
-        patch.model = { provider: model.provider.trim(), model: model.model.trim() };
-    }
-    if (Object.prototype.hasOwnProperty.call(rawPatch, 'baseDocId')) {
-        const rawBaseId = rawPatch.baseDocId;
-        const baseDocId = rawBaseId === null || rawBaseId === undefined || rawBaseId === '' ? null : baseDocIdOf(rawBaseId);
-        if (rawBaseId !== null && rawBaseId !== undefined && rawBaseId !== '' && baseDocId === null) {
-            return rpcError(envelope.rpcId, 'invalid baseDocId');
+        const ids = [...new Set(rawPatch.addonIds as string[])];
+        if (ids.length > 128) return rpcError(envelope.rpcId, 'At most 128 add-ons can be selected per node');
+        const settings = await agentDataAdapter.getDomainSettings(scope.domainId);
+        for (const id of ids) {
+            if (!listAgentAddons().some((addon) => addon.addonId === id)
+                || !agentAddonInstalled(settings, id)
+                || !agentAddonEnabled(settings, id, scope.agentId)) {
+                return rpcError(envelope.rpcId, `Add-on ${id} is not installed and enabled for this Agent`);
+            }
         }
-        if (baseDocId && !await isAgentAddonEnabled(scope.domainId, 'base', scope.agentId)) {
-            return rpcError(envelope.rpcId, 'Ejunz Base Agent addon is disabled for this Agent');
-        }
-        if (baseDocId) {
-            const baseModel = (global as any).Ejunz?.model?.base;
-            if (!baseModel || !await baseModel.get(scope.domainId, Number(baseDocId))) return rpcError(envelope.rpcId, 'Base not found in current domain');
-        }
-        patch.baseDocId = baseDocId;
-    }
-    if (Object.prototype.hasOwnProperty.call(rawPatch, 'runtimeId')) {
-        if (typeof rawPatch.runtimeId !== 'string' || !rawPatch.runtimeId.trim()) return rpcError(envelope.rpcId, 'runtimeId is required');
-        const runtimeId = rawPatch.runtimeId.trim();
-        if (!runtimeLinks.has(runtimeId)) return rpcError(envelope.rpcId, `host「${hostLabel(runtimeId)}」不在线`);
-        patch.runtimeId = runtimeId;
+        patch.addons = Object.fromEntries(ids.map((id) => [id, true]));
     }
     if (Object.keys(patch).length === 0) return rpcError(envelope.rpcId, 'node config patch is empty');
 
     const nextConfig = { ...config, ...patch };
     const updated = await agentDataAdapter.updateNodeConfig(scope, nodeId, nextConfig);
     if (!updated) return rpcError(envelope.rpcId, 'node not found');
-    const propagation = await propagateNodeConfig(scope, nodeId, patch);
+    const propagation = await propagateNodeConfig(scope, nodeId);
+    if (Object.prototype.hasOwnProperty.call(patch, 'addons')) {
+        const nodes = await agentDataAdapter.listNodes(scope);
+        const affected = new Set([nodeId]);
+        let expanded = true;
+        while (expanded) {
+            expanded = false;
+            for (const candidate of nodes) {
+                if (candidate.parentId && affected.has(candidate.parentId) && !affected.has(candidate.nodeId)) {
+                    affected.add(candidate.nodeId);
+                    expanded = true;
+                }
+            }
+        }
+        for (const session of (await agentDataAdapter.listSessions(scope)).filter((item) => item.nodeId && affected.has(item.nodeId))) {
+            const effectiveConfig = await nodeConfigForNode(scope, session.nodeId);
+            const selected = effectiveConfig?.addons;
+            for (const addon of listAgentAddons()) {
+                try {
+                    const link = await linkForSession(scope, session.sessionId);
+                    const result = await callUpstream('session.addons', {
+                        sessionId: session.sessionId,
+                        addonId: addon.addonId,
+                        enabled: await isAgentAddonEnabled(scope.domainId, addon.addonId, scope.agentId)
+                            && (selected === undefined || selected[addon.addonId] === true),
+                    }, link);
+                    if (!result.body.result?.ok) throw new Error(result.body.error?.message || 'add-on state event failed');
+                } catch (error) {
+                    logger.warn('[agent-node] add-on state update failed session=%s addon=%s error=%s', session.sessionId, addon.addonId, error instanceof Error ? error.message : String(error));
+                }
+            }
+        }
+    }
     return rpcOk(envelope.rpcId, { node: nodeView(updated), ...propagation });
 }
 
@@ -1852,7 +1784,13 @@ async function initialAddonSnapshotForPrompt(sessionId: string): Promise<{ addon
             return undefined;
         }
         const settings = await agentDataAdapter.getDomainSettings(session.domainId);
-        return addons.map((addon) => ({ addonId: addon.addonId, enabled: agentAddonEnabled(settings, addon.addonId, session.agentId) }));
+        const nodeConfig = await nodeConfigForNode({ domainId: session.domainId, userId: session.userId, agentId: session.agentId }, session.nodeId);
+        const localSelection = nodeConfig?.addons;
+        return addons.map((addon) => ({
+            addonId: addon.addonId,
+            enabled: agentAddonEnabled(settings, addon.addonId, session.agentId)
+                && (localSelection === undefined || localSelection[addon.addonId] === true),
+        }));
     })();
     pendingAddonSnapshots.set(sessionId, preparation);
     try {
@@ -1953,10 +1891,12 @@ async function recordAddonStateForSessions(change: AgentAddonStateChange): Promi
             const link = session.runtimeId ? runtimeLinks.get(session.runtimeId) : defaultLink();
             if (!link) return;
             try {
+                const nodeConfig = await nodeConfigForNode({ domainId: session.domainId, userId: session.userId, agentId: session.agentId }, session.nodeId);
+                const localSelection = nodeConfig?.addons;
                 const recorded = await callUpstream('session.addons', {
                     sessionId: session.sessionId,
                     addonId: change.addonId,
-                    enabled: change.enabled,
+                    enabled: change.enabled && (localSelection === undefined || localSelection[change.addonId] === true),
                 }, link);
                 if (!recorded.body.result?.ok) {
                     logger.warn('[addons] session state event failed session=%s addon=%s error=%s', session.sessionId, change.addonId, recorded.body.error?.message || 'unknown error');
@@ -2542,7 +2482,7 @@ async function startLiveHostMove(input: {
 async function sessionSetHost(
     envelope: RpcEnvelope,
     scope: AgentScope,
-    options?: { cancelPrevious?: boolean; nodeConfigUpdate?: boolean },
+    options?: { cancelPrevious?: boolean },
 ): Promise<RpcBody> {
     const sessionId = String(envelope.payload?.sessionId || '');
     const requested = String(envelope.payload?.runtimeId || '').trim();
@@ -2550,10 +2490,6 @@ async function sessionSetHost(
     if (!requested) return rpcError(envelope.rpcId, 'runtimeId is required');
     const session = await agentDataAdapter.getSession(scope, sessionId);
     if (!session) return rpcError(envelope.rpcId, 'session not found');
-    if (!options?.nodeConfigUpdate) {
-        const inherited = await inheritedNodeConfigForSession(scope, sessionId);
-        if (inherited?.runtimeId) return rpcError(envelope.rpcId, 'Host is inherited from the top-level node; change it there.');
-    }
     if (session.runtimeId === requested) return rpcOk(envelope.rpcId, { sessionId, runtimeId: requested, label: hostLabel(requested) });
     const link = runtimeLinks.get(requested);
     if (link === undefined) return rpcError(envelope.rpcId, `host「${hostLabel(requested)}」不在线`);
@@ -3506,7 +3442,7 @@ export const agentRuntimeHandlerContext = {
     modelReady: () => modelReady,
     requireBridgeToken, baseSessionScope, toolRegistry,
     scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, upstreamValue,
-    nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, inheritedNodeConfigForSession, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled,
+    nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled,
     agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,
     baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems,
     runtimeRelabel, runtimeRemove, sessionCardCreate, sessionCardUpdate, sessionCreate, sessionHistory, sessionMessageCount,

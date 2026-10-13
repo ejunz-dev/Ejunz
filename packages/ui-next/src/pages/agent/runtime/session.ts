@@ -1,9 +1,7 @@
 import type { SessionEvent } from './conversation';
 
 export interface AgentNodeConfig {
-    model?: { provider: string; model: string };
-    baseDocId?: string | null;
-    runtimeId?: string;
+    addons?: Record<string, boolean>;
 }
 
 export interface AgentNode {

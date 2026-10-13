@@ -36,6 +36,7 @@ export interface AgentAddonStateChange {
     domainId: string;
     userId: number;
     agentId?: number | null;
+    nodeId?: string;
     addonId: string;
     enabled: boolean;
 }

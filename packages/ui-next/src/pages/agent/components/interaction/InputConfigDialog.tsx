@@ -1,11 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { DraftAttachment } from '../../runtime/uploads';
-import type { AgentNode, AgentNodeConfig, BaseView } from '../../runtime/session';
+import type { AgentNode, BaseView } from '../../runtime/session';
 import { defineSlot } from '../../../../registry';
 import type { HostOption } from '../structure/HostPicker';
 import type { SessionModels } from '../types';
 import { InputBar } from '../conversation/skeleton/InputBar';
-import { AgentPresetSeat, type AgentPresetOption } from '../settings/AgentPresetSeat';
+import type { AgentPresetOption } from '../settings/AgentPresetSeat';
 
 interface NewSessionAddonOption {
     addonId: string;
@@ -23,8 +23,6 @@ interface InputConfigDialogProps {
     onPickBase: (baseId: number | undefined) => void;
     nodes: readonly AgentNode[];
     selectedNodeId?: string;
-    inheritedConfig?: AgentNodeConfig;
-    inheritedConfigSource?: string;
     onPickNode: (nodeId: string | undefined) => void;
     models: SessionModels | null;
     selectModel: (provider: string, model: string) => void;
@@ -66,7 +64,7 @@ function buttonClass(selected: boolean): string {
 
 export function InputConfigDialog({
     hosts, addons, selectedHostId, onPickHost,
-    bases, selectedBaseId, onPickBase, nodes, selectedNodeId, inheritedConfig, inheritedConfigSource, onPickNode, models, selectModel, agentPresetOptions, agentPresetChoice, onSelectAgentPreset, agentPresetError,
+    bases, selectedBaseId, onPickBase, nodes, selectedNodeId, onPickNode, models, selectModel, agentPresetOptions, agentPresetChoice, onSelectAgentPreset, agentPresetError,
     input, setInput, attachments, onAddFiles, onRemoveAttachment, modelMenuOpen, setModelMenuOpen,
     notice, onCancel, sending, loading, onConfirm, onCreateOnly, onClose,
 }: InputConfigDialogProps) {
@@ -77,10 +75,6 @@ export function InputConfigDialog({
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [onClose, sending]);
-    const inheritedModel = inheritedConfig?.model !== undefined;
-    const inheritedBase = inheritedConfig !== undefined && Object.prototype.hasOwnProperty.call(inheritedConfig, 'baseDocId');
-    const inheritedHost = inheritedConfig?.runtimeId !== undefined;
-
     return <div className="bd-edit-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !sending) onClose(); }}>
         <section className="bd-edit-dialog eza-inputConfigDialog" role="dialog" aria-modal="true" aria-labelledby="eza-input-config-title" onMouseDown={(event) => event.stopPropagation()}>
             <header className="bd-edit-dialog__header">
@@ -94,22 +88,20 @@ export function InputConfigDialog({
             <div className="bd-edit-dialog__body">
                 <div className="bd-edit-field">
                     <h3>主机</h3>
-                    {inheritedHost ? <p className="bd-muted">继承自顶层节点“{inheritedConfigSource}”</p> : null}
                     <div className="bd-edit-tags">
                         {hosts.filter((host) => host.online !== false).map((host) => (
-                            <button type="button" className={buttonClass(host.runtimeId === selectedHostId)} disabled={sending || inheritedHost} key={host.runtimeId} title={host.runtimeId} onClick={() => onPickHost(host.runtimeId)}>{host.label}</button>
+                            <button type="button" className={buttonClass(host.runtimeId === selectedHostId)} disabled={sending} key={host.runtimeId} title={host.runtimeId} onClick={() => onPickHost(host.runtimeId)}>{host.label}</button>
                         ))}
                         {!hosts.some((host) => host.online !== false) && <span className="bd-muted">没有在线的 host</span>}
                     </div>
                 </div>
                 <div className="bd-edit-field">
                     <h3>模型</h3>
-                    {inheritedModel ? <p className="bd-muted">继承自顶层节点“{inheritedConfigSource}”</p> : null}
                     {models ? models.groups.map((group) => (
                         <div className="eza-sessionSettingsGroup" key={group.id}>
                             <span className="eza-sessionSettingsGroupName">{group.name}</span>
                             <div className="bd-edit-tags">
-                                {group.models.map((item) => <button type="button" className={buttonClass(models.current.provider === group.id && models.current.model === item.id)} disabled={sending || inheritedModel} key={`${group.id}:${item.id}`} title={item.description || item.name} onClick={() => selectModel(group.id, item.id)}>{item.name}</button>)}
+                                {group.models.map((item) => <button type="button" className={buttonClass(models.current.provider === group.id && models.current.model === item.id)} disabled={sending} key={`${group.id}:${item.id}`} title={item.description || item.name} onClick={() => selectModel(group.id, item.id)}>{item.name}</button>)}
                             </div>
                         </div>
                     )) : <div className="eza-sessionSettingsLoading" role="status"><span className="eza-sessionSettingsLoadingSpinner" aria-hidden="true" />模型加载中…</div>}
@@ -121,11 +113,10 @@ export function InputConfigDialog({
                         {addons.length === 0 && <span className="bd-muted">当前没有可挂载的 Addon</span>}
                     </div>
                 </div>
-                {inheritedBase ? <p className="bd-muted">上下文继承自顶层节点“{inheritedConfigSource}”</p> : null}
                 <NewSessionContextSlot
                     bases={bases}
                     selectedBaseId={selectedBaseId}
-                    disabled={sending || inheritedBase}
+                    disabled={sending}
                     onSelectBase={onPickBase}
                 />
                 <div className="bd-edit-field">
