@@ -27,6 +27,7 @@ interface SessionDrawerProps {
     title?: string;
     hideTabs?: boolean;
     headerTabs?: readonly SessionDrawerHeaderTab[];
+    headerActions?: ReactNode;
     onViewChange: (view: SessionDrawerView) => void;
     onResize: (delta: number) => void;
     onClose: () => void;
@@ -67,7 +68,7 @@ function ResizeHandle({ onResize }: { onResize: (delta: number) => void }) {
     return <div className="eza-sessionDrawerResize" data-dragging={dragging || undefined} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} />;
 }
 
-export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWidth, view, title = '会话历史', hideTabs = false, headerTabs, onViewChange, onResize, onClose, children, overlay }: SessionDrawerProps) {
+export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWidth, view, title = '会话历史', hideTabs = false, headerTabs, headerActions, onViewChange, onResize, onClose, children, overlay }: SessionDrawerProps) {
     const contextTabRegistered = useSyncExternalStore(
         (listener) => store.subscribe('component:agent-context-tab', listener),
         () => store.getInterceptors('component:agent-context-tab').length > 0,
@@ -136,6 +137,7 @@ export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWi
                     <button type="button" role="tab" className={view === 'host' ? 'is-active' : ''} aria-selected={view === 'host'} onClick={() => onViewChange('host')}>主机</button>
                 </div>}
                 <div className="bd-drawer__header-actions">
+                    {headerActions}
                     <button type="button" className="bd-drawer__close" onClick={requestClose} aria-label="关闭">×</button>
                 </div>
             </header>

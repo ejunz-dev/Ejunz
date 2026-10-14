@@ -448,6 +448,7 @@ export default function AgentPage() {
     const [detailsOpen, setDetailsOpen] = useState(false);
     const [nodeSettingsId, setNodeSettingsId] = useState<string | null>(null);
     const [nodeSettingsTab, setNodeSettingsTab] = useState<'context' | 'addons'>('context');
+    const [nodeContextEditing, setNodeContextEditing] = useState(false);
     const [nodeConfigSaving, setNodeConfigSaving] = useState(false);
     const [selectedTool, setSelectedTool] = useState<ChatMessage | null>(null);
     const [newSessionConfigOpen, setNewSessionConfigOpen] = useState(false);
@@ -1946,6 +1947,7 @@ export default function AgentPage() {
         setSelectedTool(null);
         setNodeSettingsId(nodes.some((node) => node.nodeId === nodeId) ? nodeId : null);
         setNodeSettingsTab('context');
+        setNodeContextEditing(false);
         updateAgentSelectionUrl({ nodeId, cardId: null });
     }, [nodes]);
     const selectSession = useCallback((sessionId: string) => {
@@ -2142,17 +2144,20 @@ export default function AgentPage() {
                     view="model"
                     title={nodeSettingsNode.text}
                     headerTabs={[
-                        { id: 'context', label: '上下文', active: nodeSettingsTab === 'context', onSelect: () => setNodeSettingsTab('context') },
-                        { id: 'addons', label: '插件', active: nodeSettingsTab === 'addons', onSelect: () => setNodeSettingsTab('addons') },
+                        { id: 'context', label: '上下文', active: nodeSettingsTab === 'context', onSelect: () => { setNodeSettingsTab('context'); setNodeContextEditing(false); } },
+                        { id: 'addons', label: '插件', active: nodeSettingsTab === 'addons', onSelect: () => { setNodeSettingsTab('addons'); setNodeContextEditing(false); } },
                     ]}
+                    headerActions={nodeSettingsTab === 'context' ? <button type="button" className="bd-drawer__edit" onClick={() => setNodeContextEditing(true)} disabled={nodeConfigSaving}>编辑</button> : undefined}
                     onViewChange={() => {}}
                     onResize={(delta) => setSessionDrawerWidth((width) => Math.max(SESSION_DRAWER_MIN, width + delta))}
-                    onClose={() => setNodeSettingsId(null)}
+                    onClose={() => { setNodeSettingsId(null); setNodeContextEditing(false); }}
                 >
                     {nodeSettingsTab === 'context'
                         ? <NodeContextSettingsPanel
                             node={nodeSettingsNode}
+                            editing={nodeContextEditing}
                             saving={nodeConfigSaving}
+                            onCloseEdit={() => setNodeContextEditing(false)}
                             onSave={async (context) => {
                                 await saveNodeConfig(nodeSettingsNode.nodeId, { context });
                                 await Notification.success('节点上下文已保存，现有 card 将在后台注入');
