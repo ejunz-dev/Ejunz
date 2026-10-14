@@ -109,7 +109,7 @@ async function saveAgentNodeConfig(envelope: RpcEnvelope, scope: AgentScope, ctx
     return rpcOk(envelope.rpcId, { node: agentNodeView(updated), syncScheduled: true });
 }
 
-async function mountedAddonsForSession(session: { domainId: string; userId: number; sessionId: string; agentId?: number }): Promise<Set<string>> {
+async function mountedAddonsForSession(session: { domainId: string; userId: number; sessionId: string; agentId?: number; nodeId?: string }): Promise<Set<string>> {
     const addonIds = new Set(listAgentAddons().map((addon) => addon.addonId));
     const states = new Map<string, boolean>();
     const recordState = (addonId: unknown, enabled: unknown) => {
@@ -132,8 +132,15 @@ async function mountedAddonsForSession(session: { domainId: string; userId: numb
         recordState(addonId, data.enabled);
     }
     const domainEnabled = await enabledAgentAddonIds(session.domainId, session.agentId);
-    return new Set([...addonIds].filter((addonId) =>
-        (states.get(addonId) ?? domainEnabled.has(addonId)) && domainEnabled.has(addonId)));
+    const nodeConfig = session.nodeId
+        ? (await AgentSessionModel.getNode(session.domainId, session.userId, session.nodeId, session.agentId))?.config
+        : undefined;
+    return new Set([...addonIds].filter((addonId) => {
+        const locallyEnabled = nodeConfig?.addons === undefined
+            ? states.get(addonId) ?? domainEnabled.has(addonId)
+            : nodeConfig.addons[addonId] === true;
+        return locallyEnabled && domainEnabled.has(addonId);
+    }));
 }
 
 function agentDefinitionView(agent: Record<string, unknown>) {
