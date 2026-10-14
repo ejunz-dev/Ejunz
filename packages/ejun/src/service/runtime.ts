@@ -11,7 +11,7 @@ import AgentDefinitionModel from '../model/agent';
 import { createProvider } from './provider';
 import { httpServer } from '@ejunz/framework';
 import { AgentSessionModel as AgentModel, AgentRuntimeModel, AgentLinkModel, AgentStorageModel } from '../model/agent';
-import { type AgentDisplayPrefs, type AgentDomainSettings, type AgentNodeConfig, type AgentNodeDoc, type AgentSessionSummary, type AgentSessionType, type AgentWorkspaceDoc } from '../model/agent';
+import { type AgentDisplayPrefs, type AgentDomainSettings, type AgentNodeConfig, type AgentNodeDoc, type AgentSessionDoc, type AgentSessionSummary, type AgentSessionType, type AgentWorkspaceDoc } from '../model/agent';
 import { type AgentRuntimeSummary } from '../model/agent';
 import { listAgentAddons } from './addons';
 import type { AgentAddonStateChange } from './bus';
@@ -516,6 +516,13 @@ async function sessionCardUpdate(envelope: RpcEnvelope, scope: AgentScope): Prom
         if (!title || title.length > 256) return rpcError(envelope.rpcId, 'session title is required and must not exceed 256 characters');
         patch.projections = { values: { ...(existing.projections?.values ?? {}), title } };
     }
+    let movedNodeId: string | undefined;
+    if (Object.prototype.hasOwnProperty.call(rawPatch, 'nodeId')) {
+        movedNodeId = typeof rawPatch.nodeId === 'string' ? rawPatch.nodeId.trim() : '';
+        if (!movedNodeId) return rpcError(envelope.rpcId, 'nodeId is required');
+        if (!await agentDataAdapter.getNode(scope, movedNodeId)) return rpcError(envelope.rpcId, 'node not found');
+        patch.nodeId = movedNodeId;
+    }
     if (Object.prototype.hasOwnProperty.call(rawPatch, 'agentPreset')) {
         if (typeof rawPatch.agentPreset !== 'string' || !rawPatch.agentPreset.trim()) return rpcError(envelope.rpcId, 'agentPreset is required');
         patch.agentPreset = rawPatch.agentPreset.trim();
@@ -544,7 +551,10 @@ async function sessionCardUpdate(envelope: RpcEnvelope, scope: AgentScope): Prom
         await agentDataAdapter.updateSessionContext(scope, sessionId, baseDocId ?? undefined);
     }
     await agentDataAdapter.updateSession(scope, sessionId, patch);
-    return rpcOk(envelope.rpcId, { sessionId, ...patch });
+    const failedAddonIds = movedNodeId && movedNodeId !== existing.nodeId
+        ? await syncSessionAddonsForNode(scope, sessionId, movedNodeId)
+        : [];
+    return rpcOk(envelope.rpcId, { sessionId, ...patch, ...(failedAddonIds.length ? { failedAddonIds } : {}) });
 }
 
 async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata: { type?: AgentSessionType; baseDocId?: string } = {}): Promise<RpcBody> {
@@ -1159,6 +1169,47 @@ async function nodeConfigForNode(scope: AgentScope, nodeId?: string): Promise<Ag
     return owner?.config;
 }
 
+async function syncSessionAddonsForNode(scope: AgentScope, sessionId: string, nodeId?: string): Promise<string[]> {
+    const addons = listAgentAddons();
+    let session: AgentSessionDoc | null;
+    try {
+        session = await agentDataAdapter.getSession(scope, sessionId);
+    } catch (error) {
+        logger.warn('[agent-node] add-on state lookup failed session=%s error=%s', sessionId, error instanceof Error ? error.message : String(error));
+        return addons.map((addon) => addon.addonId);
+    }
+    if (!session || session.started === false) return [];
+
+    let settings: AgentDomainSettings;
+    let localSelection: AgentNodeConfig['addons'];
+    let link: Awaited<ReturnType<typeof linkForSession>>;
+    try {
+        settings = await agentDataAdapter.getDomainSettings(scope.domainId);
+        localSelection = (await nodeConfigForNode(scope, nodeId))?.addons;
+        link = await linkForSession(scope, sessionId);
+    } catch (error) {
+        logger.warn('[agent-node] add-on state preparation failed session=%s error=%s', sessionId, error instanceof Error ? error.message : String(error));
+        return addons.map((addon) => addon.addonId);
+    }
+
+    const failedAddonIds: string[] = [];
+    for (const addon of addons) {
+        try {
+            const result = await callUpstream('session.addons', {
+                sessionId,
+                addonId: addon.addonId,
+                enabled: agentAddonEnabled(settings, addon.addonId, scope.agentId)
+                    && (localSelection === undefined || localSelection[addon.addonId] === true),
+            }, link);
+            if (!result.body.result?.ok) throw new Error(result.body.error?.message || 'add-on state event failed');
+        } catch (error) {
+            failedAddonIds.push(addon.addonId);
+            logger.warn('[agent-node] add-on state update failed session=%s addon=%s error=%s', sessionId, addon.addonId, error instanceof Error ? error.message : String(error));
+        }
+    }
+    return failedAddonIds;
+}
+
 async function nodeConfigSave(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const payload = envelope.payload ?? {};
     const nodeId = typeof payload.nodeId === 'string' ? payload.nodeId : '';
@@ -1196,28 +1247,8 @@ async function nodeConfigSave(envelope: RpcEnvelope, scope: AgentScope): Promise
     if (Object.prototype.hasOwnProperty.call(patch, 'addons')) {
         const sessions = (await agentDataAdapter.listSessions(scope)).filter((session) => session.nodeId === nodeId);
         for (const session of sessions) {
-            if (session.started === false) {
-                // The initial addon snapshot will use the node config when this card starts.
-                updatedSessionIds.push(session.sessionId);
-                continue;
-            }
-            let failed = false;
-            for (const addon of listAgentAddons()) {
-                try {
-                    const link = await linkForSession(scope, session.sessionId);
-                    const result = await callUpstream('session.addons', {
-                        sessionId: session.sessionId,
-                        addonId: addon.addonId,
-                        enabled: await isAgentAddonEnabled(scope.domainId, addon.addonId, scope.agentId)
-                            && patch.addons?.[addon.addonId] === true,
-                    }, link);
-                    if (!result.body.result?.ok) throw new Error(result.body.error?.message || 'add-on state event failed');
-                } catch (error) {
-                    failed = true;
-                    logger.warn('[agent-node] add-on state update failed session=%s addon=%s error=%s', session.sessionId, addon.addonId, error instanceof Error ? error.message : String(error));
-                }
-            }
-            (failed ? failedSessionIds : updatedSessionIds).push(session.sessionId);
+            const failedAddons = await syncSessionAddonsForNode(scope, session.sessionId, nodeId);
+            (failedAddons.length > 0 ? failedSessionIds : updatedSessionIds).push(session.sessionId);
         }
     }
     return rpcOk(envelope.rpcId, { node: nodeView(updated), updatedSessionIds, failedSessionIds });
@@ -1259,8 +1290,18 @@ async function nodeRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBod
     }
     if (method === 'node.delete') {
         try {
+            const node = await agentDataAdapter.getNode(scope, nodeId);
+            if (!node) return rpcError(envelope.rpcId, 'node not found');
+            const targetNodeId = node.parentId ?? (await agentDataAdapter.listNodes(scope)).find((item) => item.isRoot)?.nodeId;
+            const sessionsToSync = (await agentDataAdapter.listSessions(scope)).filter((session) => session.nodeId === nodeId);
             await agentDataAdapter.deleteNode(scope, nodeId);
-            return rpcOk(envelope.rpcId, { deleted: true });
+            const updatedSessionIds: string[] = [];
+            const failedSessionIds: string[] = [];
+            for (const session of sessionsToSync) {
+                const failedAddons = await syncSessionAddonsForNode(scope, session.sessionId, targetNodeId);
+                (failedAddons.length > 0 ? failedSessionIds : updatedSessionIds).push(session.sessionId);
+            }
+            return rpcOk(envelope.rpcId, { deleted: true, updatedSessionIds, failedSessionIds });
         } catch (error) {
             return rpcError(envelope.rpcId, error instanceof Error ? error.message : String(error));
         }
@@ -3415,7 +3456,7 @@ export const agentRuntimeHandlerContext = {
     requireBridgeToken, baseSessionScope, toolRegistry,
     scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, upstreamValue,
     nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled,
-    agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,
+    agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, syncSessionAddonsForNode, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,
     baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems,
     runtimeRelabel, runtimeRemove, sessionCardCreate, sessionCardUpdate, sessionCreate, sessionHistory, sessionMessageCount,
     sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink,

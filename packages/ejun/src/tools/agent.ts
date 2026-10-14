@@ -141,7 +141,7 @@ export const CardUpdate = Schema.object({
     cardId: Schema.string().required().description('Session id shown as the card id in the Agent workspace.'),
     title: Schema.string().description('New session card title (optional).'),
     nodeId: Schema.string().description('Move the session card to an existing workspace node (optional).'),
-}).description('Rename or move a session card belonging to an Agent.');
+}).description('Rename or move a session card belonging to an Agent. Moving it to another node applies that node’s Addon configuration to the existing session.');
 
 export const CardRemove = Schema.object({
     agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
@@ -181,7 +181,7 @@ export const CardUpdateMany = Schema.object({
         title: Schema.string().description('New session card title (optional).'),
         nodeId: Schema.string().description('Existing workspace node to move the card to (optional).'),
     })).min(1).max(MAX_CARDS_PER_CALL).required().description('One entry per session card.'),
-}).description('Rename and/or move several session cards of one Agent. Each entry is `{ cardId, title?, nodeId? }` and must name at least one change. '
+}).description('Rename and/or move several session cards of one Agent. Each entry is `{ cardId, title?, nodeId? }` and must name at least one change. Moving a card applies the destination node’s Addon configuration to its existing session. '
     + `One call updates at most ${MAX_CARDS_PER_CALL} cards.`);
 
 export const CardRemoveMany = Schema.object({
@@ -479,8 +479,14 @@ export async function removeNode(ctx: ToolContext, args: ToolArgs) {
     if (!nodeId) throw new Error('nodeId is required');
     const node = await AgentSessionModel.getNode(ctx.domainId, ctx.owner, nodeId, agentId);
     if (!node) throw new Error(`Node not found in Agent ${agentId}: ${nodeId}`);
-    await AgentSessionModel.deleteNode(ctx.domainId, ctx.owner, nodeId, agentId);
-    return { ok: true, agentId, nodeId, deleted: true };
+    const response = await agentRuntimeHandlerContext.nodeRpc({
+        rpcId: 'agent_node_delete',
+        method: 'node.delete',
+        payload: { nodeId },
+    }, sessionScope(ctx, agentId));
+    if (!response.result?.ok) throw new Error(response.error?.message || 'Failed to delete Agent node');
+    const value = response.result.value as Record<string, unknown> | undefined;
+    return { ok: true, agentId, nodeId, ...value };
 }
 
 function sessionScope(ctx: ToolContext, agentId: number) {
@@ -696,12 +702,15 @@ export async function updateCard(ctx: ToolContext, args: ToolArgs) {
     }
     if (title === undefined && nodeId === undefined) throw new Error('Nothing to update (title or nodeId required)');
     if (title !== undefined) await renameSessionCard(ctx, agentId, sessionId, title);
-    if (nodeId !== undefined) {
-        await agentRuntimeHandlerContext.agentDataAdapter.updateSession(sessionScope(ctx, agentId), sessionId, { nodeId });
+    let failedAddonIds: string[] = [];
+    if (nodeId !== undefined && nodeId !== session.nodeId) {
+        const scope = sessionScope(ctx, agentId);
+        await agentRuntimeHandlerContext.agentDataAdapter.updateSession(scope, sessionId, { nodeId });
+        failedAddonIds = await agentRuntimeHandlerContext.syncSessionAddonsForNode(scope, sessionId, nodeId);
     }
     const updated = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, agentId);
     if (!updated) throw new Error(`Session card not found in Agent ${agentId}: ${sessionId}`);
-    return { ok: true, agentId, card: sessionCardView(updated) };
+    return { ok: true, agentId, card: sessionCardView(updated), ...(failedAddonIds.length ? { failedAddonIds } : {}) };
 }
 
 export async function createNodes(ctx: ToolContext, args: ToolArgs) {
@@ -827,8 +836,18 @@ export async function removeNodes(ctx: ToolContext, args: ToolArgs) {
         if (!node) throw new Error(`Node not found in Agent ${agentId}: ${nodeId}`);
         if (node.isRoot) throw new Error('Agent root node cannot be deleted');
     }
-    for (const nodeId of nodeIds) await AgentSessionModel.deleteNode(ctx.domainId, ctx.owner, nodeId, agentId);
-    return { ok: true, agentId, removedNodeIds: nodeIds, removedCount: nodeIds.length };
+    const failedSessionIds = new Set<string>();
+    for (const nodeId of nodeIds) {
+        const response = await agentRuntimeHandlerContext.nodeRpc({
+            rpcId: 'agent_node_delete_many',
+            method: 'node.delete',
+            payload: { nodeId },
+        }, sessionScope(ctx, agentId));
+        if (!response.result?.ok) throw new Error(response.error?.message || `Failed to delete Agent node ${nodeId}`);
+        const value = response.result.value as { failedSessionIds?: string[] } | undefined;
+        value?.failedSessionIds?.forEach((sessionId) => failedSessionIds.add(sessionId));
+    }
+    return { ok: true, agentId, removedNodeIds: nodeIds, removedCount: nodeIds.length, failedSessionIds: [...failedSessionIds] };
 }
 
 export async function createCards(ctx: ToolContext, args: ToolArgs) {
@@ -904,15 +923,21 @@ export async function updateCards(ctx: ToolContext, args: ToolArgs) {
             throw new Error(`Node not found in Agent ${agentId}: ${entry.nodeId}`);
         }
     }
-    const updated: { index: number; card: ReturnType<typeof sessionCardView> }[] = [];
+    const updated: { index: number; card: ReturnType<typeof sessionCardView>; failedAddonIds?: string[] }[] = [];
     const refused: { index: number; cardId: string; error: string }[] = [];
     for (const entry of planned) {
         try {
             if (entry.title) await renameSessionCard(ctx, agentId, entry.cardId, entry.title);
-            if (entry.nodeId) await agentRuntimeHandlerContext.agentDataAdapter.updateSession(sessionScope(ctx, agentId), entry.cardId, { nodeId: entry.nodeId });
+            const current = byId.get(entry.cardId)!;
+            let failedAddonIds: string[] = [];
+            if (entry.nodeId && entry.nodeId !== current.nodeId) {
+                const scope = sessionScope(ctx, agentId);
+                await agentRuntimeHandlerContext.agentDataAdapter.updateSession(scope, entry.cardId, { nodeId: entry.nodeId });
+                failedAddonIds = await agentRuntimeHandlerContext.syncSessionAddonsForNode(scope, entry.cardId, entry.nodeId);
+            }
             const session = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, entry.cardId, agentId);
             if (!session) throw new Error(`Session card not found in Agent ${agentId}: ${entry.cardId}`);
-            updated.push({ index: entry.index, card: sessionCardView(session) });
+            updated.push({ index: entry.index, card: sessionCardView(session), ...(failedAddonIds.length ? { failedAddonIds } : {}) });
         } catch (error) {
             refused.push({ index: entry.index, cardId: entry.cardId, error: (error as Error).message });
         }

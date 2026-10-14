@@ -1840,15 +1840,27 @@ export default function AgentPage() {
             } else if (active.kind === 'delete-selected') {
                 if (active.sessionIds.length > 0) await performHardDeleteMany(active.sessionIds);
                 const removedNodes = nodes.filter((node) => active.nodeIds.includes(node.nodeId));
-                await Promise.all(active.nodeIds.map((nodeId) => rpc('node.delete', { nodeId })));
+                const failedSessionIds = new Set<string>();
+                for (const nodeId of active.nodeIds) {
+                    const result = await rpc('node.delete', { nodeId }) as { failedSessionIds?: string[] };
+                    result.failedSessionIds?.forEach((sessionId) => failedSessionIds.add(sessionId));
+                }
                 const removedNodeIds = new Set(active.nodeIds);
+                const finalParentFor = (nodeId: string): string | undefined => {
+                    const seen = new Set<string>([nodeId]);
+                    let parentId = removedNodes.find((node) => node.nodeId === nodeId)?.parentId;
+                    while (parentId && removedNodeIds.has(parentId) && !seen.has(parentId)) {
+                        seen.add(parentId);
+                        parentId = nodes.find((node) => node.nodeId === parentId)?.parentId;
+                    }
+                    return parentId ?? rootNodeId ?? undefined;
+                };
                 const nextActiveNodeId = activeTreeNodeId && removedNodeIds.has(activeTreeNodeId)
-                    ? removedNodes.find((node) => node.nodeId === activeTreeNodeId)?.parentId ?? rootNodeId
+                    ? finalParentFor(activeTreeNodeId)
                     : activeTreeNodeId;
-                setSessions((items) => items.map((session) => {
-                    const removedNode = removedNodes.find((node) => node.nodeId === session.nodeId);
-                    return removedNode ? { ...session, nodeId: removedNode.parentId ?? rootNodeId ?? undefined } : session;
-                }));
+                setSessions((items) => items.map((session) => session.nodeId && removedNodeIds.has(session.nodeId)
+                    ? { ...session, nodeId: finalParentFor(session.nodeId) }
+                    : session));
                 setNodes((items) => items.filter((node) => !removedNodeIds.has(node.nodeId)));
                 setActiveTreeNodeId(nextActiveNodeId);
                 updateAgentSelectionUrl({ nodeId: nextActiveNodeId, cardId: current && active.sessionIds.includes(current) ? null : current });
@@ -1857,7 +1869,11 @@ export default function AgentPage() {
                 setSessionTitleDrafts({});
                 setEditMode(false);
                 const deletedCount = active.sessionIds.length + active.nodeIds.length;
-                await Notification.success(`已删除 ${deletedCount} 项`);
+                if (failedSessionIds.size > 0) {
+                    await Notification.error(`已删除 ${deletedCount} 项；${failedSessionIds.size} 个会话的 Addon 设置未能同步，请检查主机状态后重试。`);
+                } else {
+                    await Notification.success(`已删除 ${deletedCount} 项`);
+                }
             } else {
                 await performHardDelete(active.id);
             }
