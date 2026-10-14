@@ -60,7 +60,7 @@ export function NodeAddonSettingsPanel({ node, addons, saving, onSave }: NodeAdd
         <div className="bd-edit-dialog__body eza-nodeAddonConfig">
             <div className="bd-edit-field">
                 <h3>Addons</h3>
-                <p className="bd-muted">选择此节点会话使用的 Addon；未配置时沿用 Agent 全局设置。</p>
+                <p className="bd-muted">可多选；勾选只修改草稿，不会立即保存。选完后统一点击保存配置。未配置时沿用 Agent 全局设置。</p>
                 <div className="bd-edit-tags">
                     {addons.filter((addon) => addon.installed).map((addon) => {
                         const selected = draftAddonIds.includes(addon.addonId) && addon.enabled;
@@ -76,7 +76,7 @@ export function NodeAddonSettingsPanel({ node, addons, saving, onSave }: NodeAdd
                     })}
                 </div>
                 {addons.every((addon) => !addon.installed) && <span className="bd-muted">当前 domain 尚未安装 Addon。</span>}
-                {isDirty && <span className="bd-muted" role="status">有未保存的更改</span>}
+                {isDirty && <span className="bd-muted" role="status">已选择 {draftAddonIds.length} 个 Addon，尚未保存</span>}
                 {error && <span className="bd-edit-dialog__error" role="alert">{error}</span>}
             </div>
         </div>
