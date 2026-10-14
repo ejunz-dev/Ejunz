@@ -1210,6 +1210,25 @@ async function syncSessionAddonsForNode(scope: AgentScope, sessionId: string, no
     return failedAddonIds;
 }
 
+function syncNodeAddonConfigInBackground(scope: AgentScope, nodeId: string): void {
+    void (async () => {
+        const sessions = (await agentDataAdapter.listSessions(scope)).filter((session) => session.nodeId === nodeId);
+        let nextIndex = 0;
+        const worker = async () => {
+            while (nextIndex < sessions.length) {
+                const session = sessions[nextIndex++];
+                const failedAddons = await syncSessionAddonsForNode(scope, session.sessionId, nodeId);
+                if (failedAddons.length) {
+                    logger.warn('[agent-node] background add-on sync incomplete node=%s session=%s failed=%j', nodeId, session.sessionId, failedAddons);
+                }
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(8, sessions.length) }, () => worker()));
+    })().catch((error) => {
+        logger.warn('[agent-node] background add-on sync failed node=%s error=%s', nodeId, error instanceof Error ? error.message : String(error));
+    });
+}
+
 async function nodeConfigSave(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const payload = envelope.payload ?? {};
     const nodeId = typeof payload.nodeId === 'string' ? payload.nodeId : '';
@@ -1242,16 +1261,10 @@ async function nodeConfigSave(envelope: RpcEnvelope, scope: AgentScope): Promise
     const nextConfig = { ...config, ...patch };
     const updated = await agentDataAdapter.updateNodeConfig(scope, nodeId, nextConfig);
     if (!updated) return rpcError(envelope.rpcId, 'node not found');
-    const updatedSessionIds: string[] = [];
-    const failedSessionIds: string[] = [];
     if (Object.prototype.hasOwnProperty.call(patch, 'addons')) {
-        const sessions = (await agentDataAdapter.listSessions(scope)).filter((session) => session.nodeId === nodeId);
-        for (const session of sessions) {
-            const failedAddons = await syncSessionAddonsForNode(scope, session.sessionId, nodeId);
-            (failedAddons.length > 0 ? failedSessionIds : updatedSessionIds).push(session.sessionId);
-        }
+        syncNodeAddonConfigInBackground(scope, nodeId);
     }
-    return rpcOk(envelope.rpcId, { node: nodeView(updated), updatedSessionIds, failedSessionIds });
+    return rpcOk(envelope.rpcId, { node: nodeView(updated), syncScheduled: true });
 }
 
 async function nodeRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {

@@ -556,11 +556,8 @@ export default function AgentPage() {
     const saveNodeConfig = useCallback(async (nodeId: string, patch: Record<string, unknown>) => {
         setNodeConfigSaving(true);
         try {
-            const result = await rpc('node.config.save', { nodeId, patch }) as { failedSessionIds?: string[] };
+            await rpc('node.config.save', { nodeId, patch });
             await Promise.all([loadNodes(), loadSessions()]);
-            if (result.failedSessionIds?.length) {
-                throw new Error(`${result.failedSessionIds.length} 个已有会话未能立即同步，请检查主机状态后重试。`);
-            }
         } finally {
             setNodeConfigSaving(false);
         }
@@ -2152,7 +2149,7 @@ export default function AgentPage() {
                         saving={nodeConfigSaving}
                         onSave={async (addonIds) => {
                             await saveNodeConfig(nodeSettingsNode.nodeId, { addonIds });
-                            await Notification.success('节点 Addon 配置已保存');
+                            await Notification.success('节点 Addon 配置已保存，现有会话将在后台同步');
                         }}
                     />
                 </SessionDrawer>}
