@@ -20,6 +20,7 @@ interface EjunContext {
     server?: { config?: { port?: number; host?: string } };
     effect(factory: () => () => void | Promise<void>): void;
     on?(event: string, listener: (...args: any[]) => unknown): void;
+    broadcast?(event: string, ...args: any[]): Promise<unknown> | unknown;
     get?(name: string): unknown;
     plugin(plugin: unknown): unknown;
     Route(name: string, path: string, handler: unknown, priv?: number): void;
@@ -45,6 +46,7 @@ interface RpcBody {
 
 const { WebSocket } = require('ws');
 const logger = new Logger('agent');
+let broadcastAgentAddonState: ((change: AgentAddonStateChange) => Promise<unknown> | unknown) | undefined;
 const agentRoot = path.resolve(__dirname, '../../../ejunzagent');
 const agentEmbedEntry = path.join(agentRoot, 'apps/cli/src/embed.ts');
 const CREDENTIAL_REF_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -1210,23 +1212,25 @@ async function syncSessionAddonsForNode(scope: AgentScope, sessionId: string, no
     return failedAddonIds;
 }
 
-function syncNodeAddonConfigInBackground(scope: AgentScope, nodeId: string): void {
-    void (async () => {
-        const sessions = (await agentDataAdapter.listSessions(scope)).filter((session) => session.nodeId === nodeId);
-        let nextIndex = 0;
-        const worker = async () => {
-            while (nextIndex < sessions.length) {
-                const session = sessions[nextIndex++];
-                const failedAddons = await syncSessionAddonsForNode(scope, session.sessionId, nodeId);
-                if (failedAddons.length) {
-                    logger.warn('[agent-node] background add-on sync incomplete node=%s session=%s failed=%j', nodeId, session.sessionId, failedAddons);
-                }
-            }
-        };
-        await Promise.all(Array.from({ length: Math.min(8, sessions.length) }, () => worker()));
-    })().catch((error) => {
-        logger.warn('[agent-node] background add-on sync failed node=%s error=%s', nodeId, error instanceof Error ? error.message : String(error));
-    });
+async function broadcastNodeAddonConfig(scope: AgentScope, nodeId: string, addons?: Record<string, boolean>): Promise<void> {
+    if (!broadcastAgentAddonState) {
+        logger.warn('[agent-node] Cordis add-on event publisher is unavailable node=%s', nodeId);
+        return;
+    }
+    for (const addon of listAgentAddons()) {
+        try {
+            await broadcastAgentAddonState({
+                domainId: scope.domainId,
+                userId: scope.userId,
+                ...(scope.agentId === undefined ? {} : { agentId: scope.agentId }),
+                nodeId,
+                addonId: addon.addonId,
+                enabled: addons?.[addon.addonId] === true,
+            });
+        } catch (error) {
+            logger.warn('[agent-node] Cordis add-on event failed node=%s addon=%s error=%s', nodeId, addon.addonId, error instanceof Error ? error.message : String(error));
+        }
+    }
 }
 
 async function nodeConfigSave(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
@@ -1262,7 +1266,7 @@ async function nodeConfigSave(envelope: RpcEnvelope, scope: AgentScope): Promise
     const updated = await agentDataAdapter.updateNodeConfig(scope, nodeId, nextConfig);
     if (!updated) return rpcError(envelope.rpcId, 'node not found');
     if (Object.prototype.hasOwnProperty.call(patch, 'addons')) {
-        syncNodeAddonConfigInBackground(scope, nodeId);
+        await broadcastNodeAddonConfig(scope, nodeId, patch.addons);
     }
     return rpcOk(envelope.rpcId, { node: nodeView(updated), syncScheduled: true });
 }
@@ -1910,7 +1914,8 @@ async function recordAddonStateForSessions(change: AgentAddonStateChange): Promi
     const sessions = (await AgentModel.listAllSessions()).filter((session) =>
         session.domainId === change.domainId
         && !session.archived
-        && (change.agentId === undefined || (session.agentId ?? null) === change.agentId));
+        && (change.agentId === undefined || (session.agentId ?? null) === change.agentId)
+        && (change.nodeId === undefined || (session.nodeId === change.nodeId && session.userId === change.userId)));
     for (let offset = 0; offset < sessions.length; offset += 8) {
         const batch = sessions.slice(offset, offset + 8);
         await Promise.all(batch.map(async (session) => {
@@ -2682,6 +2687,10 @@ export async function initializeAgentRuntime(ctx: EjunContext): Promise<() => Pr
     await modelReady;
     await agentDataAdapter.resetRunningSessions();
     await ensureBuiltinBridgeToken();
+    const cordisBroadcast = ctx.broadcast;
+    broadcastAgentAddonState = cordisBroadcast
+        ? (change) => cordisBroadcast('agent/addon-state', change)
+        : undefined;
     ctx.on?.('agent/addon-state', (change: AgentAddonStateChange) => {
         void recordAddonStateForSessions(change).catch((error) => {
             logger.warn('[addons] state fanout failed domain=%s addon=%s error=%s', change.domainId, change.addonId, error instanceof Error ? error.message : String(error));
