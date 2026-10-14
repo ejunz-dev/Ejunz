@@ -85,7 +85,7 @@ export const NodeCreateMany = Schema.object({
 
 export const NodeGetMany = Schema.object({
     agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    nodeIds: Schema.array(Schema.string()).min(1).max(MAX_NODES_PER_CALL).required().description('Node ids to read, in order.'),
+    nodeIds: Schema.array(Schema.string()).max(MAX_NODES_PER_CALL).required().description('Node ids to read, in order.'),
 }).description('Read several workspace nodes of one Agent, each with its Addon and context configuration, direct child nodes, and session cards. '
     + `A missing id is listed in \`missingNodeIds\` and \`ok\` is false. One call reads at most ${MAX_NODES_PER_CALL} nodes.`);
 
@@ -101,7 +101,7 @@ export const NodeUpdateMany = Schema.object({
 
 export const NodeRemoveMany = Schema.object({
     agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    nodeIds: Schema.array(Schema.string()).min(1).max(MAX_NODES_PER_CALL).required().description('Nodes to remove.'),
+    nodeIds: Schema.array(Schema.string()).max(MAX_NODES_PER_CALL).required().description('Nodes to remove.'),
 }).description('Delete several workspace nodes of one Agent. Each node\'s children and session cards move to its parent, as `agent_node_delete` does. '
     + `The root node cannot be removed. One call removes at most ${MAX_NODES_PER_CALL} nodes.`);
 
@@ -169,7 +169,7 @@ export const CardCreateMany = Schema.object({
 
 export const CardGetMany = Schema.object({
     agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    cardIds: Schema.array(Schema.string()).min(1).max(MAX_CARDS_PER_CALL).required().description('Session card ids to read, in order.'),
+    cardIds: Schema.array(Schema.string()).max(MAX_CARDS_PER_CALL).required().description('Session card ids to read, in order.'),
     ...conversationRead,
 }).description('Read several session cards of one Agent in a single call, each reported as `agent_sessionCard_get` reports one, including its conversation as `content`. '
     + 'A missing id is listed in `missingCardIds` and `ok` is false. '
@@ -187,9 +187,62 @@ export const CardUpdateMany = Schema.object({
 
 export const CardRemoveMany = Schema.object({
     agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    cardIds: Schema.array(Schema.string()).min(1).max(MAX_CARDS_PER_CALL).required().description('Session cards to remove.'),
+    cardIds: Schema.array(Schema.string()).max(MAX_CARDS_PER_CALL).required().description('Session cards to remove.'),
 }).description('Delete several session cards of one Agent and their conversation history. '
     + `One call removes at most ${MAX_CARDS_PER_CALL} cards.`);
+
+const TeamCardCreateFields = Schema.object({
+    nodeId: Schema.string().description('Existing Agent node id. Omit to use the Agent root node.'),
+    nodeRef: Schema.string().description('ref of a node created in this same request.'),
+    title: Schema.string().description('Optional card title.'),
+    message: Schema.string().description('Optional first message.'),
+    provider: Schema.string().description('Optional model provider. Pass together with model.'),
+    model: Schema.string().description('Optional model id. Pass together with provider.'),
+    baseDocId: Schema.number().step(1).min(1).description('Optional Base to attach as this card’s context.'),
+    runtimeId: Schema.string().description('Optional host id.'),
+    agentPreset: Schema.string().description('Optional Agent preset id.'),
+});
+
+export const TeamCreateMany = Schema.object({
+    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
+    parentId: Schema.string().description('Default parent node for entries without nodeId/parentId; defaults to the Agent root.'),
+    nodes: Schema.array(Schema.object({
+        text: Schema.string().required().description('Node title.'),
+        ref: Schema.string().description('Optional name for this node, for parentRef or nodeRef references.'),
+        parentId: Schema.string().description('Existing parent node id.'),
+        parentRef: Schema.string().description('ref of an earlier node in this request.'),
+    })).max(MAX_NODES_PER_CALL).description('Nodes to create, in order.'),
+    cards: Schema.array(TeamCardCreateFields).max(MAX_CARDS_PER_CALL).description('Cards to create after nodes; nodeRef may refer to a node created above.'),
+}).description('Create nodes and cards for one Agent in a single tool call. Nodes are created first, so cards may refer to them by nodeRef. Node and card results report successes and refusals separately; this batch is not transactional.');
+
+export const TeamGetMany = Schema.object({
+    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
+    nodeIds: Schema.array(Schema.string()).max(MAX_NODES_PER_CALL).description('Node ids to read.'),
+    cardIds: Schema.array(Schema.string()).max(MAX_CARDS_PER_CALL).description('Card ids to read.'),
+    ...conversationRead,
+}).description('Read multiple nodes and cards for one Agent in one tool call. At least one of nodeIds or cardIds is required; each array can contain up to 500 ids.');
+
+export const TeamUpdateMany = Schema.object({
+    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
+    nodes: Schema.array(Schema.object({
+        nodeId: Schema.string().required().description('Node id.'),
+        text: Schema.string().description('New node title.'),
+        parentId: Schema.string().description('Move under this existing node.'),
+        addonIds: Schema.array(Schema.string()).description('Replace this node’s enabled Addons.'),
+        context: Schema.string().description('Replace this node’s free-form context; empty string clears it.'),
+    })).max(MAX_NODES_PER_CALL).description('Node changes; config changes (addonIds/context) are submitted separately from text/parentId.'),
+    cards: Schema.array(Schema.object({
+        cardId: Schema.string().required().description('Card id.'),
+        title: Schema.string().description('New card title.'),
+        nodeId: Schema.string().description('Move to this existing node.'),
+    })).max(MAX_CARDS_PER_CALL).description('Card title and node changes.'),
+}).description('Update multiple nodes and cards for one Agent. Node and card results report successes and refusals separately; this batch is not transactional.');
+
+export const TeamDeleteMany = Schema.object({
+    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
+    nodeIds: Schema.array(Schema.string()).max(MAX_NODES_PER_CALL).description('Nodes to delete; cards and child nodes move to the deleted node’s parent.'),
+    cardIds: Schema.array(Schema.string()).max(MAX_CARDS_PER_CALL).description('Cards to delete.'),
+}).description('Delete multiple nodes and cards for one Agent in one tool call. Cards are deleted before nodes; the root node cannot be deleted.');
 
 function agentIdOf(args: ToolArgs): number {
     const agentId = Number(args.agentId);
@@ -702,6 +755,16 @@ function objectEntries(raw: unknown, label: string): Record<string, unknown>[] {
     });
 }
 
+function optionalEntries(raw: unknown, label: string): Record<string, unknown>[] {
+    if (raw === undefined || (Array.isArray(raw) && raw.length === 0)) return [];
+    return objectEntries(raw, label);
+}
+
+function optionalIds(raw: unknown, label: string, limit: number): string[] {
+    if (raw === undefined || (Array.isArray(raw) && raw.length === 0)) return [];
+    return idList(raw, label, limit);
+}
+
 export async function createCard(ctx: ToolContext, args: ToolArgs) {
     const { agentId, agent } = await requireAgent(ctx, args, 'edit');
     const created = await createSessionCard(ctx, agentId, agent.title, sessionCardInput(args));
@@ -1012,6 +1075,130 @@ export async function removeCard(ctx: ToolContext, args: ToolArgs) {
     return { ok: true, agentId, cardId: sessionId, deleted: true };
 }
 
+export async function createTeamMany(ctx: ToolContext, args: ToolArgs) {
+    const { agentId, agent } = await requireAgent(ctx, args, 'edit');
+    const rawNodes = optionalEntries(args.nodes, 'nodes');
+    const rawCards = optionalEntries(args.cards, 'cards');
+    if (rawNodes.length > MAX_NODES_PER_CALL) throw new Error(`nodes holds ${rawNodes.length} entries; one call creates at most ${MAX_NODES_PER_CALL}`);
+    if (rawCards.length > MAX_CARDS_PER_CALL) throw new Error(`cards holds ${rawCards.length} entries; one call creates at most ${MAX_CARDS_PER_CALL}`);
+    if (!rawNodes.length && !rawCards.length) throw new Error('Give nodes, cards, or both');
+
+    const nodeResult = rawNodes.length
+        ? await createNodes(ctx, { agentId, ...(asText(args.parentId) ? { parentId: asText(args.parentId) } : {}), nodes: rawNodes })
+        : undefined;
+    const nodeIdsByRef = new Map<string, string>();
+    for (const node of nodeResult?.nodes ?? []) {
+        if (node.ref) nodeIdsByRef.set(node.ref, node.nodeId);
+    }
+
+    const cards: { index: number; started: boolean; card: ReturnType<typeof sessionCardView>; error?: string }[] = [];
+    const refusedCards: { index: number; cardId?: string; error: string }[] = [];
+    for (const [index, rawCard] of rawCards.entries()) {
+        const fields = { ...rawCard };
+        const nodeId = asText(fields.nodeId);
+        const nodeRef = asText(fields.nodeRef);
+        if (nodeId && nodeRef) {
+            refusedCards.push({ index, error: `cards[${index}] must use nodeId or nodeRef, not both` });
+            continue;
+        }
+        if (nodeRef) {
+            const resolvedNodeId = nodeIdsByRef.get(nodeRef);
+            if (!resolvedNodeId) {
+                refusedCards.push({ index, error: `cards[${index}].nodeRef ${nodeRef} was not created in this request` });
+                continue;
+            }
+            fields.nodeId = resolvedNodeId;
+        }
+        delete fields.nodeRef;
+        try {
+            const result = await createSessionCard(ctx, agentId, agent.title, sessionCardInput(fields, `cards[${index}]`));
+            cards.push({ index, started: result.started, card: result.card, ...(result.error ? { error: result.error } : {}) });
+            if (result.error) refusedCards.push({ index, cardId: result.card.cardId, error: result.error });
+        } catch (error) {
+            refusedCards.push({ index, error: (error as Error).message });
+        }
+    }
+    const refusedNodes = nodeResult?.refusedNodes ?? [];
+    return {
+        ok: refusedNodes.length === 0 && refusedCards.length === 0,
+        agentId,
+        nodes: nodeResult?.nodes ?? [],
+        refusedNodes,
+        cards,
+        refusedCards,
+    };
+}
+
+export async function getTeamMany(ctx: ToolContext, args: ToolArgs) {
+    const { agentId } = await requireAgent(ctx, args);
+    const nodeIds = optionalIds(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
+    const cardIds = optionalIds(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
+    if (!nodeIds.length && !cardIds.length) throw new Error('Give nodeIds, cardIds, or both');
+    const [nodeResult, cardResult] = await Promise.all([
+        nodeIds.length ? getNodes(ctx, { agentId, nodeIds }) : Promise.resolve(undefined),
+        cardIds.length ? getCards(ctx, { agentId, cardIds, maxMessages: args.maxMessages, maxChars: args.maxChars, beforeSeq: args.beforeSeq }) : Promise.resolve(undefined),
+    ]);
+    return {
+        ok: (nodeResult?.ok ?? true) && (cardResult?.ok ?? true),
+        agentId,
+        ...(nodeResult ? { nodes: nodeResult.nodes, missingNodeIds: nodeResult.missingNodeIds } : {}),
+        ...(cardResult ? { cards: cardResult.cards, missingCardIds: cardResult.missingCardIds } : {}),
+    };
+}
+
+export async function updateTeamMany(ctx: ToolContext, args: ToolArgs) {
+    const { agentId } = await requireAgent(ctx, args, 'edit');
+    const rawNodes = optionalEntries(args.nodes, 'nodes');
+    const rawCards = optionalEntries(args.cards, 'cards');
+    if (rawNodes.length > MAX_NODES_PER_CALL) throw new Error(`nodes holds ${rawNodes.length} entries; one call updates at most ${MAX_NODES_PER_CALL}`);
+    if (rawCards.length > MAX_CARDS_PER_CALL) throw new Error(`cards holds ${rawCards.length} entries; one call updates at most ${MAX_CARDS_PER_CALL}`);
+    if (!rawNodes.length && !rawCards.length) throw new Error('Give nodes, cards, or both');
+
+    const updatedNodes: { index: number; node: unknown }[] = [];
+    const refusedNodes: { index: number; nodeId: string; error: string }[] = [];
+    const seenNodeIds = new Set<string>();
+    for (const [index, entry] of rawNodes.entries()) {
+        const nodeId = asText(entry.nodeId);
+        if (!nodeId) throw new Error(`nodes[${index}].nodeId is required`);
+        if (seenNodeIds.has(nodeId)) throw new Error(`nodes[${index}].nodeId ${nodeId} appears twice`);
+        seenNodeIds.add(nodeId);
+        try {
+            const result = await updateNode(ctx, { ...entry, agentId, nodeId });
+            updatedNodes.push({ index, node: result.node });
+        } catch (error) {
+            refusedNodes.push({ index, nodeId, error: (error as Error).message });
+        }
+    }
+
+    let cardResult: Awaited<ReturnType<typeof updateCards>> | undefined;
+    if (rawCards.length) cardResult = await updateCards(ctx, { agentId, entries: rawCards });
+    const refusedCards = cardResult?.refusedCards ?? [];
+    return {
+        ok: refusedNodes.length === 0 && refusedCards.length === 0,
+        agentId,
+        nodes: updatedNodes,
+        refusedNodes,
+        cards: cardResult?.cards ?? [],
+        refusedCards,
+    };
+}
+
+export async function deleteTeamMany(ctx: ToolContext, args: ToolArgs) {
+    const { agentId } = await requireAgent(ctx, args, 'delete');
+    const nodeIds = optionalIds(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
+    const cardIds = optionalIds(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
+    if (!nodeIds.length && !cardIds.length) throw new Error('Give nodeIds, cardIds, or both');
+    const cards = cardIds.length ? await removeCards(ctx, { agentId, cardIds }) : undefined;
+    const nodes = nodeIds.length ? await removeNodes(ctx, { agentId, nodeIds }) : undefined;
+    return {
+        ok: true,
+        agentId,
+        removedCardIds: cards?.removedCardIds ?? [],
+        removedNodeIds: nodes?.removedNodeIds ?? [],
+        failedSessionIds: nodes?.failedSessionIds ?? [],
+    };
+}
+
 export function apply(ctx: Context) {
     const unregister = registerAgentAddon({
         addonId: 'agent',
@@ -1034,17 +1221,13 @@ export function apply(ctx: Context) {
     ctx.Tool('agent', 'agent_node_create', createNode, NodeCreate, write, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_node_update', updateNode, NodeUpdate, write, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_node_delete', removeNode, NodeRemove, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_node_create_many', createNodes, NodeCreateMany, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_node_get_many', getNodes, NodeGetMany, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_node_update_many', updateNodes, NodeUpdateMany, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_node_delete_many', removeNodes, NodeRemoveMany, write, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_sessionCard_list', listCards, CardList, read, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_sessionCard_get', getCard, CardGet, read, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_sessionCard_create', createCard, CardCreate, write, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_sessionCard_update', updateCard, CardUpdate, write, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_sessionCard_delete', removeCard, CardRemove, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_sessionCard_create_many', createCards, CardCreateMany, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_sessionCard_get_many', getCards, CardGetMany, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_sessionCard_update_many', updateCards, CardUpdateMany, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_sessionCard_delete_many', removeCards, CardRemoveMany, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_create_many', createTeamMany, TeamCreateMany, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_get_many', getTeamMany, TeamGetMany, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_update_many', updateTeamMany, TeamUpdateMany, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_delete_many', deleteTeamMany, TeamDeleteMany, write, PRIV.PRIV_USER_PROFILE);
 }
