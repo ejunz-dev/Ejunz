@@ -2146,29 +2146,34 @@ export default function AgentPage() {
                     onResize={(delta) => setSessionDrawerWidth((width) => Math.max(SESSION_DRAWER_MIN, width + delta))}
                     onClose={() => setNodeSettingsId(null)}
                 >
-                    <div className="eza-sessionSettingsColumn">
-                        <p className="bd-muted">节点选择只会在 Agent 全局启用的 Addon 中生效；请先在 Agent 设置里启用需要的 Addon。</p>
-                        {agentAddons.filter((addon) => addon.installed).map((addon) => {
-                            const selected = nodeSettingsNode.config?.addons === undefined
-                                ? addon.enabled
-                                : nodeSettingsNode.config.addons[addon.addonId] === true;
-                            return <label key={addon.addonId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={selected}
-                                    disabled={nodeConfigSaving || !addon.enabled}
-                                    onChange={() => {
-                                        const next = nodeSettingsNode.config?.addons === undefined
-                                            ? new Set(agentAddons.filter((item) => item.enabled).map((item) => item.addonId))
-                                            : new Set(Object.entries(nodeSettingsNode.config.addons).filter(([, enabled]) => enabled).map(([id]) => id));
-                                        if (selected) next.delete(addon.addonId);
-                                        else next.add(addon.addonId);
-                                        void saveNodeConfig(nodeSettingsNode.nodeId, { addonIds: [...next] });
-                                    }}
-                                />
-                                <span>{addon.displayName}{!addon.enabled ? '（Agent 全局未启用）' : ''}</span>
-                            </label>;
-                        })}
+                    <div className="bd-edit-dialog__body eza-nodeAddonConfig">
+                        <div className="bd-edit-field">
+                            <h3>Addons</h3>
+                            <p className="bd-muted">选择此节点会话使用的 Addon；未配置的节点沿用 Agent 全局设置。</p>
+                            <div className="bd-edit-tags">
+                                {agentAddons.filter((addon) => addon.installed).map((addon) => {
+                                    const selected = nodeSettingsNode.config?.addons === undefined
+                                        ? addon.enabled
+                                        : nodeSettingsNode.config.addons[addon.addonId] === true;
+                                    return <button
+                                        type="button"
+                                        className={`bd-edit-tag${selected ? ' is-selected' : ''}`}
+                                        aria-pressed={selected}
+                                        disabled={nodeConfigSaving || !addon.enabled}
+                                        key={addon.addonId}
+                                        title={addon.description}
+                                        onClick={() => {
+                                            const next = nodeSettingsNode.config?.addons === undefined
+                                                ? new Set(agentAddons.filter((item) => item.enabled).map((item) => item.addonId))
+                                                : new Set(Object.entries(nodeSettingsNode.config.addons).filter(([, enabled]) => enabled).map(([id]) => id));
+                                            if (selected) next.delete(addon.addonId);
+                                            else next.add(addon.addonId);
+                                            void saveNodeConfig(nodeSettingsNode.nodeId, { addonIds: [...next] });
+                                        }}
+                                    >{addon.displayName}{!addon.enabled ? ' · Agent 全局未启用' : ''}</button>;
+                                })}
+                            </div>
+                        </div>
                         {agentAddons.every((addon) => !addon.installed) && <p className="bd-muted">当前 domain 尚未安装 Addon。</p>}
                     </div>
                 </SessionDrawer>}
