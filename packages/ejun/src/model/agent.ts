@@ -591,6 +591,7 @@ export interface AgentWorkspaceDoc {
 
 export interface AgentNodeConfig {
     addons?: Record<string, boolean>;
+    context?: string;
 }
 
 export interface AgentNodeDoc {

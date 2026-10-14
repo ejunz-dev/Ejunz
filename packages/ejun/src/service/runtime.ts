@@ -14,13 +14,12 @@ import { AgentSessionModel as AgentModel, AgentRuntimeModel, AgentLinkModel, Age
 import { type AgentDisplayPrefs, type AgentDomainSettings, type AgentNodeConfig, type AgentNodeDoc, type AgentSessionDoc, type AgentSessionSummary, type AgentSessionType, type AgentWorkspaceDoc } from '../model/agent';
 import { type AgentRuntimeSummary } from '../model/agent';
 import { listAgentAddons } from './addons';
-import type { AgentAddonStateChange } from './bus';
+import type { AgentAddonStateChange, AgentNodeContextChange } from './bus';
 
 interface EjunContext {
     server?: { config?: { port?: number; host?: string } };
     effect(factory: () => () => void | Promise<void>): void;
     on?(event: string, listener: (...args: any[]) => unknown): void;
-    broadcast?(event: string, ...args: any[]): Promise<unknown> | unknown;
     get?(name: string): unknown;
     plugin(plugin: unknown): unknown;
     Route(name: string, path: string, handler: unknown, priv?: number): void;
@@ -46,7 +45,6 @@ interface RpcBody {
 
 const { WebSocket } = require('ws');
 const logger = new Logger('agent');
-let broadcastAgentAddonState: ((change: AgentAddonStateChange) => Promise<unknown> | unknown) | undefined;
 const agentRoot = path.resolve(__dirname, '../../../ejunzagent');
 const agentEmbedEntry = path.join(agentRoot, 'apps/cli/src/embed.ts');
 const CREDENTIAL_REF_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -553,10 +551,15 @@ async function sessionCardUpdate(envelope: RpcEnvelope, scope: AgentScope): Prom
         await agentDataAdapter.updateSessionContext(scope, sessionId, baseDocId ?? undefined);
     }
     await agentDataAdapter.updateSession(scope, sessionId, patch);
-    const failedAddonIds = movedNodeId && movedNodeId !== existing.nodeId
-        ? await syncSessionAddonsForNode(scope, sessionId, movedNodeId)
-        : [];
-    return rpcOk(envelope.rpcId, { sessionId, ...patch, ...(failedAddonIds.length ? { failedAddonIds } : {}) });
+    const moved = movedNodeId !== undefined && movedNodeId !== existing.nodeId;
+    const failedAddonIds = moved ? await syncSessionAddonsForNode(scope, sessionId, movedNodeId) : [];
+    const failedContextSync = moved ? await syncSessionNodeContextForNode(scope, sessionId, movedNodeId!) : false;
+    return rpcOk(envelope.rpcId, {
+        sessionId,
+        ...patch,
+        ...(failedAddonIds.length ? { failedAddonIds } : {}),
+        ...(failedContextSync ? { failedContextSync: true } : {}),
+    });
 }
 
 async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata: { type?: AgentSessionType; baseDocId?: string } = {}): Promise<RpcBody> {
@@ -691,6 +694,10 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
             }],
         }, link);
         if (!injected.body.result?.ok) logger.warn('[agent-base] context injection failed session=%s domain=%s baseId=%d error=%s', sessionId, scope.domainId, selectedBase.docId, injected.body.error?.message || 'unknown error');
+    }
+    if (node?.config?.context?.trim()) {
+        const injected = await injectAgentNodeContext(scope, sessionId, node.nodeId, node.config.context, link);
+        if (!injected) logger.warn('[agent-node] context injection failed session=%s node=%s', sessionId, node.nodeId);
     }
     if (workspace) await agentDataAdapter.reorderWorkspaceSessions(scope, workspace.workspaceId, [...workspace.sessionIds, summary.sessionId]);
     return rpcOk(envelope.rpcId, { sessionId: summary.sessionId, ...(summary.agentPreset ? { agentPreset: summary.agentPreset } : {}), ...(nodeId ? { nodeId } : {}) });
@@ -1212,63 +1219,54 @@ async function syncSessionAddonsForNode(scope: AgentScope, sessionId: string, no
     return failedAddonIds;
 }
 
-async function broadcastNodeAddonConfig(scope: AgentScope, nodeId: string, addons?: Record<string, boolean>): Promise<void> {
-    if (!broadcastAgentAddonState) {
-        logger.warn('[agent-node] Cordis add-on event publisher is unavailable node=%s', nodeId);
-        return;
-    }
-    for (const addon of listAgentAddons()) {
-        try {
-            await broadcastAgentAddonState({
-                domainId: scope.domainId,
-                userId: scope.userId,
-                ...(scope.agentId === undefined ? {} : { agentId: scope.agentId }),
-                nodeId,
-                addonId: addon.addonId,
-                enabled: addons?.[addon.addonId] === true,
-            });
-        } catch (error) {
-            logger.warn('[agent-node] Cordis add-on event failed node=%s addon=%s error=%s', nodeId, addon.addonId, error instanceof Error ? error.message : String(error));
-        }
+async function injectAgentNodeContext(
+    scope: AgentScope,
+    sessionId: string,
+    nodeId: string,
+    context: string | undefined,
+    target?: RuntimeLink,
+): Promise<boolean> {
+    const text = context?.trim()
+        ? `当前会话位于 Agent 节点「${nodeId}」。以下是当前节点配置的专属上下文；它替代先前注入的节点专属上下文，请以此为准：\n\n${context.trim()}`
+        : `当前会话所在的 Agent 节点「${nodeId}」没有配置专属上下文。请忽略此前由其他 Agent 节点注入的节点专属上下文。`;
+    const injected = await callUpstream('session.inject', {
+        sessionId,
+        plugin: 'ejunz-agent-node-context',
+        sections: [{ name: 'ejunz-agent-node-context', text }],
+    }, target ?? await linkForSession(scope, sessionId));
+    return injected.body.result?.ok === true;
+}
+
+async function syncSessionNodeContextForNode(scope: AgentScope, sessionId: string, nodeId: string): Promise<boolean> {
+    const session = await agentDataAdapter.getSession(scope, sessionId);
+    if (!session || session.started === false) return false;
+    try {
+        const context = (await nodeConfigForNode(scope, nodeId))?.context;
+        const injected = await injectAgentNodeContext(scope, sessionId, nodeId, context);
+        if (!injected) logger.warn('[agent-node] context injection failed session=%s node=%s', sessionId, nodeId);
+        return !injected;
+    } catch (error) {
+        logger.warn('[agent-node] context sync failed session=%s node=%s error=%s', sessionId, nodeId, error instanceof Error ? error.message : String(error));
+        return true;
     }
 }
 
-async function nodeConfigSave(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
-    const payload = envelope.payload ?? {};
-    const nodeId = typeof payload.nodeId === 'string' ? payload.nodeId : '';
-    const rawPatch = payload.patch && typeof payload.patch === 'object' && !Array.isArray(payload.patch)
-        ? payload.patch as Record<string, unknown>
-        : {};
-    if (!nodeId) return rpcError(envelope.rpcId, 'nodeId is required');
-    const node = await agentDataAdapter.getNode(scope, nodeId);
-    if (!node) return rpcError(envelope.rpcId, 'node not found');
-    const config: AgentNodeConfig = node.config?.addons ? { addons: node.config.addons } : {};
-    const patch: Partial<AgentNodeConfig> = {};
-    if (Object.prototype.hasOwnProperty.call(rawPatch, 'addonIds')) {
-        if (!Array.isArray(rawPatch.addonIds) || rawPatch.addonIds.some((id) => typeof id !== 'string')) {
-            return rpcError(envelope.rpcId, 'addonIds must be an array of add-on ids');
-        }
-        const ids = [...new Set(rawPatch.addonIds as string[])];
-        if (ids.length > 128) return rpcError(envelope.rpcId, 'At most 128 add-ons can be selected per node');
-        const settings = await agentDataAdapter.getDomainSettings(scope.domainId);
-        for (const id of ids) {
-            if (!listAgentAddons().some((addon) => addon.addonId === id)
-                || !agentAddonInstalled(settings, id)
-                || !agentAddonEnabled(settings, id, scope.agentId)) {
-                return rpcError(envelope.rpcId, `Add-on ${id} is not installed and enabled for this Agent`);
-            }
-        }
-        patch.addons = Object.fromEntries(ids.map((id) => [id, true]));
+async function recordNodeContextForSessions(change: AgentNodeContextChange): Promise<void> {
+    const scope: AgentScope = {
+        domainId: change.domainId,
+        userId: change.userId,
+        ...(change.agentId === undefined ? {} : { agentId: change.agentId }),
+    };
+    const sessions = (await AgentModel.listAllSessions()).filter((session) =>
+        session.domainId === change.domainId
+        && session.userId === change.userId
+        && !session.archived
+        && (change.agentId === undefined || (session.agentId ?? null) === change.agentId)
+        && session.nodeId === change.nodeId);
+    for (let offset = 0; offset < sessions.length; offset += 8) {
+        const batch = sessions.slice(offset, offset + 8);
+        await Promise.all(batch.map((session) => syncSessionNodeContextForNode(scope, session.sessionId, change.nodeId)));
     }
-    if (Object.keys(patch).length === 0) return rpcError(envelope.rpcId, 'node config patch is empty');
-
-    const nextConfig = { ...config, ...patch };
-    const updated = await agentDataAdapter.updateNodeConfig(scope, nodeId, nextConfig);
-    if (!updated) return rpcError(envelope.rpcId, 'node not found');
-    if (Object.prototype.hasOwnProperty.call(patch, 'addons')) {
-        await broadcastNodeAddonConfig(scope, nodeId, patch.addons);
-    }
-    return rpcOk(envelope.rpcId, { node: nodeView(updated), syncScheduled: true });
 }
 
 async function nodeRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
@@ -1282,7 +1280,6 @@ async function nodeRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBod
     if (method === 'node.list') {
         return rpcOk(envelope.rpcId, { items: (await agentDataAdapter.listNodes(scope)).map(nodeView) });
     }
-    if (method === 'node.config.save') return await nodeConfigSave(envelope, scope);
     if (method === 'node.create') {
         const text = String(payload.text || '').trim();
         if (!text) return rpcError(envelope.rpcId, 'node name is required');
@@ -1316,7 +1313,8 @@ async function nodeRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBod
             const failedSessionIds: string[] = [];
             for (const session of sessionsToSync) {
                 const failedAddons = await syncSessionAddonsForNode(scope, session.sessionId, targetNodeId);
-                (failedAddons.length > 0 ? failedSessionIds : updatedSessionIds).push(session.sessionId);
+                const failedContext = await syncSessionNodeContextForNode(scope, session.sessionId, targetNodeId ?? '');
+                (failedAddons.length > 0 || failedContext ? failedSessionIds : updatedSessionIds).push(session.sessionId);
             }
             return rpcOk(envelope.rpcId, { deleted: true, updatedSessionIds, failedSessionIds });
         } catch (error) {
@@ -2687,13 +2685,14 @@ export async function initializeAgentRuntime(ctx: EjunContext): Promise<() => Pr
     await modelReady;
     await agentDataAdapter.resetRunningSessions();
     await ensureBuiltinBridgeToken();
-    const cordisBroadcast = ctx.broadcast;
-    broadcastAgentAddonState = cordisBroadcast
-        ? (change) => cordisBroadcast('agent/addon-state', change)
-        : undefined;
     ctx.on?.('agent/addon-state', (change: AgentAddonStateChange) => {
         void recordAddonStateForSessions(change).catch((error) => {
             logger.warn('[addons] state fanout failed domain=%s addon=%s error=%s', change.domainId, change.addonId, error instanceof Error ? error.message : String(error));
+        });
+    });
+    ctx.on?.('agent/node-context', (change: AgentNodeContextChange) => {
+        void recordNodeContextForSessions(change).catch((error) => {
+            logger.warn('[agent-node] context fanout failed domain=%s node=%s error=%s', change.domainId, change.nodeId, error instanceof Error ? error.message : String(error));
         });
     });
     ctx.on?.('tool/base-select', onBaseSelect);
@@ -3478,7 +3477,7 @@ export const agentRuntimeHandlerContext = {
     requireBridgeToken, baseSessionScope, toolRegistry,
     scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, upstreamValue,
     nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled,
-    agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, syncSessionAddonsForNode, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,
+    agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, syncSessionAddonsForNode, syncSessionNodeContextForNode, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,
     baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems,
     runtimeRelabel, runtimeRemove, sessionCardCreate, sessionCardUpdate, sessionCreate, sessionHistory, sessionMessageCount,
     sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink,

@@ -17,6 +17,7 @@ import { AgentDisplaySettingsDialog, defaultAgentDisplaySettings, readAgentDispl
 import { SessionSettingsPanel } from './components/structure/SessionSettingsPanel';
 import { SessionDrawer } from './components/structure/SessionDrawer';
 import { NodeAddonSettingsPanel } from './components/structure/NodeAddonSettingsPanel';
+import { NodeContextSettingsPanel } from './components/structure/NodeContextSettingsPanel';
 import { SessionTree } from './components/structure/SessionTree';
 import type { HostOption } from './components/structure/HostPicker';
 import { ActionDialog } from './components/primitives/ActionDialog';
@@ -446,6 +447,7 @@ export default function AgentPage() {
     const [modelMenuOpen, setModelMenuOpen] = useState(false);
     const [detailsOpen, setDetailsOpen] = useState(false);
     const [nodeSettingsId, setNodeSettingsId] = useState<string | null>(null);
+    const [nodeSettingsTab, setNodeSettingsTab] = useState<'context' | 'addons'>('context');
     const [nodeConfigSaving, setNodeConfigSaving] = useState(false);
     const [selectedTool, setSelectedTool] = useState<ChatMessage | null>(null);
     const [newSessionConfigOpen, setNewSessionConfigOpen] = useState(false);
@@ -1943,6 +1945,7 @@ export default function AgentPage() {
         setDetailsOpen(false);
         setSelectedTool(null);
         setNodeSettingsId(nodes.some((node) => node.nodeId === nodeId) ? nodeId : null);
+        setNodeSettingsTab('context');
         updateAgentSelectionUrl({ nodeId, cardId: null });
     }, [nodes]);
     const selectSession = useCallback((sessionId: string) => {
@@ -2137,21 +2140,33 @@ export default function AgentPage() {
                     loading={false}
                     drawerWidth={sessionDrawerWidth}
                     view="model"
-                    title={`${nodeSettingsNode.text} · 配置`}
-                    hideTabs
+                    title={nodeSettingsNode.text}
+                    headerTabs={[
+                        { id: 'context', label: '上下文', active: nodeSettingsTab === 'context', onSelect: () => setNodeSettingsTab('context') },
+                        { id: 'addons', label: '插件', active: nodeSettingsTab === 'addons', onSelect: () => setNodeSettingsTab('addons') },
+                    ]}
                     onViewChange={() => {}}
                     onResize={(delta) => setSessionDrawerWidth((width) => Math.max(SESSION_DRAWER_MIN, width + delta))}
                     onClose={() => setNodeSettingsId(null)}
                 >
-                    <NodeAddonSettingsPanel
-                        node={nodeSettingsNode}
-                        addons={agentAddons}
-                        saving={nodeConfigSaving}
-                        onSave={async (addonIds) => {
-                            await saveNodeConfig(nodeSettingsNode.nodeId, { addonIds });
-                            await Notification.success('节点 Addon 配置已保存，现有会话将在后台同步');
-                        }}
-                    />
+                    {nodeSettingsTab === 'context'
+                        ? <NodeContextSettingsPanel
+                            node={nodeSettingsNode}
+                            saving={nodeConfigSaving}
+                            onSave={async (context) => {
+                                await saveNodeConfig(nodeSettingsNode.nodeId, { context });
+                                await Notification.success('节点上下文已保存，现有 card 将在后台注入');
+                            }}
+                        />
+                        : <NodeAddonSettingsPanel
+                            node={nodeSettingsNode}
+                            addons={agentAddons}
+                            saving={nodeConfigSaving}
+                            onSave={async (addonIds) => {
+                                await saveNodeConfig(nodeSettingsNode.nodeId, { addonIds });
+                                await Notification.success('节点插件配置已保存，现有 card 将在后台同步');
+                            }}
+                        />}
                 </SessionDrawer>}
                 {detailsOpen && (currentSession || creatingSession) && <SessionDrawer
                             loading={creatingSession || (historyLoading && !pendingSendVisible)}

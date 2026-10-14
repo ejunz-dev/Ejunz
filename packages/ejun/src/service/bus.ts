@@ -41,6 +41,13 @@ export interface AgentAddonStateChange {
     enabled: boolean;
 }
 
+export interface AgentNodeContextChange {
+    domainId: string;
+    userId: number;
+    agentId?: number | null;
+    nodeId: string;
+}
+
 export interface EventMap {
     'app/listen': () => void;
     'app/started': () => void;
@@ -64,6 +71,7 @@ export interface EventMap {
     'system/setting': (args: Record<string, any>) => VoidReturn;
     'system/setting-loaded': () => VoidReturn;
     'agent/addon-state': (change: AgentAddonStateChange) => VoidReturn;
+    'agent/node-context': (change: AgentNodeContextChange) => VoidReturn;
     'bus/broadcast': (event: keyof EventMap, payload: any, trace?: string) => VoidReturn;
     'monitor/update': (type: 'server' | 'worker', $set: any) => VoidReturn;
     'monitor/collect': (info: any) => VoidReturn;

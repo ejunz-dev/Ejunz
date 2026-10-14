@@ -2,6 +2,7 @@ import type { Context } from '../context';
 import { ConnectionHandler, Handler } from '@ejunz/framework';
 import { PERM, PRIV } from '../model/builtin';
 import AgentDefinitionModel, { AgentSessionModel } from '../model/agent';
+import type { AgentNodeConfig, AgentNodeDoc } from '../model/agent';
 import type { AgentScope, RuntimeLink } from '../service/runtime';
 import type { AgentStorageDescriptor } from '../model/agent';
 import type { RuntimeHelloFrame, RuntimeInboundFrame, RuntimeLinkPollFrame, RuntimeStream } from '../service/runtime';
@@ -19,6 +20,94 @@ interface RpcEnvelope {
 const { requireBridgeToken, baseSessionScope, toolRegistry, scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled, agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, baseTutorEnsure, baseTutorList, baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems, runtimeRelabel, runtimeRemove, sessionCardCreate, sessionCardUpdate, sessionCreate, sessionHistory, sessionMessageCount, sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink, logger, RUNTIME_HELLO_TIMEOUT_MS, addLink, rememberRuntime, reportRuntime, agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider, SystemModel, randomUUID, WebSocket, parseRuntimeFrame, createSocketLink, followLinks, runtimeLinks, runtimeFacts, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels, cloneSettingsSections } = service;
 const dataOk = (value: unknown): Record<string, unknown> => ({ ok: true, value });
 const dataError = (message: string): Record<string, unknown> => ({ ok: false, error: { message } });
+
+function agentNodeView(node: AgentNodeDoc) {
+    return {
+        nodeId: node.nodeId,
+        ...(node.parentId ? { parentId: node.parentId } : {}),
+        ...(node.isRoot ? { isRoot: true } : {}),
+        text: node.text,
+        order: node.order,
+        ...(node.config === undefined ? {} : { config: node.config }),
+        createdAt: node.createdAt.toISOString(),
+        updatedAt: node.updatedAt.toISOString(),
+    };
+}
+
+async function saveAgentNodeConfig(envelope: RpcEnvelope, scope: AgentScope, ctx: Context) {
+    const nodeId = typeof envelope.payload?.nodeId === 'string' ? envelope.payload.nodeId : '';
+    const rawPatch = envelope.payload?.patch && typeof envelope.payload.patch === 'object' && !Array.isArray(envelope.payload.patch)
+        ? envelope.payload.patch as Record<string, unknown>
+        : {};
+    if (!nodeId) return rpcError(envelope.rpcId, 'nodeId is required');
+    if (typeof scope.agentId === 'number') {
+        const agent = await AgentDefinitionModel.get(scope.domainId, scope.agentId, AgentDefinitionModel.PROJECTION_LIST);
+        if (!agent) return rpcError(envelope.rpcId, 'Agent not found in current domain');
+        await AgentSessionModel.ensureAgentRoot(scope.domainId, scope.userId, scope.agentId, agent.title);
+    }
+    const node = await AgentSessionModel.getNode(scope.domainId, scope.userId, nodeId, scope.agentId);
+    if (!node) return rpcError(envelope.rpcId, 'node not found');
+
+    const config: AgentNodeConfig = {
+        ...(node.config?.addons === undefined ? {} : { addons: node.config.addons }),
+        ...(node.config?.context === undefined ? {} : { context: node.config.context }),
+    };
+    const patch: Partial<AgentNodeConfig> = {};
+    if (Object.prototype.hasOwnProperty.call(rawPatch, 'addonIds')) {
+        if (!Array.isArray(rawPatch.addonIds) || rawPatch.addonIds.some((id) => typeof id !== 'string')) {
+            return rpcError(envelope.rpcId, 'addonIds must be an array of add-on ids');
+        }
+        const addonIds = [...new Set(rawPatch.addonIds as string[])];
+        if (addonIds.length > 128) return rpcError(envelope.rpcId, 'At most 128 add-ons can be selected per node');
+        const result = await agentAddonsList({ rpcId: envelope.rpcId, method: 'agent.addons.list' }, scope);
+        const available = (result.result?.value as { addons?: { addonId: string; installed: boolean; enabled: boolean }[] } | undefined)?.addons ?? [];
+        for (const addonId of addonIds) {
+            if (!available.some((addon) => addon.addonId === addonId && addon.installed && addon.enabled)) {
+                return rpcError(envelope.rpcId, `Add-on ${addonId} is not installed and enabled for this Agent`);
+            }
+        }
+        patch.addons = Object.fromEntries(addonIds.map((addonId) => [addonId, true]));
+    }
+    if (Object.prototype.hasOwnProperty.call(rawPatch, 'context')) {
+        if (typeof rawPatch.context !== 'string') return rpcError(envelope.rpcId, 'context must be a string');
+        if (rawPatch.context.length > 20_000) return rpcError(envelope.rpcId, 'context must not exceed 20000 characters');
+        patch.context = rawPatch.context;
+    }
+    if (Object.keys(patch).length === 0) return rpcError(envelope.rpcId, 'node config patch is empty');
+
+    const updated = await AgentSessionModel.updateNodeConfig(scope.domainId, scope.userId, nodeId, { ...config, ...patch }, scope.agentId);
+    if (!updated) return rpcError(envelope.rpcId, 'node not found');
+
+    if (Object.prototype.hasOwnProperty.call(patch, 'addons')) {
+        for (const addon of listAgentAddons()) {
+            try {
+                await ctx.broadcast('agent/addon-state', {
+                    domainId: scope.domainId,
+                    userId: scope.userId,
+                    ...(scope.agentId === undefined ? {} : { agentId: scope.agentId }),
+                    nodeId,
+                    addonId: addon.addonId,
+                    enabled: patch.addons?.[addon.addonId] === true,
+                });
+            } catch (error) {
+                logger.warn('[agent-node] Cordis addon event failed node=%s addon=%s error=%s', nodeId, addon.addonId, error instanceof Error ? error.message : String(error));
+            }
+        }
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'context')) {
+        try {
+            await ctx.broadcast('agent/node-context', {
+                domainId: scope.domainId,
+                userId: scope.userId,
+                ...(scope.agentId === undefined ? {} : { agentId: scope.agentId }),
+                nodeId,
+            });
+        } catch (error) {
+            logger.warn('[agent-node] Cordis context event failed node=%s error=%s', nodeId, error instanceof Error ? error.message : String(error));
+        }
+    }
+    return rpcOk(envelope.rpcId, { node: agentNodeView(updated), syncScheduled: true });
+}
 
 async function mountedAddonsForSession(session: { domainId: string; userId: number; sessionId: string; agentId?: number }): Promise<Set<string>> {
     const addonIds = new Set(listAgentAddons().map((addon) => addon.addonId));
@@ -469,6 +558,11 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             this.response.body = JSON.stringify(rpcOk(envelope.rpcId, {
                 display: await agentDataAdapter.saveDisplayPrefs(scope, envelope.payload?.display),
             }));
+            return;
+        }
+        if (method === 'node.config.save') {
+            this.response.type = 'application/json';
+            this.response.body = JSON.stringify(await saveAgentNodeConfig(envelope, scope, this.ctx));
             return;
         }
         if (method.startsWith('node.')) {

@@ -2,6 +2,7 @@ import type { SessionEvent } from './conversation';
 
 export interface AgentNodeConfig {
     addons?: Record<string, boolean>;
+    context?: string;
 }
 
 export interface AgentNode {

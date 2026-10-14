@@ -8,6 +8,7 @@ export interface ToolContext {
     scope?: bigint;
     /** Session add-ons allowed to expose and execute tools for this Agent request. */
     mountedAddons?: ReadonlySet<string>;
+    broadcastAgentEvent?: (event: 'agent/addon-state' | 'agent/node-context', payload: Record<string, unknown>) => Promise<unknown> | unknown;
     setting?: { get: (k: string) => unknown };
 }
 

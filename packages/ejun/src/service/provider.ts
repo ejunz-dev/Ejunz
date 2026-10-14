@@ -46,6 +46,7 @@ export function createProvider(
         ...(scope.perm !== undefined ? { perm: scope.perm } : {}),
         ...(scope.scope !== undefined ? { scope: scope.scope } : {}),
         ...(scope.mountedAddons !== undefined ? { mountedAddons: scope.mountedAddons } : {}),
+        ...(typeof ctx.broadcast === 'function' ? { broadcastAgentEvent: (event, payload) => (ctx.broadcast as any)(event, payload) } : {}),
         setting: get('setting'),
     });
     return {

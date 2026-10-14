@@ -6,8 +6,8 @@ import UserModel from 'ejun/src/model/user';
 import { MAX_CARDS_PER_CALL, MAX_FILE_CONTENT_CHARS, MAX_FILE_CONTENT_CHARS_LIMIT, MAX_NODES_PER_CALL } from '../lib/tool-limits';
 import { asText, idList } from '../lib/tool-shared';
 import { agentRuntimeHandlerContext } from '../service/runtime';
-import { registerAgentAddon } from '../service/addons';
-import type { AgentNodeDoc, AgentSessionSummary } from 'ejun/src/model/agent';
+import { listAgentAddons, registerAgentAddon } from '../service/addons';
+import type { AgentNodeConfig, AgentNodeDoc, AgentSessionSummary } from 'ejun/src/model/agent';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import type {} from '../service/registry';
 
@@ -43,12 +43,12 @@ export const Remove = Schema.object({
 
 export const NodeList = Schema.object({
     agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-}).description('List the current user’s workspace nodes for an Agent, including each node’s Addon configuration and its root node.');
+}).description('List the current user’s workspace nodes for an Agent, including each node’s Addon and context configuration and its root node.');
 
 export const NodeGet = Schema.object({
     agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
     nodeId: Schema.string().required().description('Node id.'),
-}).description('Read one workspace node belonging to an Agent, including its Addon configuration, direct child nodes, and attached session cards.');
+}).description('Read one workspace node belonging to an Agent, including its Addon and context configuration, direct child nodes, and attached session cards.');
 
 export const NodeCreate = Schema.object({
     agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
@@ -62,7 +62,8 @@ export const NodeUpdate = Schema.object({
     text: Schema.string().description('New node title (optional).'),
     parentId: Schema.string().description('Existing parent node id (optional; omit to keep the current parent).'),
     addonIds: Schema.array(Schema.string()).description('Replace the Addons enabled for this node. Pass an empty array to disable all Addons. Addons must already be installed and enabled for this Agent.'),
-}).description('Rename or move an Agent workspace node with text and/or parentId, or configure its Addons by passing addonIds alone. Node-local Addon configuration does not change Agent-wide Addon switches. Existing sessions on the node are updated, and new sessions use the selection when they start. The root node may have Addons configured but cannot be renamed or moved.');
+    context: Schema.string().description('Replace the free-form context injected into cards on this node. Pass an empty string to clear it.'),
+}).description('Rename or move an Agent workspace node with text and/or parentId, or configure its Addons and context. Node-local Addon configuration does not change Agent-wide Addon switches. Context is injected into cards on this node. The root node may be configured but cannot be renamed or moved.');
 
 export const NodeRemove = Schema.object({
     agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
@@ -85,7 +86,7 @@ export const NodeCreateMany = Schema.object({
 export const NodeGetMany = Schema.object({
     agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
     nodeIds: Schema.array(Schema.string()).min(1).max(MAX_NODES_PER_CALL).required().description('Node ids to read, in order.'),
-}).description('Read several workspace nodes of one Agent, each with its Addon configuration, direct child nodes, and session cards. '
+}).description('Read several workspace nodes of one Agent, each with its Addon and context configuration, direct child nodes, and session cards. '
     + `A missing id is listed in \`missingNodeIds\` and \`ok\` is false. One call reads at most ${MAX_NODES_PER_CALL} nodes.`);
 
 export const NodeUpdateMany = Schema.object({
@@ -133,7 +134,7 @@ export const CardCreate = Schema.object({
     baseDocId: Schema.number().step(1).min(1).description('Optional Base to attach as this session\'s context.'),
     runtimeId: Schema.string().description('Optional host id. Omit it to use the default host.'),
     agentPreset: Schema.string().description('Optional Agent preset id.'),
-}).description('Create a session card with its node, title, model, Base, host, and preset already set. '
+}).description('Create a session card with its node, title, model, Base, host, and preset already set. The selected node’s context is injected when the conversation starts. '
     + 'Pass message to start the conversation after the card exists. Omit message to leave the card ready and silent. Requires an available Agent runtime.');
 
 export const CardUpdate = Schema.object({
@@ -439,8 +440,9 @@ export async function updateNode(ctx: ToolContext, args: ToolArgs) {
     const parentId = hasParent ? asText(args.parentId) : undefined;
     if (hasParent && !parentId) throw new Error('parentId cannot be empty');
     const hasAddonIds = Object.prototype.hasOwnProperty.call(args, 'addonIds');
-    if (!hasText && !hasParent && !hasAddonIds) throw new Error('Nothing to update (text, parentId, or addonIds required)');
-    if (hasAddonIds && (hasText || hasParent)) throw new Error('Update Addon configuration separately from node text or placement');
+    const hasContext = Object.prototype.hasOwnProperty.call(args, 'context');
+    if (!hasText && !hasParent && !hasAddonIds && !hasContext) throw new Error('Nothing to update');
+    if ((hasAddonIds || hasContext) && (hasText || hasParent)) throw new Error('Update node configuration separately from node text or placement');
 
     let node = await AgentSessionModel.getNode(ctx.domainId, ctx.owner, nodeId, agentId);
     if (!node) throw new Error(`Node not found in Agent ${agentId}: ${nodeId}`);
@@ -451,23 +453,50 @@ export async function updateNode(ctx: ToolContext, args: ToolArgs) {
 
     let configUpdate: Record<string, unknown> = {};
     let resultNode: unknown = nodeView(node);
-    if (hasAddonIds) {
-        if (!Array.isArray(args.addonIds) || args.addonIds.some((id: unknown) => typeof id !== 'string' || !id.trim())) {
-            throw new Error('addonIds must be an array of non-empty add-on ids');
-        }
-        const addonIds = [...new Set((args.addonIds as string[]).map((id) => id.trim()))];
-        const response = await agentRuntimeHandlerContext.nodeRpc({
-            rpcId: 'agent_node_update',
-            method: 'node.config.save',
-            payload: { nodeId, patch: { addonIds } },
-        }, sessionScope(ctx, agentId));
-        if (!response.result?.ok) throw new Error(response.error?.message || 'Failed to update node Addon configuration');
-        const value = response.result.value as Record<string, unknown> | undefined;
-        if (value?.node !== undefined) resultNode = value.node;
-        configUpdate = {
-            ...(value?.updatedSessionIds === undefined ? {} : { updatedSessionIds: value.updatedSessionIds }),
-            ...(value?.failedSessionIds === undefined ? {} : { failedSessionIds: value.failedSessionIds }),
+    if (hasAddonIds || hasContext) {
+        const config: AgentNodeConfig = {
+            ...(node.config?.addons === undefined ? {} : { addons: node.config.addons }),
+            ...(node.config?.context === undefined ? {} : { context: node.config.context }),
         };
+        if (hasAddonIds) {
+            if (!Array.isArray(args.addonIds) || args.addonIds.some((id: unknown) => typeof id !== 'string' || !id.trim())) {
+                throw new Error('addonIds must be an array of non-empty add-on ids');
+            }
+            const addonIds = [...new Set((args.addonIds as string[]).map((id) => id.trim()))];
+            const result = await agentRuntimeHandlerContext.agentAddonsList({ rpcId: 'agent-node-addons', method: 'agent.addons.list' }, sessionScope(ctx, agentId));
+            const available = (result.result?.value as { addons?: { addonId: string; installed: boolean; enabled: boolean }[] } | undefined)?.addons ?? [];
+            for (const addonId of addonIds) {
+                if (!available.some((addon) => addon.addonId === addonId && addon.installed && addon.enabled)) {
+                    throw new Error(`Add-on ${addonId} is not installed and enabled for this Agent`);
+                }
+            }
+            config.addons = Object.fromEntries(addonIds.map((id) => [id, true]));
+        }
+        if (hasContext) {
+            if (typeof args.context !== 'string') throw new Error('context must be a string');
+            if (args.context.length > 20_000) throw new Error('context must not exceed 20000 characters');
+            config.context = args.context;
+        }
+        if (!ctx.broadcastAgentEvent) throw new Error('Cordis event publisher is unavailable');
+        const updated = await AgentSessionModel.updateNodeConfig(ctx.domainId, ctx.owner, nodeId, config, agentId);
+        if (!updated) throw new Error(`Node not found in Agent ${agentId}: ${nodeId}`);
+        resultNode = nodeView(updated);
+        if (hasAddonIds) {
+            for (const addon of listAgentAddons()) {
+                await ctx.broadcastAgentEvent('agent/addon-state', {
+                    domainId: ctx.domainId,
+                    userId: ctx.owner,
+                    agentId,
+                    nodeId,
+                    addonId: addon.addonId,
+                    enabled: config.addons?.[addon.addonId] === true,
+                });
+            }
+        }
+        if (hasContext) {
+            await ctx.broadcastAgentEvent('agent/node-context', { domainId: ctx.domainId, userId: ctx.owner, agentId, nodeId });
+        }
+        configUpdate = { syncScheduled: true };
     }
     return { ok: true, agentId, node: resultNode, ...configUpdate };
 }
@@ -703,14 +732,22 @@ export async function updateCard(ctx: ToolContext, args: ToolArgs) {
     if (title === undefined && nodeId === undefined) throw new Error('Nothing to update (title or nodeId required)');
     if (title !== undefined) await renameSessionCard(ctx, agentId, sessionId, title);
     let failedAddonIds: string[] = [];
+    let failedContextSync = false;
     if (nodeId !== undefined && nodeId !== session.nodeId) {
         const scope = sessionScope(ctx, agentId);
         await agentRuntimeHandlerContext.agentDataAdapter.updateSession(scope, sessionId, { nodeId });
         failedAddonIds = await agentRuntimeHandlerContext.syncSessionAddonsForNode(scope, sessionId, nodeId);
+        failedContextSync = await agentRuntimeHandlerContext.syncSessionNodeContextForNode(scope, sessionId, nodeId);
     }
     const updated = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, agentId);
     if (!updated) throw new Error(`Session card not found in Agent ${agentId}: ${sessionId}`);
-    return { ok: true, agentId, card: sessionCardView(updated), ...(failedAddonIds.length ? { failedAddonIds } : {}) };
+    return {
+        ok: true,
+        agentId,
+        card: sessionCardView(updated),
+        ...(failedAddonIds.length ? { failedAddonIds } : {}),
+        ...(failedContextSync ? { failedContextSync: true } : {}),
+    };
 }
 
 export async function createNodes(ctx: ToolContext, args: ToolArgs) {
@@ -923,21 +960,28 @@ export async function updateCards(ctx: ToolContext, args: ToolArgs) {
             throw new Error(`Node not found in Agent ${agentId}: ${entry.nodeId}`);
         }
     }
-    const updated: { index: number; card: ReturnType<typeof sessionCardView>; failedAddonIds?: string[] }[] = [];
+    const updated: { index: number; card: ReturnType<typeof sessionCardView>; failedAddonIds?: string[]; failedContextSync?: boolean }[] = [];
     const refused: { index: number; cardId: string; error: string }[] = [];
     for (const entry of planned) {
         try {
             if (entry.title) await renameSessionCard(ctx, agentId, entry.cardId, entry.title);
             const current = byId.get(entry.cardId)!;
             let failedAddonIds: string[] = [];
+            let failedContextSync = false;
             if (entry.nodeId && entry.nodeId !== current.nodeId) {
                 const scope = sessionScope(ctx, agentId);
                 await agentRuntimeHandlerContext.agentDataAdapter.updateSession(scope, entry.cardId, { nodeId: entry.nodeId });
                 failedAddonIds = await agentRuntimeHandlerContext.syncSessionAddonsForNode(scope, entry.cardId, entry.nodeId);
+                failedContextSync = await agentRuntimeHandlerContext.syncSessionNodeContextForNode(scope, entry.cardId, entry.nodeId);
             }
             const session = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, entry.cardId, agentId);
             if (!session) throw new Error(`Session card not found in Agent ${agentId}: ${entry.cardId}`);
-            updated.push({ index: entry.index, card: sessionCardView(session), ...(failedAddonIds.length ? { failedAddonIds } : {}) });
+            updated.push({
+                index: entry.index,
+                card: sessionCardView(session),
+                ...(failedAddonIds.length ? { failedAddonIds } : {}),
+                ...(failedContextSync ? { failedContextSync: true } : {}),
+            });
         } catch (error) {
             refused.push({ index: entry.index, cardId: entry.cardId, error: (error as Error).message });
         }

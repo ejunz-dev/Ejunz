@@ -12,6 +12,13 @@ interface ContextTabSlotProps {
 
 const ContextTabSlot = defineSlot<ContextTabSlotProps>('component:agent-context-tab', () => null);
 
+interface SessionDrawerHeaderTab {
+    id: string;
+    label: string;
+    active: boolean;
+    onSelect: () => void;
+}
+
 interface SessionDrawerProps {
     loading: boolean;
     loadingLabel?: string;
@@ -19,6 +26,7 @@ interface SessionDrawerProps {
     view: SessionDrawerView;
     title?: string;
     hideTabs?: boolean;
+    headerTabs?: readonly SessionDrawerHeaderTab[];
     onViewChange: (view: SessionDrawerView) => void;
     onResize: (delta: number) => void;
     onClose: () => void;
@@ -59,7 +67,7 @@ function ResizeHandle({ onResize }: { onResize: (delta: number) => void }) {
     return <div className="eza-sessionDrawerResize" data-dragging={dragging || undefined} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} />;
 }
 
-export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWidth, view, title = '会话历史', hideTabs = false, onViewChange, onResize, onClose, children, overlay }: SessionDrawerProps) {
+export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWidth, view, title = '会话历史', hideTabs = false, headerTabs, onViewChange, onResize, onClose, children, overlay }: SessionDrawerProps) {
     const contextTabRegistered = useSyncExternalStore(
         (listener) => store.subscribe('component:agent-context-tab', listener),
         () => store.getInterceptors('component:agent-context-tab').length > 0,
@@ -70,8 +78,8 @@ export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWi
     const closeTimerRef = useRef<number | null>(null);
     const swipeRef = useRef<SwipeState | null>(null);
     useEffect(() => {
-        if (!contextTabRegistered && view === 'context') onViewChange('chat');
-    }, [contextTabRegistered, onViewChange, view]);
+        if (!headerTabs && !contextTabRegistered && view === 'context') onViewChange('chat');
+    }, [contextTabRegistered, headerTabs, onViewChange, view]);
     useEffect(() => () => {
         if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
     }, []);
@@ -117,7 +125,10 @@ export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWi
         <aside className="bd-drawer bd-card-drawer eza-sessionDrawer" data-closing={closing || undefined} style={{ '--eza-session-drawer-width': `${drawerWidth}px` } as CSSProperties} role="dialog" aria-modal="true" aria-label={title} onWheel={(event) => event.stopPropagation()} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerCancel}>
             <ResizeHandle onResize={onResize} />
             <header className="bd-drawer__header">
-                {hideTabs ? <div className="bd-drawer__tabs"><strong>{title}</strong></div> : <div className="bd-drawer__tabs" role="tablist">
+                {headerTabs ? <div className="bd-drawer__tabs" role="tablist" aria-label={title}>
+                    <strong>{title}</strong>
+                    {headerTabs.map((tab) => <button type="button" role="tab" className={tab.active ? 'is-active' : ''} aria-selected={tab.active} key={tab.id} onClick={tab.onSelect}>{tab.label}</button>)}
+                </div> : hideTabs ? <div className="bd-drawer__tabs"><strong>{title}</strong></div> : <div className="bd-drawer__tabs" role="tablist">
                     <button type="button" role="tab" className={view === 'chat' ? 'is-active' : ''} aria-selected={view === 'chat'} onClick={() => onViewChange('chat')}>对话</button>
                     <button type="button" role="tab" className={view === 'trajectory' ? 'is-active' : ''} aria-selected={view === 'trajectory'} onClick={() => onViewChange('trajectory')}>轨迹</button>
                     <button type="button" role="tab" className={view === 'model' ? 'is-active' : ''} aria-selected={view === 'model'} onClick={() => onViewChange('model')}>模型</button>
