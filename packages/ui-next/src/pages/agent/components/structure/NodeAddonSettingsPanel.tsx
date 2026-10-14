@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Notification } from '@ejunz/ui-next';
 import type { AgentNode } from '../../runtime/session';
 import type { AgentAddonView } from '../types';
 
@@ -29,7 +30,6 @@ export function NodeAddonSettingsPanel({ node, addons, saving, onSave }: NodeAdd
         ? 'inherit-global'
         : `configured:${selectedKey(configuredIds)}`;
     const [draftAddonIds, setDraftAddonIds] = useState(configuredIds);
-    const [error, setError] = useState('');
     const sourceRef = useRef({ nodeId: node.nodeId, configuredKey });
     const isDirty = selectedKey(draftAddonIds) !== selectedKey(configuredIds);
 
@@ -43,16 +43,14 @@ export function NodeAddonSettingsPanel({ node, addons, saving, onSave }: NodeAdd
         setDraftAddonIds((current) => current.includes(addonId)
             ? current.filter((id) => id !== addonId)
             : [...current, addonId]);
-        setError('');
     };
 
     const save = async () => {
         if (!isDirty || saving) return;
-        setError('');
         try {
             await onSave(draftAddonIds.filter((addonId) => enabledIds.has(addonId)));
         } catch (cause) {
-            setError(cause instanceof Error ? cause.message : String(cause));
+            await Notification.error(cause instanceof Error ? cause.message : String(cause));
         }
     };
 
@@ -77,7 +75,6 @@ export function NodeAddonSettingsPanel({ node, addons, saving, onSave }: NodeAdd
                 </div>
                 {addons.every((addon) => !addon.installed) && <span className="bd-muted">当前 domain 尚未安装 Addon。</span>}
                 {isDirty && <span className="bd-muted" role="status">已选择 {draftAddonIds.length} 个 Addon，尚未保存</span>}
-                {error && <span className="bd-edit-dialog__error" role="alert">{error}</span>}
             </div>
         </div>
         <footer className="bd-edit-dialog__footer eza-nodeAddonFooter">

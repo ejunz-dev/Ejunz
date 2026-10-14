@@ -2150,7 +2150,10 @@ export default function AgentPage() {
                         node={nodeSettingsNode}
                         addons={agentAddons}
                         saving={nodeConfigSaving}
-                        onSave={(addonIds) => saveNodeConfig(nodeSettingsNode.nodeId, { addonIds })}
+                        onSave={async (addonIds) => {
+                            await saveNodeConfig(nodeSettingsNode.nodeId, { addonIds });
+                            await Notification.success('节点 Addon 配置已保存');
+                        }}
                     />
                 </SessionDrawer>}
                 {detailsOpen && (currentSession || creatingSession) && <SessionDrawer
