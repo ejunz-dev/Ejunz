@@ -470,6 +470,33 @@
   position: relative;
 }
 
+.eza-nodeAddonSettings {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.eza-nodeAddonConfig {
+  flex: 1 1 auto;
+}
+
+.eza-nodeAddonConfig .bd-edit-field > .bd-muted {
+  margin: 0;
+  font-weight: 400;
+}
+
+.eza-nodeAddonFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+}
+
+.eza-nodeAddonFooter .bd-muted {
+  margin: 0;
+}
+
 .eza-inputConfigLoading {
   position: absolute;
   inset: 0;
