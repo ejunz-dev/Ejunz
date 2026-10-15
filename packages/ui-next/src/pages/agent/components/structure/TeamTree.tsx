@@ -3,19 +3,19 @@ import { BaseDetailTree, BaseDetailTreeDrawer, defaultBaseDetailDisplaySettings,
 import { BaseDetailConfirmDialog } from '../../../../components/base-detail/BaseDetailConfirmDialog';
 import { StateDot, type StateDotState } from '../primitives/StateDot';
 import { MarkdownText } from '../primitives/markdown/MarkdownText';
-import type { AgentNode, SessionSummary, BaseView } from '../../runtime/session';
+import type { AgentTeam, SessionSummary, BaseView } from '../../runtime/session';
 import type { SessionModels } from '../types';
 import type { AgentDisplaySettings } from './AgentDisplaySettingsDialog';
-import { getAgentPluginSessionCardTags, hasAgentPluginSessionCardTags } from '../../runtime/agent-plugin-slots';
+import { getAgentPluginSessionAgentTags, hasAgentPluginSessionAgentTags } from '../../runtime/agent-plugin-slots';
 import { filterSessions } from './session-tree-utils';
 import '../../../../components/base-detail/base-detail.css';
 
-interface SessionTreeProps {
+interface TeamTreeProps {
     sessions: SessionSummary[];
-    nodes: AgentNode[];
+    teams: AgentTeam[];
     treeOpen: boolean;
-    activeNodeId: string | null;
-    onSelectNode: (nodeId: string) => void;
+    activeTeamId: string | null;
+    onSelectTeam: (teamId: string) => void;
     onCloseTree: () => void;
     bases: BaseView[];
     current: string | null;
@@ -30,13 +30,13 @@ interface SessionTreeProps {
     searchSnippets: ReadonlyMap<string, string>;
     searchHasMore: boolean;
     editMode: boolean;
-    selectedCardIds: ReadonlySet<string>;
-    selectedNodeIds: ReadonlySet<string>;
+    selectedAgentIds: ReadonlySet<string>;
+    selectedTeamIds: ReadonlySet<string>;
     sessionTitleDrafts: Readonly<Record<string, string>>;
-    onToggleCardSelection: (cardId: string) => void;
-    onToggleNodeSelection: (nodeIds: readonly string[], cardIds: readonly string[], ancestorIds: readonly string[]) => void;
-    onCreateNode: () => void;
-    onRenameNode: (nodeId: string) => void;
+    onToggleAgentSelection: (agentId: string) => void;
+    onToggleTeamSelection: (teamIds: readonly string[], agentIds: readonly string[], ancestorIds: readonly string[]) => void;
+    onCreateTeam: () => void;
+    onRenameTeam: (teamId: string) => void;
     onSessionTitleChange: (sessionId: string, title: string) => void;
     onSaveSessionTitles: () => void | Promise<void>;
     sessionTitleSaving: boolean;
@@ -94,7 +94,7 @@ const SessionActivityRow = memo(function SessionActivityRow({ activity, index, e
     </div>;
 });
 
-const SessionCardTitle = memo(function SessionCardTitle({ session, error, waitingForAnswer, activityPreview, activityIndex, activityStatus, showStatus, editMode, draftTitle, onTitleChange, onSelect }: {
+const SessionAgentTitle = memo(function SessionAgentTitle({ session, error, waitingForAnswer, activityPreview, activityIndex, activityStatus, showStatus, editMode, draftTitle, onTitleChange, onSelect }: {
     session: SessionSummary;
     error?: string;
     waitingForAnswer: boolean;
@@ -142,126 +142,126 @@ const SessionCardTitle = memo(function SessionCardTitle({ session, error, waitin
     </button>;
 });
 
-export function SessionTree({
-    sessions, nodes: agentNodes, treeOpen, activeNodeId, onSelectNode, onCloseTree, bases, current, pendingQuestionSessionIds, sessionErrors, sessionActivityPreviews, modelGroups, activeAgentPluginIds, displaySettings, query, searchMatches, searchSnippets, searchHasMore,
-    editMode, selectedCardIds, selectedNodeIds, sessionTitleDrafts, onToggleCardSelection, onToggleNodeSelection, onCreateNode, onRenameNode, onSessionTitleChange, onSaveSessionTitles, sessionTitleSaving,
+export function TeamTree({
+    sessions, teams: teams, treeOpen, activeTeamId, onSelectTeam, onCloseTree, bases, current, pendingQuestionSessionIds, sessionErrors, sessionActivityPreviews, modelGroups, activeAgentPluginIds, displaySettings, query, searchMatches, searchSnippets, searchHasMore,
+    editMode, selectedAgentIds, selectedTeamIds, sessionTitleDrafts, onToggleAgentSelection, onToggleTeamSelection, onCreateTeam, onRenameTeam, onSessionTitleChange, onSaveSessionTitles, sessionTitleSaving,
     onQuery, onSelect, onStartSession, onDeleteSelected, onExitEdit,
-}: SessionTreeProps) {
+}: TeamTreeProps) {
     const toolsRef = useRef<HTMLDivElement>(null);
     const [toolbarTop, setToolbarTop] = useState<number | null>(null);
-    const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => new Set([SESSION_GROUP_ID]));
-    const [pendingNodeId, setPendingNodeId] = useState<string | null>(null);
+    const [expandedTeams, setExpandedTeams] = useState<Set<string>>(() => new Set([SESSION_GROUP_ID]));
+    const [pendingTeamId, setPendingTeamId] = useState<string | null>(null);
     const visibleSessions = useMemo(() => filterSessions(sessions, current, query, searchMatches), [current, query, searchMatches, sessions]);
-    const agentRootNode = useMemo(() => agentNodes.find((node) => node.isRoot), [agentNodes]);
-    const fallbackNodeId = agentRootNode?.nodeId ?? SESSION_GROUP_ID;
-    const sessionsByNode = useMemo(() => {
-        const validNodeIds = new Set(agentNodes.map((node) => node.nodeId));
+    const agentRootTeam = useMemo(() => teams.find((team) => team.isRootTeam), [teams]);
+    const fallbackTeamId = agentRootTeam?.teamId ?? SESSION_GROUP_ID;
+    const sessionsByTeam = useMemo(() => {
+        const validTeamIds = new Set(teams.map((team) => team.teamId));
         const groups = new Map<string, SessionSummary[]>();
         visibleSessions.forEach((session) => {
-            const nodeId = session.nodeId && validNodeIds.has(session.nodeId) ? session.nodeId : fallbackNodeId;
-            const group = groups.get(nodeId) || [];
+            const teamId = session.teamId && validTeamIds.has(session.teamId) ? session.teamId : fallbackTeamId;
+            const group = groups.get(teamId) || [];
             group.push(session);
-            groups.set(nodeId, group);
+            groups.set(teamId, group);
         });
         return groups;
-    }, [agentNodes, fallbackNodeId, visibleSessions]);
-    const ungroupedSessions = sessionsByNode.get(SESSION_GROUP_ID) || [];
-    const visibleSelectedNodeId = activeNodeId ?? (ungroupedSessions.length > 0 ? SESSION_GROUP_ID : agentRootNode?.nodeId ?? null);
+    }, [teams, fallbackTeamId, visibleSessions]);
+    const ungroupedSessions = sessionsByTeam.get(SESSION_GROUP_ID) || [];
+    const visibleSelectedTeamId = activeTeamId ?? (ungroupedSessions.length > 0 ? SESSION_GROUP_ID : agentRootTeam?.teamId ?? null);
     useEffect(() => {
-        if (!agentRootNode) return;
-        setExpandedNodes((current) => current.has(agentRootNode.nodeId) ? current : new Set([...current, agentRootNode.nodeId]));
-    }, [agentRootNode]);
-    const toggleNodeExpansion = useCallback((nodeId: string) => {
-        setExpandedNodes((current) => {
+        if (!agentRootTeam) return;
+        setExpandedTeams((current) => current.has(agentRootTeam.teamId) ? current : new Set([...current, agentRootTeam.teamId]));
+    }, [agentRootTeam]);
+    const toggleTeamExpansion = useCallback((teamId: string) => {
+        setExpandedTeams((current) => {
             const next = new Set(current);
-            if (next.has(nodeId)) next.delete(nodeId); else next.add(nodeId);
+            if (next.has(teamId)) next.delete(teamId); else next.add(teamId);
             return next;
         });
     }, []);
-    const nodes = useMemo<BaseDetailNode[]>(() => [
-        ...(!agentRootNode && ungroupedSessions.length > 0 ? [{ id: SESSION_GROUP_ID, text: '未分组', type: 'session_group', order: 0, expanded: true }] : []),
-        ...agentNodes.map((node) => ({ id: node.nodeId, text: node.text, type: 'session_group', order: node.order, expanded: true })),
-    ], [agentNodes, agentRootNode, ungroupedSessions.length]);
-    const edges = useMemo(() => agentNodes.flatMap((node) => node.parentId ? [{ source: node.parentId, target: node.nodeId }] : []), [agentNodes]);
-    const rootNodeIds = useMemo(() => {
-        if (agentRootNode) return [agentRootNode.nodeId];
+    const treeNodes = useMemo<BaseDetailNode[]>(() => [
+        ...(!agentRootTeam && ungroupedSessions.length > 0 ? [{ id: SESSION_GROUP_ID, text: '未分组', type: 'session_group', order: 0, expanded: true }] : []),
+        ...teams.map((team) => ({ id: team.teamId, text: team.text, type: 'session_group', order: team.order, expanded: true })),
+    ], [teams, agentRootTeam, ungroupedSessions.length]);
+    const edges = useMemo(() => teams.flatMap((team) => team.parentTeamId ? [{ source: team.parentTeamId, target: team.teamId }] : []), [teams]);
+    const rootTeamIds = useMemo(() => {
+        if (agentRootTeam) return [agentRootTeam.teamId];
         return [
             ...(ungroupedSessions.length > 0 ? [SESSION_GROUP_ID] : []),
-            ...agentNodes.filter((node) => !node.parentId).map((node) => node.nodeId),
+            ...teams.filter((team) => !team.parentTeamId).map((team) => team.teamId),
         ];
-    }, [agentNodes, agentRootNode, ungroupedSessions.length]);
-    const renderedRootNodeIds = activeNodeId && rootNodeIds.includes(activeNodeId) ? [activeNodeId] : rootNodeIds;
-    const requestNodeSwitch = useCallback((nodeId: string) => {
-        if (nodeId !== visibleSelectedNodeId) setPendingNodeId(nodeId);
-        else onSelectNode(nodeId);
-    }, [onSelectNode, visibleSelectedNodeId]);
-    const confirmNodeSwitch = useCallback(() => {
-        if (pendingNodeId) onSelectNode(pendingNodeId);
-        setPendingNodeId(null);
-    }, [onSelectNode, pendingNodeId]);
-    const cancelNodeSwitch = useCallback(() => setPendingNodeId(null), []);
-    const pendingNodeLabel = pendingNodeId === SESSION_GROUP_ID
+    }, [teams, agentRootTeam, ungroupedSessions.length]);
+    const renderedRootTeamIds = activeTeamId && rootTeamIds.includes(activeTeamId) ? [activeTeamId] : rootTeamIds;
+    const requestTeamSwitch = useCallback((teamId: string) => {
+        if (teamId !== visibleSelectedTeamId) setPendingTeamId(teamId);
+        else onSelectTeam(teamId);
+    }, [onSelectTeam, visibleSelectedTeamId]);
+    const confirmTeamSwitch = useCallback(() => {
+        if (pendingTeamId) onSelectTeam(pendingTeamId);
+        setPendingTeamId(null);
+    }, [onSelectTeam, pendingTeamId]);
+    const cancelTeamSwitch = useCallback(() => setPendingTeamId(null), []);
+    const pendingTeamLabel = pendingTeamId === SESSION_GROUP_ID
         ? '未分组'
-        : agentNodes.find((node) => node.nodeId === pendingNodeId)?.text || '';
-    const topSelectedNodeIds = agentNodes
-        .filter((node) => !node.isRoot && selectedNodeIds.has(node.nodeId)
-            && !edges.some((edge) => edge.target === node.nodeId && selectedNodeIds.has(edge.source)))
-        .map((node) => node.nodeId);
-    const selectedNodeId = selectedNodeIds.has(SESSION_GROUP_ID) ? undefined : topSelectedNodeIds.length === 1 ? topSelectedNodeIds[0] : undefined;
-    const canEditNode = selectedNodeId !== undefined && selectedNodeId !== agentRootNode?.nodeId;
-    const nodeCardsMap = useMemo<Record<string, BaseDetailCard[]>>(() => {
-        const cards: Record<string, BaseDetailCard[]> = { [SESSION_GROUP_ID]: [] };
-        const toCard = (session: SessionSummary, nodeId: string, order: number): BaseDetailCard => {
+        : teams.find((team) => team.teamId === pendingTeamId)?.text || '';
+    const topSelectedTeamIds = teams
+        .filter((team) => !team.isRootTeam && selectedTeamIds.has(team.teamId)
+            && !edges.some((edge) => edge.target === team.teamId && selectedTeamIds.has(edge.source)))
+        .map((team) => team.teamId);
+    const selectedTeamId = selectedTeamIds.has(SESSION_GROUP_ID) ? undefined : topSelectedTeamIds.length === 1 ? topSelectedTeamIds[0] : undefined;
+    const canEditTeam = selectedTeamId !== undefined && selectedTeamId !== agentRootTeam?.teamId;
+    const teamAgentsMap = useMemo<Record<string, BaseDetailCard[]>>(() => {
+        const agents: Record<string, BaseDetailCard[]> = { [SESSION_GROUP_ID]: [] };
+        const toCard = (session: SessionSummary, teamId: string, order: number): BaseDetailCard => {
             const tags: string[] = [];
             if (displaySettings.showModel) tags.push(`模型: ${sessionModelLabel(session, modelGroups)}`);
-            tags.push(...getAgentPluginSessionCardTags(session, bases, displaySettings.showBase));
+            tags.push(...getAgentPluginSessionAgentTags(session, bases, displaySettings.showBase));
             return {
                 docId: session.sessionId,
                 title: sessionTitle(session),
                 content: searchSnippets.get(session.sessionId) || session.cwd || '',
                 cardType: 'session',
-                nodeId,
+                nodeId: teamId,
                 order,
                 ...(session.createdAt === undefined ? {} : { createdAt: new Date(session.createdAt) }),
                 updateAt: new Date(session.updatedAt),
                 tags,
             };
         };
-        cards[SESSION_GROUP_ID] = ungroupedSessions.map((session, index) => toCard(session, SESSION_GROUP_ID, index));
-        agentNodes.forEach((node) => {
-            cards[node.nodeId] = (sessionsByNode.get(node.nodeId) || []).map((session, index) => toCard(session, node.nodeId, index));
+        agents[SESSION_GROUP_ID] = ungroupedSessions.map((session, index) => toCard(session, SESSION_GROUP_ID, index));
+        teams.forEach((team) => {
+            agents[team.teamId] = (sessionsByTeam.get(team.teamId) || []).map((session, index) => toCard(session, team.teamId, index));
         });
-        return cards;
-    }, [agentNodes, activeAgentPluginIds, bases, displaySettings, modelGroups, searchSnippets, sessionsByNode, ungroupedSessions]);
-    const selectSessionCard = useCallback((card: BaseDetailCard, switchNode = false) => {
-        const session = visibleSessions.find((item) => item.sessionId === String(card.docId));
-        const nodeId = session?.nodeId && agentNodes.some((node) => node.nodeId === session.nodeId) ? session.nodeId : fallbackNodeId;
-        if (switchNode) onSelectNode(nodeId);
-        onSelect(String(card.docId));
-    }, [agentNodes, fallbackNodeId, onSelect, onSelectNode, visibleSessions]);
-    const toggleNodeSelection = useCallback((rootNodeId: string) => {
-        if (agentRootNode?.nodeId === rootNodeId) return;
-        const branchNodeIds: string[] = [];
-        const pending = [rootNodeId];
+        return agents;
+    }, [teams, activeAgentPluginIds, bases, displaySettings, modelGroups, searchSnippets, sessionsByTeam, ungroupedSessions]);
+    const selectSessionAgent = useCallback((agentCard: BaseDetailCard, switchTeam = false) => {
+        const session = visibleSessions.find((item) => item.sessionId === String(agentCard.docId));
+        const teamId = session?.teamId && teams.some((team) => team.teamId === session.teamId) ? session.teamId : fallbackTeamId;
+        if (switchTeam) onSelectTeam(teamId);
+        onSelect(String(agentCard.docId));
+    }, [teams, fallbackTeamId, onSelect, onSelectTeam, visibleSessions]);
+    const toggleTeamSelection = useCallback((rootTeamId: string) => {
+        if (agentRootTeam?.teamId === rootTeamId) return;
+        const branchTeamIds: string[] = [];
+        const pending = [rootTeamId];
         const visited = new Set<string>();
         while (pending.length > 0) {
-            const nodeId = pending.pop()!;
-            if (visited.has(nodeId)) continue;
-            visited.add(nodeId);
-            branchNodeIds.push(nodeId);
-            edges.forEach((edge) => { if (edge.source === nodeId) pending.push(edge.target); });
+            const teamId = pending.pop()!;
+            if (visited.has(teamId)) continue;
+            visited.add(teamId);
+            branchTeamIds.push(teamId);
+            edges.forEach((edge) => { if (edge.source === teamId) pending.push(edge.target); });
         }
-        const branchCardIds = branchNodeIds.flatMap((nodeId) => (nodeCardsMap[nodeId] || []).map((card) => String(card.docId)));
+        const branchAgentIds = branchTeamIds.flatMap((teamId) => (teamAgentsMap[teamId] || []).map((agentCard) => String(agentCard.docId)));
         const ancestorIds: string[] = [];
-        let ancestorId = rootNodeId;
+        let ancestorId = rootTeamId;
         while (true) {
             const parent = edges.find((edge) => edge.target === ancestorId)?.source;
             if (!parent || ancestorIds.includes(parent)) break;
             ancestorIds.push(parent);
             ancestorId = parent;
         }
-        onToggleNodeSelection(branchNodeIds, branchCardIds, ancestorIds);
-    }, [agentRootNode, edges, nodeCardsMap, onToggleNodeSelection]);
+        onToggleTeamSelection(branchTeamIds, branchAgentIds, ancestorIds);
+    }, [agentRootTeam, edges, teamAgentsMap, onToggleTeamSelection]);
     useLayoutEffect(() => {
         if (!editMode) {
             setToolbarTop(null);
@@ -279,10 +279,10 @@ export function SessionTree({
         ...defaultBaseDetailDisplaySettings(),
         showProblemCount: false,
         showNodeNumber: false,
-        showNodeCardTimestamps: displaySettings.showTimestamps,
+        showCardTimestamps: displaySettings.showTimestamps,
         showProblemTree: false,
         showProblemTags: false,
-        showCardTags: displaySettings.showModel || (displaySettings.showBase && hasAgentPluginSessionCardTags()),
+        showCardTags: displaySettings.showModel || (displaySettings.showBase && hasAgentPluginSessionAgentTags()),
     }), [activeAgentPluginIds, displaySettings]);
     const renderCardTitle = useMemo(() => {
         if (!displaySettings.showStatus && !editMode) return undefined;
@@ -290,7 +290,7 @@ export function SessionTree({
             const session = visibleSessions.find((item) => item.sessionId === card.docId);
             if (!session) return <span className="bd-tree__label">{String(card.title ?? '')}</span>;
             const activity = sessionActivityPreviews.get(session.sessionId);
-            return <SessionCardTitle
+            return <SessionAgentTitle
                 session={session}
                 error={sessionErrors.get(session.sessionId)}
                 waitingForAnswer={pendingQuestionSessionIds.has(session.sessionId)}
@@ -305,61 +305,61 @@ export function SessionTree({
             />;
         };
     }, [displaySettings.showStatus, editMode, onSelect, onSessionTitleChange, pendingQuestionSessionIds, sessionErrors, sessionActivityPreviews, sessionTitleDrafts, visibleSessions]);
-    return <section className="eza-agentStructure" aria-label="会话">
+    return <section className="eza-agentStructure" aria-label="团队与 Agent">
         <div ref={toolsRef} className="eza-agentStructure__tools">
-            <input value={query} placeholder="搜索会话" aria-label="搜索会话" onChange={(event) => onQuery(event.target.value)} />
+            <input value={query} placeholder="搜索 Agent" aria-label="搜索 Agent" onChange={(event) => onQuery(event.target.value)} />
             <button type="button" onClick={onStartSession}>新会话</button>
-            <button type="button" onClick={onCreateNode}>新节点</button>
+            <button type="button" onClick={onCreateTeam}>新团队</button>
         </div>
         {editMode && <div className="eza-selectionToolbar" style={toolbarTop === null ? undefined : { top: `${toolbarTop}px` }} role="toolbar" aria-label="编辑操作">
-            <span>会话 {selectedCardIds.size} · 文件夹 {selectedNodeIds.size}</span>
-            <button type="button" disabled={sessionTitleSaving || !canEditNode} onClick={() => { if (selectedNodeId) onRenameNode(selectedNodeId); }}>重命名文件夹</button>
+            <span>Agent {selectedAgentIds.size} · 团队 {selectedTeamIds.size}</span>
+            <button type="button" disabled={sessionTitleSaving || !canEditTeam} onClick={() => { if (selectedTeamId) onRenameTeam(selectedTeamId); }}>重命名团队</button>
             <button type="button" className="eza-selectionToolbarSave" disabled={sessionTitleSaving} onClick={() => { void onSaveSessionTitles(); }}>{sessionTitleSaving ? '保存中…' : '保存会话名'}</button>
-            <button type="button" className="eza-selectionToolbarDelete" disabled={sessionTitleSaving || (selectedCardIds.size === 0 && selectedNodeIds.size === 0)} onClick={onDeleteSelected}>删除</button>
+            <button type="button" className="eza-selectionToolbarDelete" disabled={sessionTitleSaving || (selectedAgentIds.size === 0 && selectedTeamIds.size === 0)} onClick={onDeleteSelected}>删除</button>
             <button type="button" className="eza-selectionToolbarExit" disabled={sessionTitleSaving} onClick={onExitEdit}>退出编辑</button>
         </div>}
         <div className="bd-content bd-content--tree eza-agentStructure__tree">
             <BaseDetailTree
-                rootNodeIds={renderedRootNodeIds}
-                nodes={nodes}
+                rootNodeIds={renderedRootTeamIds}
+                nodes={treeNodes}
                 edges={edges}
-                nodeCardsMap={nodeCardsMap}
-                expandedNodes={expandedNodes}
-                onToggle={toggleNodeExpansion}
-                selectedNodeId={visibleSelectedNodeId}
+                nodeCardsMap={teamAgentsMap}
+                expandedNodes={expandedTeams}
+                onToggle={toggleTeamExpansion}
+                selectedNodeId={visibleSelectedTeamId}
                 selectedCardId={current}
-                onSelectNode={requestNodeSwitch}
-                onSelectCard={selectSessionCard}
+                onSelectNode={requestTeamSwitch}
+                onSelectCard={selectSessionAgent}
                 filter=""
                 displaySettings={treeDisplaySettings}
                 renderCardTitle={renderCardTitle}
                 editMode={editMode}
-                selectedNodeIds={selectedNodeIds}
-                selectedCardIds={selectedCardIds}
-                onToggleNodeSelection={toggleNodeSelection}
-                onToggleCardSelection={onToggleCardSelection}
+                selectedNodeIds={selectedTeamIds}
+                selectedCardIds={selectedAgentIds}
+                onToggleNodeSelection={toggleTeamSelection}
+                onToggleCardSelection={onToggleAgentSelection}
                 emptyMessage="暂无会话"
             />
         </div>
         <BaseDetailTreeDrawer
             open={treeOpen}
-            nodes={nodes}
+            nodes={treeNodes}
             edges={edges}
-            nodeCardsMap={nodeCardsMap}
-            expandedNodes={expandedNodes}
-            selectedNodeId={visibleSelectedNodeId}
+            nodeCardsMap={teamAgentsMap}
+            expandedNodes={expandedTeams}
+            selectedNodeId={visibleSelectedTeamId}
             selectedCardId={current}
-            onToggle={toggleNodeExpansion}
-            onSelectNode={(nodeId) => { onSelectNode(nodeId); onCloseTree(); }}
-            onSelectCard={(card) => { selectSessionCard(card, true); onCloseTree(); }}
+            onToggle={toggleTeamExpansion}
+            onSelectNode={(teamId) => { onSelectTeam(teamId); onCloseTree(); }}
+            onSelectCard={(agent) => { selectSessionAgent(agent, true); onCloseTree(); }}
             onClose={onCloseTree}
             filter={query}
             displaySettings={treeDisplaySettings}
         />
-        {pendingNodeId ? <BaseDetailConfirmDialog
-            nodeLabel={`切换到“${pendingNodeLabel}”？`}
-            onConfirm={confirmNodeSwitch}
-            onCancel={cancelNodeSwitch}
+        {pendingTeamId ? <BaseDetailConfirmDialog
+            nodeLabel={`切换到“${pendingTeamLabel}”？`}
+            onConfirm={confirmTeamSwitch}
+            onCancel={cancelTeamSwitch}
         /> : null}
         {searchHasMore && <p className="bd-muted eza-agentStructure__hint">仅显示部分搜索结果，请缩小搜索范围。</p>}
     </section>;

@@ -1,114 +1,79 @@
 import Schema from 'schemastery';
 import type { Context } from 'ejun/src/context';
 import { PRIV, PERM } from 'ejun/src/model/builtin';
-import AgentDefinitionModel, { AgentSessionModel } from 'ejun/src/model/agent';
+import GroupDefinitionModel, { AgentSessionModel } from 'ejun/src/model/agent';
 import UserModel from 'ejun/src/model/user';
-import { MAX_CARDS_PER_CALL, MAX_FILE_CONTENT_CHARS, MAX_FILE_CONTENT_CHARS_LIMIT, MAX_NODES_PER_CALL } from '../lib/tool-limits';
+import { MAX_AGENTS_PER_CALL, MAX_FILE_CONTENT_CHARS, MAX_FILE_CONTENT_CHARS_LIMIT, MAX_TEAMS_PER_CALL } from '../lib/tool-limits';
 import { asText, idList } from '../lib/tool-shared';
 import { agentRuntimeHandlerContext } from '../service/runtime';
 import { listAgentAddons, registerAgentAddon } from '../service/addons';
-import type { AgentNodeConfig, AgentNodeDoc, AgentSessionSummary } from 'ejun/src/model/agent';
+import type { AgentTeamConfig, AgentTeamDoc, AgentSessionSummary } from 'ejun/src/model/agent';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import type {} from '../service/registry';
 
 export const inject = ['server'];
 
-export const List = Schema.object({
+export const GroupList = Schema.object({
     limit: Schema.number().min(1).max(50).description('Maximum result count, up to 50.'),
-}).description('List Agent definitions available in the current domain. Each result includes its id, title, description, update time, and the current user’s node and session-card counts.');
+}).description('List Groups available in the current domain. Each result includes its groupId, title, description, update time, and the current user’s team and agent counts.');
 
-export const Search = Schema.object({
+export const GroupSearch = Schema.object({
     query: Schema.string().required().description('Search text.'),
     limit: Schema.number().min(1).max(50).description('Maximum result count, up to 50.'),
-}).description('Search Agent definitions in the current domain by title or description.');
+}).description('Search Groups in the current domain by title or description.');
 
-export const Get = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-}).description('Read an Agent definition by agentId. Returns its id, title, description, update time, and a tree of the current user’s workspace nodes and session cards.');
+export const GroupGet = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+}).description('Read a Group by groupId. Returns its groupId, title, description, update time, and the current user’s team and agent tree.');
 
-export const Create = Schema.object({
-    title: Schema.string().required().description('Agent name (required, up to 256 characters).'),
-    content: Schema.string().description('Agent description or instructions (optional, up to 100000 characters).'),
-}).description('Create an Agent definition in the current domain. The current user owns the new Agent and its workspace root node.');
+export const GroupCreate = Schema.object({
+    title: Schema.string().required().description('Group name (required, up to 256 characters).'),
+    content: Schema.string().description('Group description or instructions (optional, up to 100000 characters).'),
+}).description('Create a Group in the current domain. The current user owns the new Group and its root team.');
 
-export const Update = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    title: Schema.string().description('New Agent name (optional).'),
-    content: Schema.string().description('New Agent description or instructions (optional).'),
-}).description('Update an Agent definition by agentId. Only the owner or a user with edit-discussion permission can update another user’s Agent.');
+export const GroupUpdate = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    title: Schema.string().description('New Group name (optional).'),
+    content: Schema.string().description('New Group description or instructions (optional).'),
+}).description('Update a Group by groupId. Only the owner or a user with edit-discussion permission can update another user’s Group.');
 
-export const Remove = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-}).description('Delete an Agent definition by agentId. Existing sessions and workspace nodes are detached, as in the Agent management UI.');
+export const GroupRemove = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+}).description('Delete a Group by groupId. Existing sessions and workspace teams are detached, as in the Group management UI.');
 
-export const NodeList = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-}).description('List the current user’s workspace nodes for an Agent, including each node’s Addon and context configuration and its root node.');
+export const TeamList = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+}).description('List the current user’s workspace teams for a Group, including each team’s Addon and context configuration and its root team.');
 
-export const NodeGet = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    nodeId: Schema.string().required().description('Node id.'),
-}).description('Read one workspace node belonging to an Agent, including its Addon and context configuration, direct child nodes, and attached session cards.');
+export const TeamGet = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    teamId: Schema.string().required().description('Team id.'),
+}).description('Read one workspace team belonging to an Agent, including its Addon and context configuration, direct child teams, and attached session agents.');
 
-export const NodeCreate = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    text: Schema.string().required().description('Node title.'),
-    parentId: Schema.string().description('Existing parent node id (optional; defaults to the Agent root).'),
-}).description('Create a workspace node for an Agent. Omit parentId to place it under the Agent root.');
+export const TeamCreate = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    text: Schema.string().required().description('Team title.'),
+    parentTeamId: Schema.string().description('Existing parent team id (optional; defaults to the Group root).'),
+}).description('Create a workspace team for a Group. Omit parentTeamId to place it under the Group root.');
 
-export const NodeUpdate = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    nodeId: Schema.string().required().description('Node id.'),
-    text: Schema.string().description('New node title (optional).'),
-    parentId: Schema.string().description('Existing parent node id (optional; omit to keep the current parent).'),
-    addonIds: Schema.array(Schema.string()).description('Replace the Addons enabled for this node. Pass an empty array to disable all Addons. Addons must already be installed and enabled for this Agent.'),
-    context: Schema.string().description('Replace the free-form context injected into cards on this node. Pass an empty string to clear it.'),
-}).description('Rename or move an Agent workspace node with text and/or parentId, or configure its Addons and context. Node-local Addon configuration does not change Agent-wide Addon switches. Context is injected into cards on this node. The root node may be configured but cannot be renamed or moved.');
+export const TeamUpdate = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    teamId: Schema.string().required().description('Team id.'),
+    text: Schema.string().description('New team title (optional).'),
+    parentTeamId: Schema.string().description('Existing parent team id (optional; omit to keep the current parent).'),
+    addonIds: Schema.array(Schema.string()).description('Replace the Addons enabled for this team. Pass an empty array to disable all Addons. Addons must already be installed and enabled for this Group.'),
+    context: Schema.string().description('Replace the free-form context injected into agents on this team. Pass an empty string to clear it.'),
+}).description('Rename or move an Group workspace team with text and/or parentTeamId, or configure its Addons and context. Team-local Addon configuration does not change Group-wide Addon switches. Context is injected into agents on this team. The root team may be configured but cannot be renamed or moved.');
 
-export const NodeRemove = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    nodeId: Schema.string().required().description('Node id.'),
-}).description('Delete a workspace node belonging to an Agent. Its child nodes and session cards move to its parent. The root node cannot be deleted.');
+export const TeamRemove = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    teamId: Schema.string().required().description('Team id.'),
+}).description('Delete a workspace team belonging to an Agent. Its child teams and session agents move to its parent. The root team cannot be deleted.');
 
-export const NodeCreateMany = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    parentId: Schema.string().description('Node that every entry without a parent attaches to (optional; defaults to the Agent root).'),
-    nodes: Schema.array(Schema.object({
-        text: Schema.string().required().description('Node title (required).'),
-        ref: Schema.string().description('Optional name for this entry, for a later entry\'s parentRef.'),
-        parentId: Schema.string().description('Existing node to attach to (optional).'),
-        parentRef: Schema.string().description('ref of an earlier entry to attach to (optional; keep one of parentId and parentRef).'),
-    })).min(1).max(MAX_NODES_PER_CALL).required().description('Nodes to create, in order.'),
-}).description('Create several workspace nodes for one Agent. `nodes` is an array of `{ text, ref?, parentId?, parentRef? }`. '
-    + 'A `ref` names an entry so a later entry can use it as its `parentRef`. An entry with neither parent attaches to the call\'s `parentId`, or to the Agent root. '
-    + `One call creates at most ${MAX_NODES_PER_CALL} nodes.`);
-
-export const NodeGetMany = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    nodeIds: Schema.array(Schema.string()).max(MAX_NODES_PER_CALL).required().description('Node ids to read, in order.'),
-}).description('Read several workspace nodes of one Agent, each with its Addon and context configuration, direct child nodes, and session cards. '
-    + `A missing id is listed in \`missingNodeIds\` and \`ok\` is false. One call reads at most ${MAX_NODES_PER_CALL} nodes.`);
-
-export const NodeUpdateMany = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    entries: Schema.array(Schema.object({
-        nodeId: Schema.string().required().description('Node to change (required).'),
-        text: Schema.string().description('New node title (optional).'),
-        parentId: Schema.string().description('Existing node to move this node under (optional).'),
-    })).min(1).max(MAX_NODES_PER_CALL).required().description('One entry per node.'),
-}).description('Rename and/or move several workspace nodes of one Agent. Each entry is `{ nodeId, text?, parentId? }` and must name at least one change. '
-    + `The root node cannot be renamed or moved. One call updates at most ${MAX_NODES_PER_CALL} nodes.`);
-
-export const NodeRemoveMany = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    nodeIds: Schema.array(Schema.string()).max(MAX_NODES_PER_CALL).required().description('Nodes to remove.'),
-}).description('Delete several workspace nodes of one Agent. Each node\'s children and session cards move to its parent, as `agent_node_delete` does. '
-    + `The root node cannot be removed. One call removes at most ${MAX_NODES_PER_CALL} nodes.`);
-
-export const CardList = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    nodeId: Schema.string().description('Optional node id to filter sessions by their workspace node.'),
-}).description('List this Agent’s session cards. Omit nodeId to list cards from every workspace node.');
+export const AgentList = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    teamId: Schema.string().description('Optional team id to filter sessions by their workspace team.'),
+}).description('List this Group’s session agents. Omit teamId to list agents from every workspace team.');
 
 const conversationRead = {
     beforeSeq: Schema.number().step(1).min(0).description('Return turns before this event seq. Omit it to read the latest turns.'),
@@ -116,43 +81,43 @@ const conversationRead = {
     maxChars: Schema.number().step(1).min(1).max(MAX_FILE_CONTENT_CHARS_LIMIT).description(`Cap on the returned text (default ${MAX_FILE_CONTENT_CHARS}).`),
 };
 
-export const CardGet = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    cardId: Schema.string().required().description('Session id shown as the card id in the Agent workspace.'),
+export const AgentGet = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    agentId: Schema.string().required().description('Session id shown as the agent id in the Agent workspace.'),
     ...conversationRead,
-}).description('Read one session card by cardId and return its title and conversation as `content`, the same way `base_card_get` returns a card body. '
+}).description('Read one session agent by agentId and return its title and conversation as `content`, the same way `agent_agent_get` returns an agent content. '
     + 'Turns are the stored user and assistant messages, in order. The text stops at `maxChars` and `truncated` reports that. '
     + '`hasMore` means older turns remain. Pass the returned `beforeSeq` to read the previous page.');
 
-export const CardCreate = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    nodeId: Schema.string().description('Optional existing workspace node id (defaults to the Agent root).'),
-    title: Schema.string().description('Optional session card title.'),
-    message: Schema.string().description('Optional first message. Omit it to create the card with its settings ready and start no conversation.'),
+export const AgentCreate = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    teamId: Schema.string().description('Optional existing workspace team id (defaults to the Group root).'),
+    title: Schema.string().description('Optional session agent title.'),
+    message: Schema.string().description('Optional first message. Omit it to create the agent with its settings ready and start no conversation.'),
     provider: Schema.string().description('Optional model provider. Pass it together with model.'),
     model: Schema.string().description('Optional model id. Pass it together with provider.'),
     baseDocId: Schema.number().step(1).min(1).description('Optional Base to attach as this session\'s context.'),
     runtimeId: Schema.string().description('Optional host id. Omit it to use the default host.'),
     agentPreset: Schema.string().description('Optional Agent preset id.'),
-}).description('Create a session card with its node, title, model, Base, host, and preset already set. The selected node’s context is injected when the conversation starts. '
-    + 'Pass message to start the conversation after the card exists. Omit message to leave the card ready and silent. Requires an available Agent runtime.');
+}).description('Create a session agent with its team, title, model, Base, host, and preset already set. The selected team’s context is injected when the conversation starts. '
+    + 'Pass message to start the conversation after the agent exists. Omit message to leave the agent ready and silent. Requires an available Agent runtime.');
 
-export const CardUpdate = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    cardId: Schema.string().required().description('Session id shown as the card id in the Agent workspace.'),
-    title: Schema.string().description('New session card title (optional).'),
-    nodeId: Schema.string().description('Move the session card to an existing workspace node (optional).'),
-}).description('Rename or move a session card belonging to an Agent. Moving it to another node applies that node’s Addon configuration to the existing session.');
+export const AgentUpdate = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    agentId: Schema.string().required().description('Session id shown as the agent id in the Agent workspace.'),
+    title: Schema.string().description('New session agent title (optional).'),
+    teamId: Schema.string().description('Move the session agent to an existing workspace team (optional).'),
+}).description('Rename or move a session agent belonging to an Agent. Moving it to another team applies that team’s Addon configuration to the existing session.');
 
-export const CardRemove = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    cardId: Schema.string().required().description('Session id shown as the card id in the Agent workspace.'),
-}).description('Delete a session card and its conversation history.');
+export const AgentRemove = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    agentId: Schema.string().required().description('Session id shown as the agent id in the Agent workspace.'),
+}).description('Delete a session agent and its conversation history.');
 
-const CardCreateFields = Schema.object({
-    nodeId: Schema.string().description('Optional existing workspace node id (defaults to the Agent root).'),
-    title: Schema.string().description('Optional session card title.'),
-    message: Schema.string().description('Optional first message. Omit it to leave the card ready and silent.'),
+const AgentCreateFields = Schema.object({
+    teamId: Schema.string().description('Optional existing workspace team id (defaults to the Group root).'),
+    title: Schema.string().description('Optional session agent title.'),
+    message: Schema.string().description('Optional first message. Omit it to leave the agent ready and silent.'),
     provider: Schema.string().description('Optional model provider. Pass it together with model.'),
     model: Schema.string().description('Optional model id. Pass it together with provider.'),
     baseDocId: Schema.number().step(1).min(1).description('Optional Base to attach as this session\'s context.'),
@@ -160,137 +125,137 @@ const CardCreateFields = Schema.object({
     agentPreset: Schema.string().description('Optional Agent preset id.'),
 });
 
-export const CardCreateMany = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    cards: Schema.array(CardCreateFields).min(1).max(MAX_CARDS_PER_CALL).required().description('Session cards to create, in order.'),
-}).description('Create several session cards for one Agent. Each entry uses the same fields as `agent_sessionCard_create`. '
-    + 'A card is stored before its optional message is sent, so a refused first message still leaves the card. '
-    + `One call creates at most ${MAX_CARDS_PER_CALL} cards.`);
+export const AgentCreateMany = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    agents: Schema.array(AgentCreateFields).min(1).max(MAX_AGENTS_PER_CALL).required().description('Session agents to create, in order.'),
+}).description('Create several session agents for one Group. Each entry uses the same fields as `agent_agent_create`. '
+    + 'An agent is stored before its optional message is sent, so a refused first message still leaves the agent. '
+    + `One call creates at most ${MAX_AGENTS_PER_CALL} workspace agents.`);
 
-export const CardGetMany = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    cardIds: Schema.array(Schema.string()).max(MAX_CARDS_PER_CALL).required().description('Session card ids to read, in order.'),
+export const AgentGetMany = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required().description('Session agent ids to read, in order.'),
     ...conversationRead,
-}).description('Read several session cards of one Agent in a single call, each reported as `agent_sessionCard_get` reports one, including its conversation as `content`. '
-    + 'A missing id is listed in `missingCardIds` and `ok` is false. '
-    + `One call reads at most ${MAX_CARDS_PER_CALL} cards.`);
+}).description('Read several workspace agents of one Group in a single call, each reported as `agent_agent_get` reports one, including its conversation as `content`. '
+    + 'A missing id is listed in `missingAgentIds` and `ok` is false. '
+    + `One call reads at most ${MAX_AGENTS_PER_CALL} workspace agents.`);
 
-export const CardUpdateMany = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
+export const AgentUpdateMany = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
     entries: Schema.array(Schema.object({
-        cardId: Schema.string().required().description('Session card id (required).'),
-        title: Schema.string().description('New session card title (optional).'),
-        nodeId: Schema.string().description('Existing workspace node to move the card to (optional).'),
-    })).min(1).max(MAX_CARDS_PER_CALL).required().description('One entry per session card.'),
-}).description('Rename and/or move several session cards of one Agent. Each entry is `{ cardId, title?, nodeId? }` and must name at least one change. Moving a card applies the destination node’s Addon configuration to its existing session. '
-    + `One call updates at most ${MAX_CARDS_PER_CALL} cards.`);
+        agentId: Schema.string().required().description('Session agent id (required).'),
+        title: Schema.string().description('New session agent title (optional).'),
+        teamId: Schema.string().description('Existing workspace team to move the agent to (optional).'),
+    })).min(1).max(MAX_AGENTS_PER_CALL).required().description('One entry per session agent.'),
+}).description('Rename and/or move several workspace agents of one Group. Each entry is `{ agentId, title?, teamId? }` and must name at least one change. Moving an agent applies the destination team’s Addon configuration to its existing session. '
+    + `One call updates at most ${MAX_AGENTS_PER_CALL} workspace agents.`);
 
-export const CardRemoveMany = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    cardIds: Schema.array(Schema.string()).max(MAX_CARDS_PER_CALL).required().description('Session cards to remove.'),
-}).description('Delete several session cards of one Agent and their conversation history. '
-    + `One call removes at most ${MAX_CARDS_PER_CALL} cards.`);
+export const AgentRemoveMany = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required().description('Session agents to remove.'),
+}).description('Delete several workspace agents of one Group and their conversation history. '
+    + `One call removes at most ${MAX_AGENTS_PER_CALL} agents.`);
 
-const TeamCardCreateFields = Schema.object({
-    nodeId: Schema.string().description('Existing Agent node id. Omit to use the Agent root node.'),
-    nodeRef: Schema.string().description('ref of a node created in this same request.'),
-    title: Schema.string().description('Optional card title.'),
+const TeamAgentCreateFields = Schema.object({
+    teamId: Schema.string().description('Existing Agent team id. Omit to use the Group root team.'),
+    teamRef: Schema.string().description('ref of a team created in this same request.'),
+    title: Schema.string().description('Optional agent title.'),
     message: Schema.string().description('Optional first message.'),
     provider: Schema.string().description('Optional model provider. Pass together with model.'),
     model: Schema.string().description('Optional model id. Pass together with provider.'),
-    baseDocId: Schema.number().step(1).min(1).description('Optional Base to attach as this card’s context.'),
+    baseDocId: Schema.number().step(1).min(1).description('Optional Base to attach as this agent’s context.'),
     runtimeId: Schema.string().description('Optional host id.'),
     agentPreset: Schema.string().description('Optional Agent preset id.'),
 });
 
 export const TeamCreateMany = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    parentId: Schema.string().description('Default parent node for entries without nodeId/parentId; defaults to the Agent root.'),
-    nodes: Schema.array(Schema.object({
-        text: Schema.string().required().description('Node title.'),
-        ref: Schema.string().description('Optional name for this node, for parentRef or nodeRef references.'),
-        parentId: Schema.string().description('Existing parent node id.'),
-        parentRef: Schema.string().description('ref of an earlier node in this request.'),
-    })).max(MAX_NODES_PER_CALL).description('Nodes to create, in order.'),
-    cards: Schema.array(TeamCardCreateFields).max(MAX_CARDS_PER_CALL).description('Cards to create after nodes; nodeRef may refer to a node created above.'),
-}).description('Create nodes and cards for one Agent in a single tool call. Nodes are created first, so cards may refer to them by nodeRef. Node and card results report successes and refusals separately; this batch is not transactional.');
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    parentTeamId: Schema.string().description('Default parent team for entries without teamId/parentTeamId; defaults to the Group root.'),
+    teams: Schema.array(Schema.object({
+        text: Schema.string().required().description('Team title.'),
+        ref: Schema.string().description('Optional name for this team, for parentRef or teamRef references.'),
+        parentTeamId: Schema.string().description('Existing parent team id.'),
+        parentRef: Schema.string().description('ref of an earlier team in this request.'),
+    })).max(MAX_TEAMS_PER_CALL).description('Teams to create, in order.'),
+    agents: Schema.array(TeamAgentCreateFields).max(MAX_AGENTS_PER_CALL).description('Agents to create after teams; teamRef may refer to a team created above.'),
+}).description('Create teams and agents for one Group in a single tool call. Teams are created first, so agents may refer to them by teamRef. Team and agent results report successes and refusals separately; this batch is not transactional.');
 
 export const TeamGetMany = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    nodeIds: Schema.array(Schema.string()).max(MAX_NODES_PER_CALL).description('Node ids to read.'),
-    cardIds: Schema.array(Schema.string()).max(MAX_CARDS_PER_CALL).description('Card ids to read.'),
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    teamIds: Schema.array(Schema.string()).max(MAX_TEAMS_PER_CALL).description('Team ids to read.'),
+    agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).description('Agent ids to read.'),
     ...conversationRead,
-}).description('Read multiple nodes and cards for one Agent in one tool call. At least one of nodeIds or cardIds is required; each array can contain up to 500 ids.');
+}).description('Read multiple teams and agents for one Group in one tool call. At least one of teamIds or agentIds is required; each array can contain up to 500 ids.');
 
 export const TeamUpdateMany = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    nodes: Schema.array(Schema.object({
-        nodeId: Schema.string().required().description('Node id.'),
-        text: Schema.string().description('New node title.'),
-        parentId: Schema.string().description('Move under this existing node.'),
-        addonIds: Schema.array(Schema.string()).description('Replace this node’s enabled Addons.'),
-        context: Schema.string().description('Replace this node’s free-form context; empty string clears it.'),
-    })).max(MAX_NODES_PER_CALL).description('Node changes; config changes (addonIds/context) are submitted separately from text/parentId.'),
-    cards: Schema.array(Schema.object({
-        cardId: Schema.string().required().description('Card id.'),
-        title: Schema.string().description('New card title.'),
-        nodeId: Schema.string().description('Move to this existing node.'),
-    })).max(MAX_CARDS_PER_CALL).description('Card title and node changes.'),
-}).description('Update multiple nodes and cards for one Agent. Node and card results report successes and refusals separately; this batch is not transactional.');
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    teams: Schema.array(Schema.object({
+        teamId: Schema.string().required().description('Team id.'),
+        text: Schema.string().description('New team title.'),
+        parentTeamId: Schema.string().description('Move under this existing team.'),
+        addonIds: Schema.array(Schema.string()).description('Replace this team’s enabled Addons.'),
+        context: Schema.string().description('Replace this team’s free-form context; empty string clears it.'),
+    })).max(MAX_TEAMS_PER_CALL).description('Team changes; config changes (addonIds/context) are submitted separately from text/parentTeamId.'),
+    agents: Schema.array(Schema.object({
+        agentId: Schema.string().required().description('Agent id.'),
+        title: Schema.string().description('New agent title.'),
+        teamId: Schema.string().description('Move to this existing team.'),
+    })).max(MAX_AGENTS_PER_CALL).description('Agent title and team changes.'),
+}).description('Update multiple teams and agents for one Group. Team and agent results report successes and refusals separately; this batch is not transactional.');
 
 export const TeamDeleteMany = Schema.object({
-    agentId: Schema.number().step(1).min(1).required().description('Agent definition docId.'),
-    nodeIds: Schema.array(Schema.string()).max(MAX_NODES_PER_CALL).description('Nodes to delete; cards and child nodes move to the deleted node’s parent.'),
-    cardIds: Schema.array(Schema.string()).max(MAX_CARDS_PER_CALL).description('Cards to delete.'),
-}).description('Delete multiple nodes and cards for one Agent in one tool call. Cards are deleted before nodes; the root node cannot be deleted.');
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    teamIds: Schema.array(Schema.string()).max(MAX_TEAMS_PER_CALL).description('Teams to delete; agents and child teams move to the deleted team’s parent.'),
+    agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).description('Agents to delete.'),
+}).description('Delete multiple teams and agents for one Group in one tool call. Agents are deleted before teams; the root team cannot be deleted.');
 
-function agentIdOf(args: ToolArgs): number {
-    const agentId = Number(args.agentId);
-    if (!Number.isSafeInteger(agentId) || agentId <= 0) throw new Error('agentId is required');
-    return agentId;
+function groupIdOf(args: ToolArgs): number {
+    const groupId = Number(args.groupId);
+    if (!Number.isSafeInteger(groupId) || groupId <= 0) throw new Error('groupId is required');
+    return groupId;
 }
 
-function agentView(agent: { docId: number; aid?: string; title?: string; content?: string; updateAt?: Date | string }) {
+function groupView(group: { docId: number; aid?: string; title?: string; content?: string; updateAt?: Date | string }) {
     return {
-        agentId: Number(agent.docId),
-        aid: String(agent.aid || ''),
-        title: String(agent.title || ''),
-        content: String(agent.content || ''),
-        updateAt: agent.updateAt instanceof Date ? agent.updateAt.toISOString() : String(agent.updateAt || ''),
+        groupId: Number(group.docId),
+        aid: String(group.aid || ''),
+        title: String(group.title || ''),
+        content: String(group.content || ''),
+        updateAt: group.updateAt instanceof Date ? group.updateAt.toISOString() : String(group.updateAt || ''),
     };
 }
 
-function nodeView(node: AgentNodeDoc) {
+function teamView(team: AgentTeamDoc) {
     return {
-        nodeId: node.nodeId,
-        ...(node.parentId ? { parentId: node.parentId } : {}),
-        ...(node.isRoot ? { isRoot: true } : {}),
-        text: node.text,
-        order: node.order,
-        ...(node.config === undefined ? {} : { config: node.config }),
-        createdAt: node.createdAt.toISOString(),
-        updatedAt: node.updatedAt.toISOString(),
+        teamId: team.teamId,
+        ...(team.parentTeamId ? { parentTeamId: team.parentTeamId } : {}),
+        ...(team.isRootTeam ? { isRootTeam: true } : {}),
+        text: team.text,
+        order: team.order,
+        ...(team.config === undefined ? {} : { config: team.config }),
+        createdAt: team.createdAt.toISOString(),
+        updatedAt: team.updatedAt.toISOString(),
     };
 }
 
-type SessionCardData = Omit<AgentSessionSummary, 'createdAt'> & { createdAt?: number | Date };
+type SessionAgentData = Omit<AgentSessionSummary, 'createdAt'> & { createdAt?: number | Date };
 
-function sessionTitleOf(session: SessionCardData): string {
+function sessionTitleOf(session: SessionAgentData): string {
     const title = session.projections?.values?.title;
     return typeof title === 'string' && title.trim()
         ? title
         : session.blank ? '新会话' : `会话 ${session.sessionId.slice(8, 16)}`;
 }
 
-function sessionCardView(session: SessionCardData) {
+function sessionAgentView(session: SessionAgentData) {
     return {
-        cardId: session.sessionId,
+        agentId: session.sessionId,
         sessionId: session.sessionId,
-        ...(session.agentId === undefined ? {} : { agentId: session.agentId }),
-        ...(session.nodeId === undefined ? {} : { nodeId: session.nodeId }),
+        ...(session.groupId === undefined ? {} : { groupId: session.groupId }),
+        ...(session.teamId === undefined ? {} : { teamId: session.teamId }),
         title: sessionTitleOf(session),
         ...(session.cwd ? { cwd: session.cwd } : {}),
-        cardType: 'session',
+        agentType: 'session',
         createdAt: session.createdAt instanceof Date ? session.createdAt.getTime() : session.createdAt ?? null,
         updatedAt: session.updatedAt,
         running: session.running,
@@ -300,20 +265,20 @@ function sessionCardView(session: SessionCardData) {
     };
 }
 
-async function requireAgent(ctx: ToolContext, args: ToolArgs, action: 'read' | 'edit' | 'delete' = 'read') {
-    const agentId = agentIdOf(args);
-    const agent = await AgentDefinitionModel.get(ctx.domainId, agentId, AgentDefinitionModel.PROJECTION_LIST);
-    if (!agent) throw new Error(`Agent not found: ${agentId}`);
-    if (action !== 'read' && Number(agent.owner) !== Number(ctx.owner)) {
+async function requireGroup(ctx: ToolContext, args: ToolArgs, action: 'read' | 'edit' | 'delete' = 'read') {
+    const groupId = groupIdOf(args);
+    const group = await GroupDefinitionModel.get(ctx.domainId, groupId, GroupDefinitionModel.PROJECTION_LIST);
+    if (!group) throw new Error(`Group not found: ${groupId}`);
+    if (action !== 'read' && Number(group.owner) !== Number(ctx.owner)) {
         const user = await UserModel.getById(ctx.domainId, ctx.owner);
         const permission = action === 'delete' ? PERM.PERM_DELETE_DISCUSSION : PERM.PERM_EDIT_DISCUSSION;
-        if (!user.hasPerm(permission)) throw new Error(`You do not have permission to ${action} this Agent`);
+        if (!user.hasPerm(permission)) throw new Error(`You do not have permission to ${action} this Group`);
     }
-    return { agentId, agent };
+    return { groupId, group };
 }
 
-async function ensureAgentRoot(ctx: ToolContext, agentId: number, title: string) {
-    return await AgentSessionModel.ensureAgentRoot(ctx.domainId, ctx.owner, agentId, title);
+async function ensureGroupRoot(ctx: ToolContext, groupId: number, title: string) {
+    return await AgentSessionModel.ensureGroupRoot(ctx.domainId, ctx.owner, groupId, title);
 }
 
 function resultLimit(raw: unknown): number {
@@ -321,114 +286,109 @@ function resultLimit(raw: unknown): number {
 }
 
 interface OutlineEntry {
-    type: 'node' | 'card';
+    type: 'team' | 'agent';
     id: string;
     title: string;
     children?: OutlineEntry[];
 }
 
-function buildOutline(nodeList: AgentNodeDoc[], sessions: AgentSessionSummary[]): OutlineEntry[] {
-    const ids = new Set(nodeList.map((node) => node.nodeId));
-    const childrenByParent = new Map<string, AgentNodeDoc[]>();
-    for (const node of nodeList) {
-        if (!node.parentId || !ids.has(node.parentId)) continue;
-        const children = childrenByParent.get(node.parentId);
-        if (children) children.push(node);
-        else childrenByParent.set(node.parentId, [node]);
+function buildOutline(teams: AgentTeamDoc[], sessions: AgentSessionSummary[]): OutlineEntry[] {
+    const ids = new Set(teams.map((team) => team.teamId));
+    const childrenByParent = new Map<string, AgentTeamDoc[]>();
+    for (const team of teams) {
+        if (!team.parentTeamId || !ids.has(team.parentTeamId)) continue;
+        const children = childrenByParent.get(team.parentTeamId);
+        if (children) children.push(team);
+        else childrenByParent.set(team.parentTeamId, [team]);
     }
-    const cardsByNode = new Map<string, AgentSessionSummary[]>();
+    const agentsByTeam = new Map<string, AgentSessionSummary[]>();
     const loose: AgentSessionSummary[] = [];
     for (const session of sessions) {
-        if (session.nodeId && ids.has(session.nodeId)) {
-            const cards = cardsByNode.get(session.nodeId);
-            if (cards) cards.push(session);
-            else cardsByNode.set(session.nodeId, [session]);
+        if (session.teamId && ids.has(session.teamId)) {
+            const attachedAgents = agentsByTeam.get(session.teamId);
+            if (attachedAgents) attachedAgents.push(session);
+            else agentsByTeam.set(session.teamId, [session]);
         } else loose.push(session);
     }
-    const render = (node: AgentNodeDoc): OutlineEntry => ({
-        type: 'node',
-        id: node.nodeId,
-        title: node.text,
+    const render = (team: AgentTeamDoc): OutlineEntry => ({
+        type: 'team',
+        id: team.teamId,
+        title: team.text,
         children: [
-            ...(cardsByNode.get(node.nodeId) || []).map((session) => ({ type: 'card' as const, id: session.sessionId, title: sessionTitleOf(session) })),
-            ...(childrenByParent.get(node.nodeId) || []).map(render),
+            ...(agentsByTeam.get(team.teamId) || []).map((session) => ({ type: 'agent' as const, id: session.sessionId, title: sessionTitleOf(session) })),
+            ...(childrenByParent.get(team.teamId) || []).map(render),
         ],
     });
     return [
-        ...nodeList.filter((node) => !node.parentId || !ids.has(node.parentId)).map(render),
-        ...loose.map((session) => ({ type: 'card' as const, id: session.sessionId, title: sessionTitleOf(session) })),
+        ...teams.filter((team) => !team.parentTeamId || !ids.has(team.parentTeamId)).map(render),
+        ...loose.map((session) => ({ type: 'agent' as const, id: session.sessionId, title: sessionTitleOf(session) })),
     ];
 }
 
-function nodeDetail(node: AgentNodeDoc, nodes: AgentNodeDoc[], sessions: AgentSessionSummary[]) {
+function teamDetail(team: AgentTeamDoc, teams: AgentTeamDoc[], sessions: AgentSessionSummary[]) {
     return {
-        node: nodeView(node),
-        childNodes: nodes
-            .filter((child) => child.parentId === node.nodeId)
-            .map((child) => ({ nodeId: child.nodeId, title: child.text })),
-        cards: sessions.filter((session) => session.nodeId === node.nodeId).map(sessionCardView),
+        team: teamView(team),
+        childTeams: teams
+            .filter((child) => child.parentTeamId === team.teamId)
+            .map((child) => ({ teamId: child.teamId, title: child.text })),
+        agents: sessions.filter((session) => session.teamId === team.teamId).map(sessionAgentView),
     };
 }
 
-async function agentWorkspace(ctx: ToolContext, agentId: number) {
-    const [nodes, sessions] = await Promise.all([
-        AgentSessionModel.listNodes(ctx.domainId, ctx.owner, agentId),
-        AgentSessionModel.listSessions(ctx.domainId, ctx.owner, agentId),
+async function groupWorkspace(ctx: ToolContext, groupId: number) {
+    const [teams, sessions] = await Promise.all([
+        AgentSessionModel.listTeams(ctx.domainId, ctx.owner, groupId),
+        AgentSessionModel.listSessions(ctx.domainId, ctx.owner, groupId),
     ]);
-    return { nodes, sessions };
+    return { teams, sessions };
 }
 
-export async function list(ctx: ToolContext, args: ToolArgs) {
+export async function listGroups(ctx: ToolContext, args: ToolArgs) {
     const limit = resultLimit(args.limit);
-    const agents = (await AgentDefinitionModel.getMulti(ctx.domainId).toArray()).slice(0, limit);
-    const listed = await Promise.all(agents.map(async (agent) => {
-        const workspace = await agentWorkspace(ctx, agent.docId);
-        return { ...agentView(agent), nodeCount: workspace.nodes.length, cardCount: workspace.sessions.length };
+    const groups = (await GroupDefinitionModel.getMulti(ctx.domainId).toArray()).slice(0, limit);
+    const listed = await Promise.all(groups.map(async (group) => {
+        const workspace = await groupWorkspace(ctx, group.docId);
+        return { ...groupView(group), teamCount: workspace.teams.length, agentCount: workspace.sessions.length };
     }));
-    return { ok: true, count: listed.length, agents: listed };
+    return { ok: true, count: listed.length, groups: listed };
 }
 
-export async function search(ctx: ToolContext, args: ToolArgs) {
+export async function searchGroups(ctx: ToolContext, args: ToolArgs) {
     const query = String(args.query || '').trim().toLowerCase();
     if (!query) throw new Error('query is required');
     const limit = resultLimit(args.limit);
-    const agents = await AgentDefinitionModel.getMulti(ctx.domainId).toArray();
-    const matches = agents.filter((agent) => [agent.title, agent.content].some((value) => typeof value === 'string' && value.toLowerCase().includes(query)));
+    const groups = await GroupDefinitionModel.getMulti(ctx.domainId).toArray();
+    const matches = groups.filter((group) => [group.title, group.content].some((value) => typeof value === 'string' && value.toLowerCase().includes(query)));
+    return { ok: true, query, count: Math.min(matches.length, limit), groups: matches.slice(0, limit).map(groupView) };
+}
+
+export async function getGroup(ctx: ToolContext, args: ToolArgs) {
+    const { groupId, group } = await requireGroup(ctx, args);
+    await ensureGroupRoot(ctx, groupId, group.title);
+    const workspace = await groupWorkspace(ctx, groupId);
     return {
         ok: true,
-        query,
-        count: Math.min(matches.length, limit),
-        agents: matches.slice(0, limit).map(agentView),
+        group: groupView(group),
+        teamCount: workspace.teams.length,
+        agentCount: workspace.sessions.length,
+        outline: buildOutline(workspace.teams, workspace.sessions),
     };
 }
 
-export async function get(ctx: ToolContext, args: ToolArgs) {
-    const { agentId, agent } = await requireAgent(ctx, args);
-    await ensureAgentRoot(ctx, agentId, agent.title);
-    const workspace = await agentWorkspace(ctx, agentId);
-    return {
-        ok: true,
-        agent: agentView(agent),
-        nodeCount: workspace.nodes.length,
-        cardCount: workspace.sessions.length,
-        outline: buildOutline(workspace.nodes, workspace.sessions),
-    };
-}
-
-export async function create(ctx: ToolContext, args: ToolArgs) {
+export async function createGroup(ctx: ToolContext, args: ToolArgs) {
     const title = String(args.title || '').trim();
     const content = typeof args.content === 'string' ? args.content : '';
     if (!title || title.length > 256) throw new Error('title is required and must be at most 256 characters');
     if (content.length > 100000) throw new Error('content must be at most 100000 characters');
-    const aid = await AgentDefinitionModel.add(ctx.domainId, ctx.owner, title, content);
-    const agent = await AgentDefinitionModel.get(ctx.domainId, aid, AgentDefinitionModel.PROJECTION_LIST);
-    if (!agent) throw new Error('Failed to read the created Agent');
-    await ensureAgentRoot(ctx, agent.docId, agent.title);
-    return { ok: true, agent: agentView(agent) };
+    const aid = await GroupDefinitionModel.add(ctx.domainId, ctx.owner, title, content);
+    const group = await GroupDefinitionModel.get(ctx.domainId, aid, GroupDefinitionModel.PROJECTION_LIST);
+    if (!group) throw new Error('Failed to read the created Group');
+    await ensureGroupRoot(ctx, group.docId, group.title);
+    return { ok: true, group: groupView(group) };
 }
 
-export async function update(ctx: ToolContext, args: ToolArgs) {
-    const { agentId } = await requireAgent(ctx, args, 'edit');
+export async function updateGroup(ctx: ToolContext, args: ToolArgs) {
+    const { groupId } = await requireGroup(ctx, args, 'edit');
     const updates: Record<string, string> = {};
     if (Object.prototype.hasOwnProperty.call(args, 'title')) {
         const title = String(args.title || '').trim();
@@ -440,87 +400,87 @@ export async function update(ctx: ToolContext, args: ToolArgs) {
         updates.content = args.content;
     }
     if (!Object.keys(updates).length) throw new Error('Nothing to update');
-    const agent = await AgentDefinitionModel.edit(ctx.domainId, agentId, updates);
-    if (updates.title !== undefined) await AgentSessionModel.syncAgentRootTitle(ctx.domainId, agentId, updates.title);
-    return { ok: true, agent: agentView(agent) };
+    const group = await GroupDefinitionModel.edit(ctx.domainId, groupId, updates);
+    if (updates.title !== undefined) await AgentSessionModel.syncGroupRootTitle(ctx.domainId, groupId, updates.title);
+    return { ok: true, group: groupView(group) };
 }
 
-export async function remove(ctx: ToolContext, args: ToolArgs) {
-    const { agentId } = await requireAgent(ctx, args, 'delete');
-    await AgentSessionModel.detachAgent(ctx.domainId, agentId);
-    await AgentDefinitionModel.del(ctx.domainId, agentId);
-    return { ok: true, agentId, deleted: true };
+export async function removeGroup(ctx: ToolContext, args: ToolArgs) {
+    const { groupId } = await requireGroup(ctx, args, 'delete');
+    await AgentSessionModel.detachGroup(ctx.domainId, groupId);
+    await GroupDefinitionModel.del(ctx.domainId, groupId);
+    return { ok: true, groupId, deleted: true };
 }
 
-export async function listNodes(ctx: ToolContext, args: ToolArgs) {
-    const { agentId, agent } = await requireAgent(ctx, args);
-    await ensureAgentRoot(ctx, agentId, agent.title);
-    const nodes = await AgentSessionModel.listNodes(ctx.domainId, ctx.owner, agentId);
-    return { ok: true, agentId, count: nodes.length, nodes: nodes.map(nodeView) };
+export async function listTeams(ctx: ToolContext, args: ToolArgs) {
+    const { groupId, group } = await requireGroup(ctx, args);
+    await ensureGroupRoot(ctx, groupId, group.title);
+    const teams = await AgentSessionModel.listTeams(ctx.domainId, ctx.owner, groupId);
+    return { ok: true, groupId, count: teams.length, teams: teams.map(teamView) };
 }
 
-export async function getNode(ctx: ToolContext, args: ToolArgs) {
-    const { agentId, agent } = await requireAgent(ctx, args);
-    await ensureAgentRoot(ctx, agentId, agent.title);
-    const nodeId = String(args.nodeId || '').trim();
-    if (!nodeId) throw new Error('nodeId is required');
-    const node = await AgentSessionModel.getNode(ctx.domainId, ctx.owner, nodeId, agentId);
-    if (!node) throw new Error(`Node not found in Agent ${agentId}: ${nodeId}`);
-    const workspace = await agentWorkspace(ctx, agentId);
-    return { ok: true, agentId, ...nodeDetail(node, workspace.nodes, workspace.sessions) };
+export async function getTeam(ctx: ToolContext, args: ToolArgs) {
+    const { groupId, group } = await requireGroup(ctx, args);
+    await ensureGroupRoot(ctx, groupId, group.title);
+    const teamId = String(args.teamId || '').trim();
+    if (!teamId) throw new Error('teamId is required');
+    const team = await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId);
+    if (!team) throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
+    const workspace = await groupWorkspace(ctx, groupId);
+    return { ok: true, groupId, ...teamDetail(team, workspace.teams, workspace.sessions) };
 }
 
-export async function createNode(ctx: ToolContext, args: ToolArgs) {
-    const { agentId, agent } = await requireAgent(ctx, args, 'edit');
-    await ensureAgentRoot(ctx, agentId, agent.title);
+export async function createTeam(ctx: ToolContext, args: ToolArgs) {
+    const { groupId, group } = await requireGroup(ctx, args, 'edit');
+    await ensureGroupRoot(ctx, groupId, group.title);
     const text = String(args.text || '').trim();
     if (!text) throw new Error('text is required');
-    const parentId = typeof args.parentId === 'string' && args.parentId.trim() ? args.parentId.trim() : undefined;
-    const node = await AgentSessionModel.createNode(ctx.domainId, ctx.owner, text, agentId, parentId);
-    return { ok: true, agentId, node: nodeView(node) };
+    const parentTeamId = typeof args.parentTeamId === 'string' && args.parentTeamId.trim() ? args.parentTeamId.trim() : undefined;
+    const team = await AgentSessionModel.createTeam(ctx.domainId, ctx.owner, text, groupId, parentTeamId);
+    return { ok: true, groupId, team: teamView(team) };
 }
 
-export async function updateNode(ctx: ToolContext, args: ToolArgs) {
-    const { agentId, agent } = await requireAgent(ctx, args, 'edit');
-    await ensureAgentRoot(ctx, agentId, agent.title);
-    const nodeId = String(args.nodeId || '').trim();
-    if (!nodeId) throw new Error('nodeId is required');
+export async function updateTeam(ctx: ToolContext, args: ToolArgs) {
+    const { groupId, group } = await requireGroup(ctx, args, 'edit');
+    await ensureGroupRoot(ctx, groupId, group.title);
+    const teamId = String(args.teamId || '').trim();
+    if (!teamId) throw new Error('teamId is required');
 
     const hasText = Object.prototype.hasOwnProperty.call(args, 'text');
     const text = hasText ? String(args.text || '').trim() : undefined;
     if (hasText && !text) throw new Error('text cannot be empty');
-    const hasParent = Object.prototype.hasOwnProperty.call(args, 'parentId');
-    const parentId = hasParent ? asText(args.parentId) : undefined;
-    if (hasParent && !parentId) throw new Error('parentId cannot be empty');
+    const hasParent = Object.prototype.hasOwnProperty.call(args, 'parentTeamId');
+    const parentTeamId = hasParent ? asText(args.parentTeamId) : undefined;
+    if (hasParent && !parentTeamId) throw new Error('parentTeamId cannot be empty');
     const hasAddonIds = Object.prototype.hasOwnProperty.call(args, 'addonIds');
     const hasContext = Object.prototype.hasOwnProperty.call(args, 'context');
     if (!hasText && !hasParent && !hasAddonIds && !hasContext) throw new Error('Nothing to update');
-    if ((hasAddonIds || hasContext) && (hasText || hasParent)) throw new Error('Update node configuration separately from node text or placement');
+    if ((hasAddonIds || hasContext) && (hasText || hasParent)) throw new Error('Update team configuration separately from team text or placement');
 
-    let node = await AgentSessionModel.getNode(ctx.domainId, ctx.owner, nodeId, agentId);
-    if (!node) throw new Error(`Node not found in Agent ${agentId}: ${nodeId}`);
+    let team = await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId);
+    if (!team) throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
     if (hasText || hasParent) {
-        node = await AgentSessionModel.updateNode(ctx.domainId, ctx.owner, nodeId, text ?? node.text, agentId, parentId);
-        if (!node) throw new Error(`Node not found in Agent ${agentId}: ${nodeId}`);
+        team = await AgentSessionModel.updateTeam(ctx.domainId, ctx.owner, teamId, text ?? team.text, groupId, parentTeamId);
+        if (!team) throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
     }
 
     let configUpdate: Record<string, unknown> = {};
-    let resultNode: unknown = nodeView(node);
+    let resultTeam: unknown = teamView(team);
     if (hasAddonIds || hasContext) {
-        const config: AgentNodeConfig = {
-            ...(node.config?.addons === undefined ? {} : { addons: node.config.addons }),
-            ...(node.config?.context === undefined ? {} : { context: node.config.context }),
+        const config: AgentTeamConfig = {
+            ...(team.config?.addons === undefined ? {} : { addons: team.config.addons }),
+            ...(team.config?.context === undefined ? {} : { context: team.config.context }),
         };
         if (hasAddonIds) {
             if (!Array.isArray(args.addonIds) || args.addonIds.some((id: unknown) => typeof id !== 'string' || !id.trim())) {
                 throw new Error('addonIds must be an array of non-empty add-on ids');
             }
             const addonIds = [...new Set((args.addonIds as string[]).map((id) => id.trim()))];
-            const result = await agentRuntimeHandlerContext.agentAddonsList({ rpcId: 'agent-node-addons', method: 'agent.addons.list' }, sessionScope(ctx, agentId));
+            const result = await agentRuntimeHandlerContext.agentAddonsList({ rpcId: 'agent-team-addons', method: 'agent.addons.list' }, sessionScope(ctx, groupId));
             const available = (result.result?.value as { addons?: { addonId: string; installed: boolean; enabled: boolean }[] } | undefined)?.addons ?? [];
             for (const addonId of addonIds) {
                 if (!available.some((addon) => addon.addonId === addonId && addon.installed && addon.enabled)) {
-                    throw new Error(`Add-on ${addonId} is not installed and enabled for this Agent`);
+                    throw new Error(`Add-on ${addonId} is not installed and enabled for this Group`);
                 }
             }
             config.addons = Object.fromEntries(addonIds.map((id) => [id, true]));
@@ -531,71 +491,71 @@ export async function updateNode(ctx: ToolContext, args: ToolArgs) {
             config.context = args.context;
         }
         if (!ctx.broadcastAgentEvent) throw new Error('Cordis event publisher is unavailable');
-        const updated = await AgentSessionModel.updateNodeConfig(ctx.domainId, ctx.owner, nodeId, config, agentId);
-        if (!updated) throw new Error(`Node not found in Agent ${agentId}: ${nodeId}`);
-        resultNode = nodeView(updated);
+        const updated = await AgentSessionModel.updateTeamConfig(ctx.domainId, ctx.owner, teamId, config, groupId);
+        if (!updated) throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
+        resultTeam = teamView(updated);
         if (hasAddonIds) {
             for (const addon of listAgentAddons()) {
                 await ctx.broadcastAgentEvent('agent/addon-state', {
                     domainId: ctx.domainId,
                     userId: ctx.owner,
-                    agentId,
-                    nodeId,
+                    groupId,
+                    teamId,
                     addonId: addon.addonId,
                     enabled: config.addons?.[addon.addonId] === true,
                 });
             }
         }
         if (hasContext) {
-            await ctx.broadcastAgentEvent('agent/node-context', { domainId: ctx.domainId, userId: ctx.owner, agentId, nodeId });
+            await ctx.broadcastAgentEvent('agent/team-context', { domainId: ctx.domainId, userId: ctx.owner, groupId, teamId });
         }
         configUpdate = { syncScheduled: true };
     }
-    return { ok: true, agentId, node: resultNode, ...configUpdate };
+    return { ok: true, groupId, team: resultTeam, ...configUpdate };
 }
 
-export async function removeNode(ctx: ToolContext, args: ToolArgs) {
-    const { agentId, agent } = await requireAgent(ctx, args, 'edit');
-    await ensureAgentRoot(ctx, agentId, agent.title);
-    const nodeId = String(args.nodeId || '').trim();
-    if (!nodeId) throw new Error('nodeId is required');
-    const node = await AgentSessionModel.getNode(ctx.domainId, ctx.owner, nodeId, agentId);
-    if (!node) throw new Error(`Node not found in Agent ${agentId}: ${nodeId}`);
-    const response = await agentRuntimeHandlerContext.nodeRpc({
-        rpcId: 'agent_node_delete',
-        method: 'node.delete',
-        payload: { nodeId },
-    }, sessionScope(ctx, agentId));
-    if (!response.result?.ok) throw new Error(response.error?.message || 'Failed to delete Agent node');
+export async function removeTeam(ctx: ToolContext, args: ToolArgs) {
+    const { groupId, group } = await requireGroup(ctx, args, 'edit');
+    await ensureGroupRoot(ctx, groupId, group.title);
+    const teamId = String(args.teamId || '').trim();
+    if (!teamId) throw new Error('teamId is required');
+    const team = await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId);
+    if (!team) throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
+    const response = await agentRuntimeHandlerContext.teamRpc({
+        rpcId: 'agent_team_delete',
+        method: 'team.delete',
+        payload: { teamId },
+    }, sessionScope(ctx, groupId));
+    if (!response.result?.ok) throw new Error(response.error?.message || 'Failed to delete Agent team');
     const value = response.result.value as Record<string, unknown> | undefined;
-    return { ok: true, agentId, nodeId, ...value };
+    return { ok: true, groupId, teamId, ...value };
 }
 
-function sessionScope(ctx: ToolContext, agentId: number) {
-    return { domainId: ctx.domainId, userId: ctx.owner, agentId };
+function sessionScope(ctx: ToolContext, groupId: number) {
+    return { domainId: ctx.domainId, userId: ctx.owner, groupId };
 }
 
-async function renameSessionCard(ctx: ToolContext, agentId: number, sessionId: string, title: string) {
-    const scope = sessionScope(ctx, agentId);
+async function renameSessionAgent(ctx: ToolContext, groupId: number, sessionId: string, title: string) {
+    const scope = sessionScope(ctx, groupId);
     const link = await agentRuntimeHandlerContext.linkForSession(scope, sessionId);
     const upstream = await agentRuntimeHandlerContext.callUpstream('session.rename', { sessionId, title }, link);
     if (!upstream.body.result?.ok) throw new Error(upstream.body.error?.message || 'Session rename failed');
-    const session = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, agentId);
+    const session = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, groupId);
     if (!session) throw new Error(`Session not found: ${sessionId}`);
     await agentRuntimeHandlerContext.agentDataAdapter.updateSession(scope, sessionId, {
         projections: { values: { ...(session.projections?.values ?? {}), title } },
     });
 }
 
-export async function listCards(ctx: ToolContext, args: ToolArgs) {
-    const { agentId } = await requireAgent(ctx, args);
-    const nodeId = typeof args.nodeId === 'string' && args.nodeId.trim() ? args.nodeId.trim() : undefined;
-    if (nodeId && !await AgentSessionModel.getNode(ctx.domainId, ctx.owner, nodeId, agentId)) {
-        throw new Error(`Node not found in Agent ${agentId}: ${nodeId}`);
+export async function listAgents(ctx: ToolContext, args: ToolArgs) {
+    const { groupId } = await requireGroup(ctx, args);
+    const teamId = typeof args.teamId === 'string' && args.teamId.trim() ? args.teamId.trim() : undefined;
+    if (teamId && !await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId)) {
+        throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
     }
-    const sessions = await AgentSessionModel.listSessions(ctx.domainId, ctx.owner, agentId);
-    const cards = nodeId ? sessions.filter((session) => session.nodeId === nodeId) : sessions;
-    return { ok: true, agentId, ...(nodeId ? { nodeId } : {}), count: cards.length, cards: cards.map(sessionCardView) };
+    const sessions = await AgentSessionModel.listSessions(ctx.domainId, ctx.owner, groupId);
+    const agents = teamId ? sessions.filter((session) => session.teamId === teamId) : sessions;
+    return { ok: true, groupId, ...(teamId ? { teamId } : {}), count: agents.length, agents: agents.map(sessionAgentView) };
 }
 
 function messageText(event: Record<string, unknown>): string {
@@ -628,14 +588,14 @@ function boundedCount(raw: unknown, label: string, max: number, fallback: number
     return value;
 }
 
-async function sessionConversation(ctx: ToolContext, agentId: number, sessionId: string, args: ToolArgs) {
-    const session = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, agentId);
-    if (!session) throw new Error(`Session card not found in Agent ${agentId}: ${sessionId}`);
+async function sessionConversation(ctx: ToolContext, groupId: number, sessionId: string, args: ToolArgs) {
+    const session = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, groupId);
+    if (!session) throw new Error(`Session agent not found in Group ${groupId}: ${sessionId}`);
     const maxMessages = boundedCount(args.maxMessages, 'maxMessages', 500, 50);
     const maxChars = boundedCount(args.maxChars, 'maxChars', MAX_FILE_CONTENT_CHARS_LIMIT, MAX_FILE_CONTENT_CHARS);
     const beforeSeq = args.beforeSeq === undefined || args.beforeSeq === null || args.beforeSeq === '' ? undefined : Number(args.beforeSeq);
     if (beforeSeq !== undefined && (!Number.isSafeInteger(beforeSeq) || beforeSeq < 0)) throw new Error('beforeSeq must be a non-negative integer');
-    const page = await AgentSessionModel.listMessageEvents(ctx.domainId, ctx.owner, sessionId, beforeSeq, maxMessages, agentId);
+    const page = await AgentSessionModel.listMessageEvents(ctx.domainId, ctx.owner, sessionId, beforeSeq, maxMessages, groupId);
     const turns = page.events.flatMap((event) => {
         const text = messageText(event);
         if (!text) return [];
@@ -654,7 +614,7 @@ async function sessionConversation(ctx: ToolContext, agentId: number, sessionId:
         truncated = true;
     }
     return {
-        ...sessionCardView(session),
+        ...sessionAgentView(session),
         content,
         textLength: content.length,
         truncated,
@@ -663,16 +623,16 @@ async function sessionConversation(ctx: ToolContext, agentId: number, sessionId:
     };
 }
 
-export async function getCard(ctx: ToolContext, args: ToolArgs) {
-    const { agentId } = await requireAgent(ctx, args);
-    const sessionId = String(args.cardId || '').trim();
-    if (!sessionId) throw new Error('cardId/sessionId is required');
-    const card = await sessionConversation(ctx, agentId, sessionId, args);
-    return { ok: true, agentId, ...card };
+export async function getAgent(ctx: ToolContext, args: ToolArgs) {
+    const { groupId } = await requireGroup(ctx, args);
+    const sessionId = String(args.agentId || '').trim();
+    if (!sessionId) throw new Error('agentId is required');
+    const agent = await sessionConversation(ctx, groupId, sessionId, args);
+    return { ok: true, groupId, ...agent };
 }
 
-interface SessionCardCreateInput {
-    nodeId?: string;
+interface SessionAgentCreateInput {
+    teamId?: string;
     title?: string;
     message?: string;
     provider?: string;
@@ -682,7 +642,7 @@ interface SessionCardCreateInput {
     agentPreset?: string;
 }
 
-function sessionCardInput(fields: Record<string, unknown>, label = ''): SessionCardCreateInput {
+function sessionAgentInput(fields: Record<string, unknown>, label = ''): SessionAgentCreateInput {
     const prefix = label ? `${label}.` : '';
     const provider = asText(fields.provider);
     const model = asText(fields.model);
@@ -696,7 +656,7 @@ function sessionCardInput(fields: Record<string, unknown>, label = ''): SessionC
     const title = typeof fields.title === 'string' ? fields.title.trim() : '';
     const message = typeof fields.message === 'string' ? fields.message.trim() : '';
     return {
-        ...(asText(fields.nodeId) ? { nodeId: asText(fields.nodeId) } : {}),
+        ...(asText(fields.teamId) ? { teamId: asText(fields.teamId) } : {}),
         ...(title ? { title } : {}),
         ...(message ? { message } : {}),
         ...(provider ? { provider, model } : {}),
@@ -706,15 +666,15 @@ function sessionCardInput(fields: Record<string, unknown>, label = ''): SessionC
     };
 }
 
-async function createSessionCard(ctx: ToolContext, agentId: number, agentTitle: string, input: SessionCardCreateInput) {
-    const root = await ensureAgentRoot(ctx, agentId, agentTitle);
-    const nodeId = input.nodeId || root.nodeId;
-    if (!await AgentSessionModel.getNode(ctx.domainId, ctx.owner, nodeId, agentId)) {
-        throw new Error(`Node not found in Agent ${agentId}: ${nodeId}`);
+async function createSessionAgent(ctx: ToolContext, groupId: number, agentTitle: string, input: SessionAgentCreateInput) {
+    const root = await ensureGroupRoot(ctx, groupId, agentTitle);
+    const teamId = input.teamId || root.teamId;
+    if (!await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId)) {
+        throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
     }
-    const scope = sessionScope(ctx, agentId);
+    const scope = sessionScope(ctx, groupId);
     const payload: Record<string, unknown> = {
-        nodeId,
+        teamId,
         ...(input.provider && input.model ? { provider: input.provider, model: input.model } : {}),
         ...(input.baseDocId === undefined ? {} : { baseDocId: input.baseDocId }),
         ...(input.runtimeId ? { runtimeId: input.runtimeId } : {}),
@@ -725,7 +685,7 @@ async function createSessionCard(ctx: ToolContext, agentId: number, agentTitle: 
     const value = created.result.value as { sessionId?: string } | undefined;
     const sessionId = value?.sessionId;
     if (!sessionId) throw new Error('Session creation returned no sessionId');
-    if (input.title) await renameSessionCard(ctx, agentId, sessionId, input.title);
+    if (input.title) await renameSessionAgent(ctx, groupId, sessionId, input.title);
     let started = false;
     let error: string | undefined;
     if (input.message) {
@@ -742,9 +702,9 @@ async function createSessionCard(ctx: ToolContext, agentId: number, agentTitle: 
             error = (caught as Error).message;
         }
     }
-    const session = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, agentId);
+    const session = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, groupId);
     if (!session) throw new Error(`Created session not found: ${sessionId}`);
-    return { card: sessionCardView(session), started, ...(error ? { error } : {}) };
+    return { agent: sessionAgentView(session), started, ...(error ? { error } : {}) };
 }
 
 function objectEntries(raw: unknown, label: string): Record<string, unknown>[] {
@@ -765,80 +725,80 @@ function optionalIds(raw: unknown, label: string, limit: number): string[] {
     return idList(raw, label, limit);
 }
 
-export async function createCard(ctx: ToolContext, args: ToolArgs) {
-    const { agentId, agent } = await requireAgent(ctx, args, 'edit');
-    const created = await createSessionCard(ctx, agentId, agent.title, sessionCardInput(args));
+export async function createAgent(ctx: ToolContext, args: ToolArgs) {
+    const { groupId, group } = await requireGroup(ctx, args, 'edit');
+    const created = await createSessionAgent(ctx, groupId, group.title, sessionAgentInput(args));
     return {
         ok: created.error === undefined,
-        agentId,
+        groupId,
         started: created.started,
-        card: created.card,
+        agent: created.agent,
         ...(created.error ? { error: created.error } : {}),
     };
 }
 
-export async function updateCard(ctx: ToolContext, args: ToolArgs) {
-    const { agentId } = await requireAgent(ctx, args, 'edit');
-    const sessionId = String(args.cardId || '').trim();
-    if (!sessionId) throw new Error('cardId/sessionId is required');
-    const session = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, agentId);
-    if (!session) throw new Error(`Session card not found in Agent ${agentId}: ${sessionId}`);
+export async function updateAgent(ctx: ToolContext, args: ToolArgs) {
+    const { groupId } = await requireGroup(ctx, args, 'edit');
+    const sessionId = String(args.agentId || '').trim();
+    if (!sessionId) throw new Error('agentId is required');
+    const session = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, groupId);
+    if (!session) throw new Error(`Session agent not found in Group ${groupId}: ${sessionId}`);
     const title = typeof args.title === 'string' ? args.title.trim() : undefined;
     if (title === '') throw new Error('title cannot be empty');
-    const nodeId = typeof args.nodeId === 'string' ? args.nodeId.trim() : undefined;
-    if (nodeId !== undefined) {
-        if (!nodeId) throw new Error('nodeId cannot be empty');
-        if (!await AgentSessionModel.getNode(ctx.domainId, ctx.owner, nodeId, agentId)) {
-            throw new Error(`Node not found in Agent ${agentId}: ${nodeId}`);
+    const teamId = typeof args.teamId === 'string' ? args.teamId.trim() : undefined;
+    if (teamId !== undefined) {
+        if (!teamId) throw new Error('teamId cannot be empty');
+        if (!await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId)) {
+            throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
         }
     }
-    if (title === undefined && nodeId === undefined) throw new Error('Nothing to update (title or nodeId required)');
-    if (title !== undefined) await renameSessionCard(ctx, agentId, sessionId, title);
+    if (title === undefined && teamId === undefined) throw new Error('Nothing to update (title or teamId required)');
+    if (title !== undefined) await renameSessionAgent(ctx, groupId, sessionId, title);
     let failedAddonIds: string[] = [];
     let failedContextSync = false;
-    if (nodeId !== undefined && nodeId !== session.nodeId) {
-        const scope = sessionScope(ctx, agentId);
-        await agentRuntimeHandlerContext.agentDataAdapter.updateSession(scope, sessionId, { nodeId });
-        failedAddonIds = await agentRuntimeHandlerContext.syncSessionAddonsForNode(scope, sessionId, nodeId);
-        failedContextSync = await agentRuntimeHandlerContext.syncSessionNodeContextForNode(scope, sessionId, nodeId);
+    if (teamId !== undefined && teamId !== session.teamId) {
+        const scope = sessionScope(ctx, groupId);
+        await agentRuntimeHandlerContext.agentDataAdapter.updateSession(scope, sessionId, { teamId });
+        failedAddonIds = await agentRuntimeHandlerContext.syncSessionAddonsForTeam(scope, sessionId, teamId);
+        failedContextSync = await agentRuntimeHandlerContext.syncSessionTeamContextForTeam(scope, sessionId, teamId);
     }
-    const updated = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, agentId);
-    if (!updated) throw new Error(`Session card not found in Agent ${agentId}: ${sessionId}`);
+    const updated = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, groupId);
+    if (!updated) throw new Error(`Session agent not found in Group ${groupId}: ${sessionId}`);
     return {
         ok: true,
-        agentId,
-        card: sessionCardView(updated),
+        groupId,
+        agent: sessionAgentView(updated),
         ...(failedAddonIds.length ? { failedAddonIds } : {}),
         ...(failedContextSync ? { failedContextSync: true } : {}),
     };
 }
 
-export async function createNodes(ctx: ToolContext, args: ToolArgs) {
-    const { agentId, agent } = await requireAgent(ctx, args, 'edit');
-    const root = await ensureAgentRoot(ctx, agentId, agent.title);
-    const raw = objectEntries(args.nodes, 'nodes');
-    if (raw.length > MAX_NODES_PER_CALL) throw new Error(`nodes holds ${raw.length} entries and one call creates ${MAX_NODES_PER_CALL}; split the work across calls`);
-    const existing = await AgentSessionModel.listNodes(ctx.domainId, ctx.owner, agentId);
-    const known = new Set(existing.map((node) => node.nodeId));
-    const defaultParent = asText(args.parentId) || root.nodeId;
-    if (!known.has(defaultParent)) throw new Error(`Parent node not found in Agent ${agentId}: ${defaultParent}`);
+export async function createTeams(ctx: ToolContext, args: ToolArgs) {
+    const { groupId, group } = await requireGroup(ctx, args, 'edit');
+    const root = await ensureGroupRoot(ctx, groupId, group.title);
+    const raw = objectEntries(args.teams, 'teams');
+    if (raw.length > MAX_TEAMS_PER_CALL) throw new Error(`teams holds ${raw.length} entries and one call creates ${MAX_TEAMS_PER_CALL}; split the work across calls`);
+    const existing = await AgentSessionModel.listTeams(ctx.domainId, ctx.owner, groupId);
+    const known = new Set(existing.map((team) => team.teamId));
+    const defaultParent = asText(args.parentTeamId) || root.teamId;
+    if (!known.has(defaultParent)) throw new Error(`Parent team not found in Group ${groupId}: ${defaultParent}`);
     const refIndex = new Map<string, number>();
-    const planned: { index: number; text: string; ref: string; parentRef: string; parentId: string }[] = [];
+    const planned: { index: number; text: string; ref: string; parentRef: string; parentTeamId: string }[] = [];
     for (const [index, fields] of raw.entries()) {
         const text = asText(fields.text);
-        if (!text) throw new Error(`nodes[${index}].text is required`);
+        if (!text) throw new Error(`teams[${index}].text is required`);
         const ref = asText(fields.ref);
-        if (ref && refIndex.has(ref)) throw new Error(`nodes[${index}].ref ${ref} is already the ref of nodes[${refIndex.get(ref)}]`);
+        if (ref && refIndex.has(ref)) throw new Error(`teams[${index}].ref ${ref} is already the ref of teams[${refIndex.get(ref)}]`);
         const parentRef = asText(fields.parentRef);
-        const ownParent = asText(fields.parentId);
-        if (parentRef && ownParent) throw new Error(`nodes[${index}] names both parentRef and parentId; keep one`);
-        if (parentRef && !refIndex.has(parentRef)) throw new Error(`nodes[${index}].parentRef ${parentRef} does not name an earlier entry`);
-        if (ownParent && !known.has(ownParent)) throw new Error(`nodes[${index}].parentId ${ownParent} is not a node of this Agent`);
+        const ownParent = asText(fields.parentTeamId);
+        if (parentRef && ownParent) throw new Error(`teams[${index}] names both parentRef and parentTeamId; keep one`);
+        if (parentRef && !refIndex.has(parentRef)) throw new Error(`teams[${index}].parentRef ${parentRef} does not name an earlier entry`);
+        if (ownParent && !known.has(ownParent)) throw new Error(`teams[${index}].parentTeamId ${ownParent} is not a team of this Group`);
         if (ref) refIndex.set(ref, index);
-        planned.push({ index, text, ref, parentRef, parentId: ownParent });
+        planned.push({ index, text, ref, parentRef, parentTeamId: ownParent });
     }
     const createdIds = new Map<number, string>();
-    const created: { index: number; ref?: string; nodeId: string; parentId?: string; text: string }[] = [];
+    const created: { index: number; ref?: string; teamId: string; parentTeamId?: string; text: string }[] = [];
     const refused: { index: number; error: string }[] = [];
     for (const entry of planned) {
         const parentFromRef = entry.parentRef ? createdIds.get(refIndex.get(entry.parentRef) as number) : undefined;
@@ -846,356 +806,356 @@ export async function createNodes(ctx: ToolContext, args: ToolArgs) {
             refused.push({ index: entry.index, error: `Parent ref ${entry.parentRef} was not created` });
             continue;
         }
-        const parentId = parentFromRef || entry.parentId || defaultParent;
+        const parentTeamId = parentFromRef || entry.parentTeamId || defaultParent;
         try {
-            const node = await AgentSessionModel.createNode(ctx.domainId, ctx.owner, entry.text, agentId, parentId);
-            createdIds.set(entry.index, node.nodeId);
-            known.add(node.nodeId);
-            created.push({ index: entry.index, ...(entry.ref ? { ref: entry.ref } : {}), nodeId: node.nodeId, parentId: node.parentId, text: node.text });
+            const team = await AgentSessionModel.createTeam(ctx.domainId, ctx.owner, entry.text, groupId, parentTeamId);
+            createdIds.set(entry.index, team.teamId);
+            known.add(team.teamId);
+            created.push({ index: entry.index, ...(entry.ref ? { ref: entry.ref } : {}), teamId: team.teamId, parentTeamId: team.parentTeamId, text: team.text });
         } catch (error) {
             refused.push({ index: entry.index, error: (error as Error).message });
         }
     }
-    return { ok: refused.length === 0, agentId, nodeCount: created.length, nodes: created, refusedNodes: refused };
+    return { ok: refused.length === 0, groupId, teamCount: created.length, teams: created, refusedTeams: refused };
 }
 
-export async function getNodes(ctx: ToolContext, args: ToolArgs) {
-    const { agentId, agent } = await requireAgent(ctx, args);
-    await ensureAgentRoot(ctx, agentId, agent.title);
-    const nodeIds = idList(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
-    const workspace = await agentWorkspace(ctx, agentId);
-    const byId = new Map(workspace.nodes.map((node) => [node.nodeId, node]));
-    const found: { index: number; node: ReturnType<typeof nodeView>; childNodes: { nodeId: string; title: string }[]; cards: ReturnType<typeof sessionCardView>[] }[] = [];
+export async function getTeams(ctx: ToolContext, args: ToolArgs) {
+    const { groupId, group } = await requireGroup(ctx, args);
+    await ensureGroupRoot(ctx, groupId, group.title);
+    const teamIds = idList(args.teamIds, 'teamIds', MAX_TEAMS_PER_CALL);
+    const workspace = await groupWorkspace(ctx, groupId);
+    const byId = new Map(workspace.teams.map((team) => [team.teamId, team]));
+    const found: { index: number; team: ReturnType<typeof teamView>; childTeams: { teamId: string; title: string }[]; agents: ReturnType<typeof sessionAgentView>[] }[] = [];
     const missing: string[] = [];
-    for (const [index, nodeId] of nodeIds.entries()) {
-        const node = byId.get(nodeId);
-        if (!node) {
-            missing.push(nodeId);
+    for (const [index, teamId] of teamIds.entries()) {
+        const team = byId.get(teamId);
+        if (!team) {
+            missing.push(teamId);
             continue;
         }
-        found.push({ index, ...nodeDetail(node, workspace.nodes, workspace.sessions) });
+        found.push({ index, ...teamDetail(team, workspace.teams, workspace.sessions) });
     }
-    return { ok: missing.length === 0, agentId, nodeCount: found.length, nodes: found, missingNodeIds: missing };
+    return { ok: missing.length === 0, groupId, teamCount: found.length, teams: found, missingTeamIds: missing };
 }
 
-export async function updateNodes(ctx: ToolContext, args: ToolArgs) {
-    const { agentId, agent } = await requireAgent(ctx, args, 'edit');
-    await ensureAgentRoot(ctx, agentId, agent.title);
+export async function updateTeams(ctx: ToolContext, args: ToolArgs) {
+    const { groupId, group } = await requireGroup(ctx, args, 'edit');
+    await ensureGroupRoot(ctx, groupId, group.title);
     const raw = objectEntries(args.entries, 'entries');
-    if (raw.length > MAX_NODES_PER_CALL) throw new Error(`entries holds ${raw.length} entries and one call updates ${MAX_NODES_PER_CALL}; split the work across calls`);
-    const planned: { index: number; nodeId: string; text?: string; parentId?: string }[] = [];
+    if (raw.length > MAX_TEAMS_PER_CALL) throw new Error(`entries holds ${raw.length} entries and one call updates ${MAX_TEAMS_PER_CALL}; split the work across calls`);
+    const planned: { index: number; teamId: string; text?: string; parentTeamId?: string }[] = [];
     const seen = new Set<string>();
     for (const [index, fields] of raw.entries()) {
-        const nodeId = asText(fields.nodeId);
-        if (!nodeId) throw new Error(`entries[${index}].nodeId is required`);
-        if (seen.has(nodeId)) throw new Error(`entries[${index}].nodeId ${nodeId} appears twice; send one entry per node`);
-        seen.add(nodeId);
+        const teamId = asText(fields.teamId);
+        if (!teamId) throw new Error(`entries[${index}].teamId is required`);
+        if (seen.has(teamId)) throw new Error(`entries[${index}].teamId ${teamId} appears twice; send one entry per team`);
+        seen.add(teamId);
         const hasText = Object.prototype.hasOwnProperty.call(fields, 'text');
-        const hasParent = Object.prototype.hasOwnProperty.call(fields, 'parentId');
-        if (!hasText && !hasParent) throw new Error(`entries[${index}] names nothing to change; give text, parentId, or both`);
+        const hasParent = Object.prototype.hasOwnProperty.call(fields, 'parentTeamId');
+        if (!hasText && !hasParent) throw new Error(`entries[${index}] names nothing to change; give text, parentTeamId, or both`);
         const text = hasText ? asText(fields.text) : undefined;
         if (hasText && !text) throw new Error(`entries[${index}].text cannot be empty`);
-        const parentId = hasParent ? asText(fields.parentId) : undefined;
-        if (hasParent && !parentId) throw new Error(`entries[${index}].parentId cannot be empty`);
-        planned.push({ index, nodeId, ...(text ? { text } : {}), ...(parentId ? { parentId } : {}) });
+        const parentTeamId = hasParent ? asText(fields.parentTeamId) : undefined;
+        if (hasParent && !parentTeamId) throw new Error(`entries[${index}].parentTeamId cannot be empty`);
+        planned.push({ index, teamId, ...(text ? { text } : {}), ...(parentTeamId ? { parentTeamId } : {}) });
     }
-    const currentNodes = await AgentSessionModel.listNodes(ctx.domainId, ctx.owner, agentId);
-    const byId = new Map(currentNodes.map((node) => [node.nodeId, node]));
+    const currentTeams = await AgentSessionModel.listTeams(ctx.domainId, ctx.owner, groupId);
+    const byId = new Map(currentTeams.map((team) => [team.teamId, team]));
     for (const entry of planned) {
-        const node = byId.get(entry.nodeId);
-        if (!node) throw new Error(`Node not found in Agent ${agentId}: ${entry.nodeId}`);
-        if (node.isRoot) throw new Error('Agent root node cannot be renamed or moved');
+        const team = byId.get(entry.teamId);
+        if (!team) throw new Error(`Team not found in Group ${groupId}: ${entry.teamId}`);
+        if (team.isRootTeam) throw new Error('Group root team cannot be renamed or moved');
     }
-    const updated: { index: number; node: ReturnType<typeof nodeView> }[] = [];
-    const refused: { index: number; nodeId: string; error: string }[] = [];
+    const updated: { index: number; team: ReturnType<typeof teamView> }[] = [];
+    const refused: { index: number; teamId: string; error: string }[] = [];
     for (const entry of planned) {
-        const current = await AgentSessionModel.getNode(ctx.domainId, ctx.owner, entry.nodeId, agentId);
+        const current = await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, entry.teamId, groupId);
         if (!current) {
-            refused.push({ index: entry.index, nodeId: entry.nodeId, error: `Node not found in Agent ${agentId}: ${entry.nodeId}` });
+            refused.push({ index: entry.index, teamId: entry.teamId, error: `Team not found in Group ${groupId}: ${entry.teamId}` });
             continue;
         }
         try {
-            const node = await AgentSessionModel.updateNode(ctx.domainId, ctx.owner, entry.nodeId, entry.text ?? current.text, agentId, entry.parentId);
-            if (!node) throw new Error(`Node not found in Agent ${agentId}: ${entry.nodeId}`);
-            updated.push({ index: entry.index, node: nodeView(node) });
+            const team = await AgentSessionModel.updateTeam(ctx.domainId, ctx.owner, entry.teamId, entry.text ?? current.text, groupId, entry.parentTeamId);
+            if (!team) throw new Error(`Team not found in Group ${groupId}: ${entry.teamId}`);
+            updated.push({ index: entry.index, team: teamView(team) });
         } catch (error) {
-            refused.push({ index: entry.index, nodeId: entry.nodeId, error: (error as Error).message });
+            refused.push({ index: entry.index, teamId: entry.teamId, error: (error as Error).message });
         }
     }
-    return { ok: refused.length === 0, agentId, nodeCount: updated.length, nodes: updated, refusedNodes: refused };
+    return { ok: refused.length === 0, groupId, teamCount: updated.length, teams: updated, refusedTeams: refused };
 }
 
-export async function removeNodes(ctx: ToolContext, args: ToolArgs) {
-    const { agentId, agent } = await requireAgent(ctx, args, 'edit');
-    await ensureAgentRoot(ctx, agentId, agent.title);
-    const nodeIds = idList(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
-    const currentNodes = await AgentSessionModel.listNodes(ctx.domainId, ctx.owner, agentId);
-    const byId = new Map(currentNodes.map((node) => [node.nodeId, node]));
-    for (const nodeId of nodeIds) {
-        const node = byId.get(nodeId);
-        if (!node) throw new Error(`Node not found in Agent ${agentId}: ${nodeId}`);
-        if (node.isRoot) throw new Error('Agent root node cannot be deleted');
+export async function removeTeams(ctx: ToolContext, args: ToolArgs) {
+    const { groupId, group } = await requireGroup(ctx, args, 'edit');
+    await ensureGroupRoot(ctx, groupId, group.title);
+    const teamIds = idList(args.teamIds, 'teamIds', MAX_TEAMS_PER_CALL);
+    const currentTeams = await AgentSessionModel.listTeams(ctx.domainId, ctx.owner, groupId);
+    const byId = new Map(currentTeams.map((team) => [team.teamId, team]));
+    for (const teamId of teamIds) {
+        const team = byId.get(teamId);
+        if (!team) throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
+        if (team.isRootTeam) throw new Error('Group root team cannot be deleted');
     }
     const failedSessionIds = new Set<string>();
-    for (const nodeId of nodeIds) {
-        const response = await agentRuntimeHandlerContext.nodeRpc({
-            rpcId: 'agent_node_delete_many',
-            method: 'node.delete',
-            payload: { nodeId },
-        }, sessionScope(ctx, agentId));
-        if (!response.result?.ok) throw new Error(response.error?.message || `Failed to delete Agent node ${nodeId}`);
+    for (const teamId of teamIds) {
+        const response = await agentRuntimeHandlerContext.teamRpc({
+            rpcId: 'agent_team_delete_many',
+            method: 'team.delete',
+            payload: { teamId },
+        }, sessionScope(ctx, groupId));
+        if (!response.result?.ok) throw new Error(response.error?.message || `Failed to delete Agent team ${teamId}`);
         const value = response.result.value as { failedSessionIds?: string[] } | undefined;
         value?.failedSessionIds?.forEach((sessionId) => failedSessionIds.add(sessionId));
     }
-    return { ok: true, agentId, removedNodeIds: nodeIds, removedCount: nodeIds.length, failedSessionIds: [...failedSessionIds] };
+    return { ok: true, groupId, removedTeamIds: teamIds, removedCount: teamIds.length, failedSessionIds: [...failedSessionIds] };
 }
 
-export async function createCards(ctx: ToolContext, args: ToolArgs) {
-    const { agentId, agent } = await requireAgent(ctx, args, 'edit');
-    const raw = objectEntries(args.cards, 'cards');
-    if (raw.length > MAX_CARDS_PER_CALL) throw new Error(`cards holds ${raw.length} entries and one call creates ${MAX_CARDS_PER_CALL}; split the work across calls`);
-    const planned = raw.map((fields, index) => sessionCardInput(fields, `cards[${index}]`));
-    const created: { index: number; started: boolean; card: ReturnType<typeof sessionCardView>; error?: string }[] = [];
-    const refused: { index: number; cardId?: string; error: string }[] = [];
+export async function createAgents(ctx: ToolContext, args: ToolArgs) {
+    const { groupId, group } = await requireGroup(ctx, args, 'edit');
+    const raw = objectEntries(args.agents, 'agents');
+    if (raw.length > MAX_AGENTS_PER_CALL) throw new Error(`agents holds ${raw.length} entries and one call creates ${MAX_AGENTS_PER_CALL}; split the work across calls`);
+    const planned = raw.map((fields, index) => sessionAgentInput(fields, `agents[${index}]`));
+    const created: { index: number; started: boolean; agent: ReturnType<typeof sessionAgentView>; error?: string }[] = [];
+    const refused: { index: number; agentId?: string; error: string }[] = [];
     for (const [index, input] of planned.entries()) {
         try {
-            const result = await createSessionCard(ctx, agentId, agent.title, input);
-            created.push({ index, started: result.started, card: result.card, ...(result.error ? { error: result.error } : {}) });
-            if (result.error) refused.push({ index, cardId: result.card.cardId, error: result.error });
+            const result = await createSessionAgent(ctx, groupId, group.title, input);
+            created.push({ index, started: result.started, agent: result.agent, ...(result.error ? { error: result.error } : {}) });
+            if (result.error) refused.push({ index, agentId: result.agent.agentId, error: result.error });
         } catch (error) {
             refused.push({ index, error: (error as Error).message });
         }
     }
-    return { ok: refused.length === 0, agentId, cardCount: created.length, cards: created, refusedCards: refused };
+    return { ok: refused.length === 0, groupId, agentCount: created.length, agents: created, refusedAgents: refused };
 }
 
-export async function getCards(ctx: ToolContext, args: ToolArgs) {
-    const { agentId } = await requireAgent(ctx, args);
-    const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
-    const sessions = await AgentSessionModel.listSessions(ctx.domainId, ctx.owner, agentId);
+export async function getAgents(ctx: ToolContext, args: ToolArgs) {
+    const { groupId } = await requireGroup(ctx, args);
+    const agentIds = idList(args.agentIds, 'agentIds', MAX_AGENTS_PER_CALL);
+    const sessions = await AgentSessionModel.listSessions(ctx.domainId, ctx.owner, groupId);
     const byId = new Map(sessions.map((session) => [session.sessionId, session]));
-    const found: { index: number; cardId: string; title: string; content: string; hasMore?: boolean; beforeSeq?: number; truncated?: boolean }[] = [];
+    const found: { index: number; agentId: string; title: string; content: string; hasMore?: boolean; beforeSeq?: number; truncated?: boolean }[] = [];
     const missing: string[] = [];
-    for (const [index, cardId] of cardIds.entries()) {
-        const session = byId.get(cardId);
+    for (const [index, agentId] of agentIds.entries()) {
+        const session = byId.get(agentId);
         if (!session) {
-            missing.push(cardId);
+            missing.push(agentId);
             continue;
         }
-        const card = await sessionConversation(ctx, agentId, cardId, args);
+        const agent = await sessionConversation(ctx, groupId, agentId, args);
         found.push({
             index,
-            cardId: card.cardId,
-            title: card.title,
-            content: card.content,
-            ...(card.hasMore ? { hasMore: true, beforeSeq: card.beforeSeq } : {}),
-            ...(card.truncated ? { truncated: true } : {}),
+            agentId: agent.agentId,
+            title: agent.title,
+            content: agent.content,
+            ...(agent.hasMore ? { hasMore: true, beforeSeq: agent.beforeSeq } : {}),
+            ...(agent.truncated ? { truncated: true } : {}),
         });
     }
-    return { ok: missing.length === 0, agentId, cardCount: found.length, cards: found, missingCardIds: missing };
+    return { ok: missing.length === 0, groupId, agentCount: found.length, agents: found, missingAgentIds: missing };
 }
 
-export async function updateCards(ctx: ToolContext, args: ToolArgs) {
-    const { agentId } = await requireAgent(ctx, args, 'edit');
+export async function updateAgents(ctx: ToolContext, args: ToolArgs) {
+    const { groupId } = await requireGroup(ctx, args, 'edit');
     const raw = objectEntries(args.entries, 'entries');
-    if (raw.length > MAX_CARDS_PER_CALL) throw new Error(`entries holds ${raw.length} entries and one call updates ${MAX_CARDS_PER_CALL}; split the work across calls`);
-    const planned: { index: number; cardId: string; title?: string; nodeId?: string }[] = [];
+    if (raw.length > MAX_AGENTS_PER_CALL) throw new Error(`entries holds ${raw.length} entries and one call updates ${MAX_AGENTS_PER_CALL}; split the work across calls`);
+    const planned: { index: number; agentId: string; title?: string; teamId?: string }[] = [];
     const seen = new Set<string>();
     for (const [index, fields] of raw.entries()) {
-        const cardId = asText(fields.cardId);
-        if (!cardId) throw new Error(`entries[${index}].cardId is required`);
-        if (seen.has(cardId)) throw new Error(`entries[${index}].cardId ${cardId} appears twice; send one entry per card`);
-        seen.add(cardId);
+        const agentId = asText(fields.agentId);
+        if (!agentId) throw new Error(`entries[${index}].agentId is required`);
+        if (seen.has(agentId)) throw new Error(`entries[${index}].agentId ${agentId} appears twice; send one entry per agent`);
+        seen.add(agentId);
         const hasTitle = Object.prototype.hasOwnProperty.call(fields, 'title');
-        const hasNode = Object.prototype.hasOwnProperty.call(fields, 'nodeId');
-        if (!hasTitle && !hasNode) throw new Error(`entries[${index}] names nothing to change; give title, nodeId, or both`);
+        const hasTeam = Object.prototype.hasOwnProperty.call(fields, 'teamId');
+        if (!hasTitle && !hasTeam) throw new Error(`entries[${index}] names nothing to change; give title, teamId, or both`);
         const title = hasTitle ? asText(fields.title) : undefined;
         if (hasTitle && !title) throw new Error(`entries[${index}].title cannot be empty`);
-        const nodeId = hasNode ? asText(fields.nodeId) : undefined;
-        if (hasNode && !nodeId) throw new Error(`entries[${index}].nodeId cannot be empty`);
-        planned.push({ index, cardId, ...(title ? { title } : {}), ...(nodeId ? { nodeId } : {}) });
+        const teamId = hasTeam ? asText(fields.teamId) : undefined;
+        if (hasTeam && !teamId) throw new Error(`entries[${index}].teamId cannot be empty`);
+        planned.push({ index, agentId, ...(title ? { title } : {}), ...(teamId ? { teamId } : {}) });
     }
-    const sessions = await AgentSessionModel.listSessions(ctx.domainId, ctx.owner, agentId);
+    const sessions = await AgentSessionModel.listSessions(ctx.domainId, ctx.owner, groupId);
     const byId = new Map(sessions.map((session) => [session.sessionId, session]));
     for (const entry of planned) {
-        if (!byId.has(entry.cardId)) throw new Error(`Session card not found in Agent ${agentId}: ${entry.cardId}`);
-        if (entry.nodeId && !await AgentSessionModel.getNode(ctx.domainId, ctx.owner, entry.nodeId, agentId)) {
-            throw new Error(`Node not found in Agent ${agentId}: ${entry.nodeId}`);
+        if (!byId.has(entry.agentId)) throw new Error(`Session agent not found in Group ${groupId}: ${entry.agentId}`);
+        if (entry.teamId && !await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, entry.teamId, groupId)) {
+            throw new Error(`Team not found in Group ${groupId}: ${entry.teamId}`);
         }
     }
-    const updated: { index: number; card: ReturnType<typeof sessionCardView>; failedAddonIds?: string[]; failedContextSync?: boolean }[] = [];
-    const refused: { index: number; cardId: string; error: string }[] = [];
+    const updated: { index: number; agent: ReturnType<typeof sessionAgentView>; failedAddonIds?: string[]; failedContextSync?: boolean }[] = [];
+    const refused: { index: number; agentId: string; error: string }[] = [];
     for (const entry of planned) {
         try {
-            if (entry.title) await renameSessionCard(ctx, agentId, entry.cardId, entry.title);
-            const current = byId.get(entry.cardId)!;
+            if (entry.title) await renameSessionAgent(ctx, groupId, entry.agentId, entry.title);
+            const current = byId.get(entry.agentId)!;
             let failedAddonIds: string[] = [];
             let failedContextSync = false;
-            if (entry.nodeId && entry.nodeId !== current.nodeId) {
-                const scope = sessionScope(ctx, agentId);
-                await agentRuntimeHandlerContext.agentDataAdapter.updateSession(scope, entry.cardId, { nodeId: entry.nodeId });
-                failedAddonIds = await agentRuntimeHandlerContext.syncSessionAddonsForNode(scope, entry.cardId, entry.nodeId);
-                failedContextSync = await agentRuntimeHandlerContext.syncSessionNodeContextForNode(scope, entry.cardId, entry.nodeId);
+            if (entry.teamId && entry.teamId !== current.teamId) {
+                const scope = sessionScope(ctx, groupId);
+                await agentRuntimeHandlerContext.agentDataAdapter.updateSession(scope, entry.agentId, { teamId: entry.teamId });
+                failedAddonIds = await agentRuntimeHandlerContext.syncSessionAddonsForTeam(scope, entry.agentId, entry.teamId);
+                failedContextSync = await agentRuntimeHandlerContext.syncSessionTeamContextForTeam(scope, entry.agentId, entry.teamId);
             }
-            const session = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, entry.cardId, agentId);
-            if (!session) throw new Error(`Session card not found in Agent ${agentId}: ${entry.cardId}`);
+            const session = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, entry.agentId, groupId);
+            if (!session) throw new Error(`Session agent not found in Group ${groupId}: ${entry.agentId}`);
             updated.push({
                 index: entry.index,
-                card: sessionCardView(session),
+                agent: sessionAgentView(session),
                 ...(failedAddonIds.length ? { failedAddonIds } : {}),
                 ...(failedContextSync ? { failedContextSync: true } : {}),
             });
         } catch (error) {
-            refused.push({ index: entry.index, cardId: entry.cardId, error: (error as Error).message });
+            refused.push({ index: entry.index, agentId: entry.agentId, error: (error as Error).message });
         }
     }
-    return { ok: refused.length === 0, agentId, cardCount: updated.length, cards: updated, refusedCards: refused };
+    return { ok: refused.length === 0, groupId, agentCount: updated.length, agents: updated, refusedAgents: refused };
 }
 
-export async function removeCards(ctx: ToolContext, args: ToolArgs) {
-    const { agentId } = await requireAgent(ctx, args, 'delete');
-    const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
-    const sessions = await AgentSessionModel.listSessions(ctx.domainId, ctx.owner, agentId);
+export async function removeAgents(ctx: ToolContext, args: ToolArgs) {
+    const { groupId } = await requireGroup(ctx, args, 'delete');
+    const agentIds = idList(args.agentIds, 'agentIds', MAX_AGENTS_PER_CALL);
+    const sessions = await AgentSessionModel.listSessions(ctx.domainId, ctx.owner, groupId);
     const known = new Set(sessions.map((session) => session.sessionId));
-    for (const cardId of cardIds) {
-        if (!known.has(cardId)) throw new Error(`Session card not found in Agent ${agentId}: ${cardId}`);
+    for (const agentId of agentIds) {
+        if (!known.has(agentId)) throw new Error(`Session agent not found in Group ${groupId}: ${agentId}`);
     }
-    await AgentSessionModel.deleteSessions(ctx.domainId, ctx.owner, cardIds, agentId);
-    return { ok: true, agentId, removedCardIds: cardIds, removedCount: cardIds.length };
+    await AgentSessionModel.deleteSessions(ctx.domainId, ctx.owner, agentIds, groupId);
+    return { ok: true, groupId, removedAgentIds: agentIds, removedCount: agentIds.length };
 }
 
-export async function removeCard(ctx: ToolContext, args: ToolArgs) {
-    const { agentId } = await requireAgent(ctx, args, 'delete');
-    const sessionId = String(args.cardId || '').trim();
-    if (!sessionId) throw new Error('cardId/sessionId is required');
-    if (!await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, agentId)) {
-        throw new Error(`Session card not found in Agent ${agentId}: ${sessionId}`);
+export async function removeAgent(ctx: ToolContext, args: ToolArgs) {
+    const { groupId } = await requireGroup(ctx, args, 'delete');
+    const sessionId = String(args.agentId || '').trim();
+    if (!sessionId) throw new Error('agentId is required');
+    if (!await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, groupId)) {
+        throw new Error(`Session agent not found in Group ${groupId}: ${sessionId}`);
     }
-    await AgentSessionModel.deleteSession(ctx.domainId, ctx.owner, sessionId, agentId);
-    return { ok: true, agentId, cardId: sessionId, deleted: true };
+    await AgentSessionModel.deleteSession(ctx.domainId, ctx.owner, sessionId, groupId);
+    return { ok: true, groupId, agentId: sessionId, deleted: true };
 }
 
 export async function createTeamMany(ctx: ToolContext, args: ToolArgs) {
-    const { agentId, agent } = await requireAgent(ctx, args, 'edit');
-    const rawNodes = optionalEntries(args.nodes, 'nodes');
-    const rawCards = optionalEntries(args.cards, 'cards');
-    if (rawNodes.length > MAX_NODES_PER_CALL) throw new Error(`nodes holds ${rawNodes.length} entries; one call creates at most ${MAX_NODES_PER_CALL}`);
-    if (rawCards.length > MAX_CARDS_PER_CALL) throw new Error(`cards holds ${rawCards.length} entries; one call creates at most ${MAX_CARDS_PER_CALL}`);
-    if (!rawNodes.length && !rawCards.length) throw new Error('Give nodes, cards, or both');
+    const { groupId, group } = await requireGroup(ctx, args, 'edit');
+    const rawTeams = optionalEntries(args.teams, 'teams');
+    const rawAgents = optionalEntries(args.agents, 'agents');
+    if (rawTeams.length > MAX_TEAMS_PER_CALL) throw new Error(`teams holds ${rawTeams.length} entries; one call creates at most ${MAX_TEAMS_PER_CALL}`);
+    if (rawAgents.length > MAX_AGENTS_PER_CALL) throw new Error(`agents holds ${rawAgents.length} entries; one call creates at most ${MAX_AGENTS_PER_CALL}`);
+    if (!rawTeams.length && !rawAgents.length) throw new Error('Give teams, agents, or both');
 
-    const nodeResult = rawNodes.length
-        ? await createNodes(ctx, { agentId, ...(asText(args.parentId) ? { parentId: asText(args.parentId) } : {}), nodes: rawNodes })
+    const teamResult = rawTeams.length
+        ? await createTeams(ctx, { groupId, ...(asText(args.parentTeamId) ? { parentTeamId: asText(args.parentTeamId) } : {}), teams: rawTeams })
         : undefined;
-    const nodeIdsByRef = new Map<string, string>();
-    for (const node of nodeResult?.nodes ?? []) {
-        if (node.ref) nodeIdsByRef.set(node.ref, node.nodeId);
+    const teamIdsByRef = new Map<string, string>();
+    for (const team of teamResult?.teams ?? []) {
+        if (team.ref) teamIdsByRef.set(team.ref, team.teamId);
     }
 
-    const cards: { index: number; started: boolean; card: ReturnType<typeof sessionCardView>; error?: string }[] = [];
-    const refusedCards: { index: number; cardId?: string; error: string }[] = [];
-    for (const [index, rawCard] of rawCards.entries()) {
-        const fields = { ...rawCard };
-        const nodeId = asText(fields.nodeId);
-        const nodeRef = asText(fields.nodeRef);
-        if (nodeId && nodeRef) {
-            refusedCards.push({ index, error: `cards[${index}] must use nodeId or nodeRef, not both` });
+    const agents: { index: number; started: boolean; agent: ReturnType<typeof sessionAgentView>; error?: string }[] = [];
+    const refusedAgents: { index: number; agentId?: string; error: string }[] = [];
+    for (const [index, rawAgent] of rawAgents.entries()) {
+        const fields = { ...rawAgent };
+        const teamId = asText(fields.teamId);
+        const teamRef = asText(fields.teamRef);
+        if (teamId && teamRef) {
+            refusedAgents.push({ index, error: `agents[${index}] must use teamId or teamRef, not both` });
             continue;
         }
-        if (nodeRef) {
-            const resolvedNodeId = nodeIdsByRef.get(nodeRef);
-            if (!resolvedNodeId) {
-                refusedCards.push({ index, error: `cards[${index}].nodeRef ${nodeRef} was not created in this request` });
+        if (teamRef) {
+            const resolvedTeamId = teamIdsByRef.get(teamRef);
+            if (!resolvedTeamId) {
+                refusedAgents.push({ index, error: `agents[${index}].teamRef ${teamRef} was not created in this request` });
                 continue;
             }
-            fields.nodeId = resolvedNodeId;
+            fields.teamId = resolvedTeamId;
         }
-        delete fields.nodeRef;
+        delete fields.teamRef;
         try {
-            const result = await createSessionCard(ctx, agentId, agent.title, sessionCardInput(fields, `cards[${index}]`));
-            cards.push({ index, started: result.started, card: result.card, ...(result.error ? { error: result.error } : {}) });
-            if (result.error) refusedCards.push({ index, cardId: result.card.cardId, error: result.error });
+            const result = await createSessionAgent(ctx, groupId, group.title, sessionAgentInput(fields, `agents[${index}]`));
+            agents.push({ index, started: result.started, agent: result.agent, ...(result.error ? { error: result.error } : {}) });
+            if (result.error) refusedAgents.push({ index, agentId: result.agent.agentId, error: result.error });
         } catch (error) {
-            refusedCards.push({ index, error: (error as Error).message });
+            refusedAgents.push({ index, error: (error as Error).message });
         }
     }
-    const refusedNodes = nodeResult?.refusedNodes ?? [];
+    const refusedTeams = teamResult?.refusedTeams ?? [];
     return {
-        ok: refusedNodes.length === 0 && refusedCards.length === 0,
-        agentId,
-        nodes: nodeResult?.nodes ?? [],
-        refusedNodes,
-        cards,
-        refusedCards,
+        ok: refusedTeams.length === 0 && refusedAgents.length === 0,
+        groupId,
+        teams: teamResult?.teams ?? [],
+        refusedTeams,
+        agents,
+        refusedAgents,
     };
 }
 
 export async function getTeamMany(ctx: ToolContext, args: ToolArgs) {
-    const { agentId } = await requireAgent(ctx, args);
-    const nodeIds = optionalIds(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
-    const cardIds = optionalIds(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
-    if (!nodeIds.length && !cardIds.length) throw new Error('Give nodeIds, cardIds, or both');
-    const [nodeResult, cardResult] = await Promise.all([
-        nodeIds.length ? getNodes(ctx, { agentId, nodeIds }) : Promise.resolve(undefined),
-        cardIds.length ? getCards(ctx, { agentId, cardIds, maxMessages: args.maxMessages, maxChars: args.maxChars, beforeSeq: args.beforeSeq }) : Promise.resolve(undefined),
+    const { groupId } = await requireGroup(ctx, args);
+    const teamIds = optionalIds(args.teamIds, 'teamIds', MAX_TEAMS_PER_CALL);
+    const agentIds = optionalIds(args.agentIds, 'agentIds', MAX_AGENTS_PER_CALL);
+    if (!teamIds.length && !agentIds.length) throw new Error('Give teamIds, agentIds, or both');
+    const [teamResult, agentResult] = await Promise.all([
+        teamIds.length ? getTeams(ctx, { groupId, teamIds }) : Promise.resolve(undefined),
+        agentIds.length ? getAgents(ctx, { groupId, agentIds, maxMessages: args.maxMessages, maxChars: args.maxChars, beforeSeq: args.beforeSeq }) : Promise.resolve(undefined),
     ]);
     return {
-        ok: (nodeResult?.ok ?? true) && (cardResult?.ok ?? true),
-        agentId,
-        ...(nodeResult ? { nodes: nodeResult.nodes, missingNodeIds: nodeResult.missingNodeIds } : {}),
-        ...(cardResult ? { cards: cardResult.cards, missingCardIds: cardResult.missingCardIds } : {}),
+        ok: (teamResult?.ok ?? true) && (agentResult?.ok ?? true),
+        groupId,
+        ...(teamResult ? { teams: teamResult.teams, missingTeamIds: teamResult.missingTeamIds } : {}),
+        ...(agentResult ? { agents: agentResult.agents, missingAgentIds: agentResult.missingAgentIds } : {}),
     };
 }
 
 export async function updateTeamMany(ctx: ToolContext, args: ToolArgs) {
-    const { agentId } = await requireAgent(ctx, args, 'edit');
-    const rawNodes = optionalEntries(args.nodes, 'nodes');
-    const rawCards = optionalEntries(args.cards, 'cards');
-    if (rawNodes.length > MAX_NODES_PER_CALL) throw new Error(`nodes holds ${rawNodes.length} entries; one call updates at most ${MAX_NODES_PER_CALL}`);
-    if (rawCards.length > MAX_CARDS_PER_CALL) throw new Error(`cards holds ${rawCards.length} entries; one call updates at most ${MAX_CARDS_PER_CALL}`);
-    if (!rawNodes.length && !rawCards.length) throw new Error('Give nodes, cards, or both');
+    const { groupId } = await requireGroup(ctx, args, 'edit');
+    const rawTeams = optionalEntries(args.teams, 'teams');
+    const rawAgents = optionalEntries(args.agents, 'agents');
+    if (rawTeams.length > MAX_TEAMS_PER_CALL) throw new Error(`teams holds ${rawTeams.length} entries; one call updates at most ${MAX_TEAMS_PER_CALL}`);
+    if (rawAgents.length > MAX_AGENTS_PER_CALL) throw new Error(`agents holds ${rawAgents.length} entries; one call updates at most ${MAX_AGENTS_PER_CALL}`);
+    if (!rawTeams.length && !rawAgents.length) throw new Error('Give teams, agents, or both');
 
-    const updatedNodes: { index: number; node: unknown }[] = [];
-    const refusedNodes: { index: number; nodeId: string; error: string }[] = [];
-    const seenNodeIds = new Set<string>();
-    for (const [index, entry] of rawNodes.entries()) {
-        const nodeId = asText(entry.nodeId);
-        if (!nodeId) throw new Error(`nodes[${index}].nodeId is required`);
-        if (seenNodeIds.has(nodeId)) throw new Error(`nodes[${index}].nodeId ${nodeId} appears twice`);
-        seenNodeIds.add(nodeId);
+    const updatedTeams: { index: number; team: unknown }[] = [];
+    const refusedTeams: { index: number; teamId: string; error: string }[] = [];
+    const seenTeamIds = new Set<string>();
+    for (const [index, entry] of rawTeams.entries()) {
+        const teamId = asText(entry.teamId);
+        if (!teamId) throw new Error(`teams[${index}].teamId is required`);
+        if (seenTeamIds.has(teamId)) throw new Error(`teams[${index}].teamId ${teamId} appears twice`);
+        seenTeamIds.add(teamId);
         try {
-            const result = await updateNode(ctx, { ...entry, agentId, nodeId });
-            updatedNodes.push({ index, node: result.node });
+            const result = await updateTeam(ctx, { ...entry, groupId, teamId });
+            updatedTeams.push({ index, team: result.team });
         } catch (error) {
-            refusedNodes.push({ index, nodeId, error: (error as Error).message });
+            refusedTeams.push({ index, teamId, error: (error as Error).message });
         }
     }
 
-    let cardResult: Awaited<ReturnType<typeof updateCards>> | undefined;
-    if (rawCards.length) cardResult = await updateCards(ctx, { agentId, entries: rawCards });
-    const refusedCards = cardResult?.refusedCards ?? [];
+    let agentResult: Awaited<ReturnType<typeof updateAgents>> | undefined;
+    if (rawAgents.length) agentResult = await updateAgents(ctx, { groupId, entries: rawAgents });
+    const refusedAgents = agentResult?.refusedAgents ?? [];
     return {
-        ok: refusedNodes.length === 0 && refusedCards.length === 0,
-        agentId,
-        nodes: updatedNodes,
-        refusedNodes,
-        cards: cardResult?.cards ?? [],
-        refusedCards,
+        ok: refusedTeams.length === 0 && refusedAgents.length === 0,
+        groupId,
+        teams: updatedTeams,
+        refusedTeams,
+        agents: agentResult?.agents ?? [],
+        refusedAgents,
     };
 }
 
 export async function deleteTeamMany(ctx: ToolContext, args: ToolArgs) {
-    const { agentId } = await requireAgent(ctx, args, 'delete');
-    const nodeIds = optionalIds(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
-    const cardIds = optionalIds(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
-    if (!nodeIds.length && !cardIds.length) throw new Error('Give nodeIds, cardIds, or both');
-    const cards = cardIds.length ? await removeCards(ctx, { agentId, cardIds }) : undefined;
-    const nodes = nodeIds.length ? await removeNodes(ctx, { agentId, nodeIds }) : undefined;
+    const { groupId } = await requireGroup(ctx, args, 'delete');
+    const teamIds = optionalIds(args.teamIds, 'teamIds', MAX_TEAMS_PER_CALL);
+    const agentIds = optionalIds(args.agentIds, 'agentIds', MAX_AGENTS_PER_CALL);
+    if (!teamIds.length && !agentIds.length) throw new Error('Give teamIds, agentIds, or both');
+    const agents = agentIds.length ? await removeAgents(ctx, { groupId, agentIds }) : undefined;
+    const teams = teamIds.length ? await removeTeams(ctx, { groupId, teamIds }) : undefined;
     return {
         ok: true,
-        agentId,
-        removedCardIds: cards?.removedCardIds ?? [],
-        removedNodeIds: nodes?.removedNodeIds ?? [],
-        failedSessionIds: nodes?.failedSessionIds ?? [],
+        groupId,
+        removedAgentIds: agents?.removedAgentIds ?? [],
+        removedTeamIds: teams?.removedTeamIds ?? [],
+        failedSessionIds: teams?.failedSessionIds ?? [],
     };
 }
 
@@ -1203,29 +1163,29 @@ export function apply(ctx: Context) {
     const unregister = registerAgentAddon({
         addonId: 'agent',
         displayName: 'Ejunz Agent',
-        description: 'Create and manage Agent definitions, nodes, and session cards.',
+        description: 'Create and manage Groups, Teams, and Agents in the Agent workspace.',
         toolPrefixes: ['agent_'],
         defaultEnabled: true,
     });
     ctx.effect(() => unregister);
     const read = { source: 'agent', bindBase: 'none' as const };
     const write = { ...read, mutating: true };
-    ctx.Tool('agent', 'agent_list', list, List, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_search', search, Search, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_get', get, Get, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_create', create, Create, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_update', update, Update, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_delete', remove, Remove, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_node_list', listNodes, NodeList, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_node_get', getNode, NodeGet, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_node_create', createNode, NodeCreate, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_node_update', updateNode, NodeUpdate, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_node_delete', removeNode, NodeRemove, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_sessionCard_list', listCards, CardList, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_sessionCard_get', getCard, CardGet, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_sessionCard_create', createCard, CardCreate, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_sessionCard_update', updateCard, CardUpdate, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_sessionCard_delete', removeCard, CardRemove, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_group_list', listGroups, GroupList, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_group_search', searchGroups, GroupSearch, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_group_get', getGroup, GroupGet, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_group_create', createGroup, GroupCreate, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_group_update', updateGroup, GroupUpdate, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_group_delete', removeGroup, GroupRemove, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_list', listTeams, TeamList, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_get', getTeam, TeamGet, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_create', createTeam, TeamCreate, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_update', updateTeam, TeamUpdate, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_delete', removeTeam, TeamRemove, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_list', listAgents, AgentList, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_get', getAgent, AgentGet, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_create', createAgent, AgentCreate, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_update', updateAgent, AgentUpdate, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_delete', removeAgent, AgentRemove, write, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_team_create_many', createTeamMany, TeamCreateMany, write, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_team_get_many', getTeamMany, TeamGetMany, read, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_team_update_many', updateTeamMany, TeamUpdateMany, write, PRIV.PRIV_USER_PROFILE);

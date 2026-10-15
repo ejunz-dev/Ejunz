@@ -20,8 +20,8 @@ export function useAgentRpc(): (method: string, payload: unknown, signal?: Abort
     const { args } = usePageData();
     const currentDomainId = String(domainId || 'system');
     const prefix = domainPrefix(currentDomainId);
-    const hasAgentId = Object.prototype.hasOwnProperty.call(args, 'agentId');
-    const agentId = !hasAgentId ? undefined : args.agentId === null ? null : Number.isSafeInteger(Number(args.agentId)) && Number(args.agentId) > 0 ? Number(args.agentId) : null;
+    const hasGroupId = Object.prototype.hasOwnProperty.call(args, 'groupId');
+    const groupId = !hasGroupId ? undefined : args.groupId === null ? null : Number.isSafeInteger(Number(args.groupId)) && Number(args.groupId) > 0 ? Number(args.groupId) : null;
     return useCallback(async (method: string, payload: unknown, signal?: AbortSignal) => {
         const res = await fetch(`${prefix}/api/ejunz-agent/rpc/${method}`, {
             method: 'POST',
@@ -34,7 +34,7 @@ export function useAgentRpc(): (method: string, payload: unknown, signal?: Abort
                 method,
                 payload,
                 domainId: currentDomainId,
-                ...(hasAgentId ? { agentId } : {}),
+                ...(hasGroupId ? { groupId } : {}),
             }),
         });
         if (res.redirected) {
@@ -51,5 +51,5 @@ export function useAgentRpc(): (method: string, payload: unknown, signal?: Abort
         const failure = data.result?.error ?? data.error;
         const message = failure?.message || `RPC ${method} failed`;
         throw new Error(failure?.code ? `${failure.code}: ${message}` : message);
-    }, [agentId, currentDomainId, hasAgentId, prefix]);
+    }, [groupId, currentDomainId, hasGroupId, prefix]);
 }

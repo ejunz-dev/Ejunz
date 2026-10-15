@@ -10,7 +10,7 @@ export interface AgentPluginUiDisableActions {
 export interface AgentPluginUiRegistration {
     apply(ctx: Context): void;
     onDisabled?: (actions: AgentPluginUiDisableActions) => void;
-    sessionCardTags?: (session: SessionSummary, bases: readonly BaseView[], showBase: boolean) => string[];
+    sessionAgentTags?: (session: SessionSummary, bases: readonly BaseView[], showBase: boolean) => string[];
 }
 
 type AgentPluginUiLoader = () => Promise<{ default: AgentPluginUiRegistration }>;
@@ -107,12 +107,12 @@ export async function notifyAgentPluginDisabled(pluginId: string, actions: Agent
     registration?.onDisabled?.(actions);
 }
 
-export function hasAgentPluginSessionCardTags(): boolean {
+export function hasAgentPluginSessionAgentTags(): boolean {
     return [...registrations].some(([pluginId, registration]) =>
-        enabledPluginIds.has(pluginId) && activeFibers.has(pluginId) && registration.sessionCardTags !== undefined);
+        enabledPluginIds.has(pluginId) && activeFibers.has(pluginId) && registration.sessionAgentTags !== undefined);
 }
 
-export function getAgentPluginSessionCardTags(
+export function getAgentPluginSessionAgentTags(
     session: SessionSummary,
     bases: readonly BaseView[],
     showBase: boolean,
@@ -121,7 +121,7 @@ export function getAgentPluginSessionCardTags(
     for (const [pluginId, registration] of registrations) {
         if (!enabledPluginIds.has(pluginId) || !activeFibers.has(pluginId)) continue;
         try {
-            tags.push(...(registration.sessionCardTags?.(session, bases, showBase) ?? []));
+            tags.push(...(registration.sessionAgentTags?.(session, bases, showBase) ?? []));
         } catch (error) {
             console.error(`Failed to render Agent session tags for "${pluginId}"`, error);
         }

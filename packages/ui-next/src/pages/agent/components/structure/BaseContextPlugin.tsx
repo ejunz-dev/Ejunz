@@ -50,7 +50,7 @@ function BaseDisplaySetting({ value, disabled, onChange }: BaseDisplaySettingPro
     return <label className="bd-settings-dialog__row">
         <span className="bd-settings-dialog__row-text">
             <span className="bd-settings-dialog__row-label">显示知识库</span>
-            <span className="bd-settings-dialog__row-description">在会话卡片的标签区域显示使用的知识库。</span>
+            <span className="bd-settings-dialog__row-description">在 Agent 的标签区域显示使用的知识库。</span>
         </span>
         <input type="checkbox" checked={value} disabled={disabled} onChange={(event) => onChange(event.currentTarget.checked)} />
     </label>;
@@ -73,7 +73,7 @@ const baseContextPlugin: AgentPluginUiRegistration = {
         if (currentSession?.type === 'base_detail') return;
         void clearCurrentContext();
     },
-    sessionCardTags(session, bases, showBase) {
+    sessionAgentTags(session, bases, showBase) {
         return showBase ? [`知识库: ${baseLabel(session, bases)}`] : [];
     },
 };

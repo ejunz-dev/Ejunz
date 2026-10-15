@@ -1,18 +1,18 @@
 import type { SessionEvent } from './conversation';
 
-export interface AgentNodeConfig {
+export interface AgentTeamConfig {
     addons?: Record<string, boolean>;
     context?: string;
 }
 
-export interface AgentNode {
-    nodeId: string;
-    agentId?: number;
-    parentId?: string;
-    isRoot?: boolean;
+export interface AgentTeam {
+    teamId: string;
+    groupId?: number;
+    parentTeamId?: string;
+    isRootTeam?: boolean;
     text: string;
     order: number;
-    config?: AgentNodeConfig;
+    config?: AgentTeamConfig;
     createdAt: string;
     updatedAt: string;
 }
@@ -26,9 +26,9 @@ export interface SessionSummary {
     started?: boolean;
     creatorUserId?: number;
     type?: 'generic' | 'base_detail';
-    agentId?: number;
+    groupId?: number;
     baseDocId?: string;
-    nodeId?: string;
+    teamId?: string;
     cwd?: string;
     agentPreset?: string;
     /** The host that serves this session, as the session's record names it. */

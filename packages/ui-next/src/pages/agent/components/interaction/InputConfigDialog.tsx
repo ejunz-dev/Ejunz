@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { DraftAttachment } from '../../runtime/uploads';
-import type { AgentNode, BaseView } from '../../runtime/session';
+import type { AgentTeam, BaseView } from '../../runtime/session';
 import { defineSlot } from '../../../../registry';
 import type { HostOption } from '../structure/HostPicker';
 import type { SessionModels } from '../types';
@@ -14,9 +14,9 @@ interface InputConfigDialogProps {
     bases: readonly BaseView[];
     selectedBaseId?: number;
     onPickBase: (baseId: number | undefined) => void;
-    nodes: readonly AgentNode[];
-    selectedNodeId?: string;
-    onPickNode: (nodeId: string | undefined) => void;
+    teams: readonly AgentTeam[];
+    selectedTeamId?: string;
+    onPickTeam: (teamId: string | undefined) => void;
     models: SessionModels | null;
     selectModel: (provider: string, model: string) => void;
     agentPresetOptions: readonly AgentPresetOption[];
@@ -57,7 +57,7 @@ function buttonClass(selected: boolean): string {
 
 export function InputConfigDialog({
     hosts, selectedHostId, onPickHost,
-    bases, selectedBaseId, onPickBase, nodes, selectedNodeId, onPickNode, models, selectModel, agentPresetOptions, agentPresetChoice, onSelectAgentPreset, agentPresetError,
+    bases, selectedBaseId, onPickBase, teams, selectedTeamId, onPickTeam, models, selectModel, agentPresetOptions, agentPresetChoice, onSelectAgentPreset, agentPresetError,
     input, setInput, attachments, onAddFiles, onRemoveAttachment, modelMenuOpen, setModelMenuOpen,
     notice, onCancel, sending, loading, onConfirm, onCreateOnly, onClose,
 }: InputConfigDialogProps) {
@@ -106,10 +106,10 @@ export function InputConfigDialog({
                     onSelectBase={onPickBase}
                 />
                 <div className="bd-edit-field">
-                    <h3>节点</h3>
+                    <h3>团队</h3>
                     <div className="bd-edit-tags">
-                        <button type="button" className={buttonClass(selectedNodeId === undefined)} disabled={sending} onClick={() => onPickNode(undefined)}>未分组</button>
-                        {nodes.map((node) => <button type="button" className={buttonClass(selectedNodeId === node.nodeId)} disabled={sending} key={node.nodeId} onClick={() => onPickNode(node.nodeId)}>{node.text}</button>)}
+                        <button type="button" className={buttonClass(selectedTeamId === undefined)} disabled={sending} onClick={() => onPickTeam(undefined)}>未分组</button>
+                        {teams.map((team) => <button type="button" className={buttonClass(selectedTeamId === team.teamId)} disabled={sending} key={team.teamId} onClick={() => onPickTeam(team.teamId)}>{team.text}</button>)}
                     </div>
                 </div>
                 <div className="bd-edit-field">
@@ -123,7 +123,7 @@ export function InputConfigDialog({
             <div className="eza-inputConfigHero">
                 <div className="eza-inputConfigCreateRow">
                     <button type="button" className="eza-inputConfigCreate" disabled={sending} onClick={() => onCreateOnly(sessionName.trim() || '新会话')}>只创建会话</button>
-                    <span>参数会留在这张卡片上，可以稍后再对话。</span>
+                    <span>参数会保存在这个 Agent 上，可以稍后再开始对话。</span>
                 </div>
                 <InputBar
                     hero

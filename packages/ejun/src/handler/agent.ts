@@ -1,8 +1,8 @@
 import type { Context } from '../context';
 import { ConnectionHandler, Handler } from '@ejunz/framework';
 import { PERM, PRIV } from '../model/builtin';
-import AgentDefinitionModel, { AgentSessionModel } from '../model/agent';
-import type { AgentNodeConfig, AgentNodeDoc } from '../model/agent';
+import GroupDefinitionModel, { AgentSessionModel } from '../model/agent';
+import type { AgentTeamConfig, AgentTeamDoc } from '../model/agent';
 import type { AgentScope, RuntimeLink } from '../service/runtime';
 import type { AgentStorageDescriptor } from '../model/agent';
 import type { RuntimeHelloFrame, RuntimeInboundFrame, RuntimeLinkPollFrame, RuntimeStream } from '../service/runtime';
@@ -15,50 +15,50 @@ interface RpcEnvelope {
     method?: string;
     payload?: Record<string, unknown>;
     domainId?: string;
-    agentId?: number | null;
+    groupId?: number | null;
 }
-const { requireBridgeToken, baseSessionScope, toolRegistry, scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled, agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, baseTutorEnsure, baseTutorList, baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems, runtimeRelabel, runtimeRemove, sessionCardCreate, sessionCardUpdate, sessionCreate, sessionHistory, sessionMessageCount, sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink, logger, RUNTIME_HELLO_TIMEOUT_MS, addLink, rememberRuntime, reportRuntime, agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider, SystemModel, randomUUID, WebSocket, parseRuntimeFrame, createSocketLink, followLinks, runtimeLinks, runtimeFacts, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels, cloneSettingsSections } = service;
+const { requireBridgeToken, baseSessionScope, toolRegistry, scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, teamRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled, agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, baseTutorEnsure, baseTutorList, baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems, runtimeRelabel, runtimeRemove, sessionAgentCreate, sessionAgentUpdate, sessionCreate, sessionHistory, sessionMessageCount, sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink, logger, RUNTIME_HELLO_TIMEOUT_MS, addLink, rememberRuntime, reportRuntime, agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider, SystemModel, randomUUID, WebSocket, parseRuntimeFrame, createSocketLink, followLinks, runtimeLinks, runtimeFacts, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels, cloneSettingsSections } = service;
 const dataOk = (value: unknown): Record<string, unknown> => ({ ok: true, value });
 const dataError = (message: string): Record<string, unknown> => ({ ok: false, error: { message } });
 
-function agentNodeView(node: AgentNodeDoc) {
+function teamView(team: AgentTeamDoc) {
     return {
-        nodeId: node.nodeId,
-        ...(node.parentId ? { parentId: node.parentId } : {}),
-        ...(node.isRoot ? { isRoot: true } : {}),
-        text: node.text,
-        order: node.order,
-        ...(node.config === undefined ? {} : { config: node.config }),
-        createdAt: node.createdAt.toISOString(),
-        updatedAt: node.updatedAt.toISOString(),
+        teamId: team.teamId,
+        ...(team.parentTeamId ? { parentTeamId: team.parentTeamId } : {}),
+        ...(team.isRootTeam ? { isRootTeam: true } : {}),
+        text: team.text,
+        order: team.order,
+        ...(team.config === undefined ? {} : { config: team.config }),
+        createdAt: team.createdAt.toISOString(),
+        updatedAt: team.updatedAt.toISOString(),
     };
 }
 
-async function saveAgentNodeConfig(envelope: RpcEnvelope, scope: AgentScope, ctx: Context) {
-    const nodeId = typeof envelope.payload?.nodeId === 'string' ? envelope.payload.nodeId : '';
+async function saveTeamConfig(envelope: RpcEnvelope, scope: AgentScope, ctx: Context) {
+    const teamId = typeof envelope.payload?.teamId === 'string' ? envelope.payload.teamId : '';
     const rawPatch = envelope.payload?.patch && typeof envelope.payload.patch === 'object' && !Array.isArray(envelope.payload.patch)
         ? envelope.payload.patch as Record<string, unknown>
         : {};
-    if (!nodeId) return rpcError(envelope.rpcId, 'nodeId is required');
-    if (typeof scope.agentId === 'number') {
-        const agent = await AgentDefinitionModel.get(scope.domainId, scope.agentId, AgentDefinitionModel.PROJECTION_LIST);
+    if (!teamId) return rpcError(envelope.rpcId, 'teamId is required');
+    if (typeof scope.groupId === 'number') {
+        const agent = await GroupDefinitionModel.get(scope.domainId, scope.groupId, GroupDefinitionModel.PROJECTION_LIST);
         if (!agent) return rpcError(envelope.rpcId, 'Agent not found in current domain');
-        await AgentSessionModel.ensureAgentRoot(scope.domainId, scope.userId, scope.agentId, agent.title);
+        await AgentSessionModel.ensureGroupRoot(scope.domainId, scope.userId, scope.groupId, agent.title);
     }
-    const node = await AgentSessionModel.getNode(scope.domainId, scope.userId, nodeId, scope.agentId);
-    if (!node) return rpcError(envelope.rpcId, 'node not found');
+    const team = await AgentSessionModel.getTeam(scope.domainId, scope.userId, teamId, scope.groupId);
+    if (!team) return rpcError(envelope.rpcId, 'team not found');
 
-    const config: AgentNodeConfig = {
-        ...(node.config?.addons === undefined ? {} : { addons: node.config.addons }),
-        ...(node.config?.context === undefined ? {} : { context: node.config.context }),
+    const config: AgentTeamConfig = {
+        ...(team.config?.addons === undefined ? {} : { addons: team.config.addons }),
+        ...(team.config?.context === undefined ? {} : { context: team.config.context }),
     };
-    const patch: Partial<AgentNodeConfig> = {};
+    const patch: Partial<AgentTeamConfig> = {};
     if (Object.prototype.hasOwnProperty.call(rawPatch, 'addonIds')) {
         if (!Array.isArray(rawPatch.addonIds) || rawPatch.addonIds.some((id) => typeof id !== 'string')) {
             return rpcError(envelope.rpcId, 'addonIds must be an array of add-on ids');
         }
         const addonIds = [...new Set(rawPatch.addonIds as string[])];
-        if (addonIds.length > 128) return rpcError(envelope.rpcId, 'At most 128 add-ons can be selected per node');
+        if (addonIds.length > 128) return rpcError(envelope.rpcId, 'At most 128 add-ons can be selected per team');
         const result = await agentAddonsList({ rpcId: envelope.rpcId, method: 'agent.addons.list' }, scope);
         const available = (result.result?.value as { addons?: { addonId: string; installed: boolean; enabled: boolean }[] } | undefined)?.addons ?? [];
         for (const addonId of addonIds) {
@@ -73,10 +73,10 @@ async function saveAgentNodeConfig(envelope: RpcEnvelope, scope: AgentScope, ctx
         if (rawPatch.context.length > 20_000) return rpcError(envelope.rpcId, 'context must not exceed 20000 characters');
         patch.context = rawPatch.context;
     }
-    if (Object.keys(patch).length === 0) return rpcError(envelope.rpcId, 'node config patch is empty');
+    if (Object.keys(patch).length === 0) return rpcError(envelope.rpcId, 'team config patch is empty');
 
-    const updated = await AgentSessionModel.updateNodeConfig(scope.domainId, scope.userId, nodeId, { ...config, ...patch }, scope.agentId);
-    if (!updated) return rpcError(envelope.rpcId, 'node not found');
+    const updated = await AgentSessionModel.updateTeamConfig(scope.domainId, scope.userId, teamId, { ...config, ...patch }, scope.groupId);
+    if (!updated) return rpcError(envelope.rpcId, 'team not found');
 
     if (Object.prototype.hasOwnProperty.call(patch, 'addons')) {
         for (const addon of listAgentAddons()) {
@@ -84,32 +84,32 @@ async function saveAgentNodeConfig(envelope: RpcEnvelope, scope: AgentScope, ctx
                 await ctx.broadcast('agent/addon-state', {
                     domainId: scope.domainId,
                     userId: scope.userId,
-                    ...(scope.agentId === undefined ? {} : { agentId: scope.agentId }),
-                    nodeId,
+                    ...(scope.groupId === undefined ? {} : { groupId: scope.groupId }),
+                    teamId,
                     addonId: addon.addonId,
                     enabled: patch.addons?.[addon.addonId] === true,
                 });
             } catch (error) {
-                logger.warn('[agent-node] Cordis addon event failed node=%s addon=%s error=%s', nodeId, addon.addonId, error instanceof Error ? error.message : String(error));
+                logger.warn('[agent-team] Cordis addon event failed team=%s addon=%s error=%s', teamId, addon.addonId, error instanceof Error ? error.message : String(error));
             }
         }
     }
     if (Object.prototype.hasOwnProperty.call(patch, 'context')) {
         try {
-            await ctx.broadcast('agent/node-context', {
+            await ctx.broadcast('agent/team-context', {
                 domainId: scope.domainId,
                 userId: scope.userId,
-                ...(scope.agentId === undefined ? {} : { agentId: scope.agentId }),
-                nodeId,
+                ...(scope.groupId === undefined ? {} : { groupId: scope.groupId }),
+                teamId,
             });
         } catch (error) {
-            logger.warn('[agent-node] Cordis context event failed node=%s error=%s', nodeId, error instanceof Error ? error.message : String(error));
+            logger.warn('[agent-team] Cordis context event failed team=%s error=%s', teamId, error instanceof Error ? error.message : String(error));
         }
     }
-    return rpcOk(envelope.rpcId, { node: agentNodeView(updated), syncScheduled: true });
+    return rpcOk(envelope.rpcId, { team: teamView(updated), syncScheduled: true });
 }
 
-async function mountedAddonsForSession(session: { domainId: string; userId: number; sessionId: string; agentId?: number; nodeId?: string }): Promise<Set<string>> {
+async function mountedAddonsForSession(session: { domainId: string; userId: number; sessionId: string; groupId?: number; teamId?: string }): Promise<Set<string>> {
     const addonIds = new Set(listAgentAddons().map((addon) => addon.addonId));
     const states = new Map<string, boolean>();
     const recordState = (addonId: unknown, enabled: unknown) => {
@@ -131,21 +131,21 @@ async function mountedAddonsForSession(session: { domainId: string; userId: numb
             : entry.type === 'session/plugins' ? data.pluginId : undefined;
         recordState(addonId, data.enabled);
     }
-    const domainEnabled = await enabledAgentAddonIds(session.domainId, session.agentId);
-    const nodeConfig = session.nodeId
-        ? (await AgentSessionModel.getNode(session.domainId, session.userId, session.nodeId, session.agentId))?.config
+    const domainEnabled = await enabledAgentAddonIds(session.domainId, session.groupId);
+    const teamConfig = session.teamId
+        ? (await AgentSessionModel.getTeam(session.domainId, session.userId, session.teamId, session.groupId))?.config
         : undefined;
     return new Set([...addonIds].filter((addonId) => {
-        const locallyEnabled = nodeConfig?.addons === undefined
+        const locallyEnabled = teamConfig?.addons === undefined
             ? states.get(addonId) ?? domainEnabled.has(addonId)
-            : nodeConfig.addons[addonId] === true;
+            : teamConfig.addons[addonId] === true;
         return locallyEnabled && domainEnabled.has(addonId);
     }));
 }
 
-function agentDefinitionView(agent: Record<string, unknown>) {
+function groupDefinitionView(agent: Record<string, unknown>) {
     return {
-        docId: Number(agent.docId),
+        groupId: Number(agent.docId),
         aid: String(agent.aid || ''),
         title: String(agent.title || ''),
         content: String(agent.content || ''),
@@ -158,9 +158,14 @@ export class EjunzAgentDataHandler extends Handler<Context> {
 
     async post() {
         const bridgeToken = this.request.headers?.['x-ejunz-agent-token'];
-        await requireBridgeToken(bridgeToken);
-        await service.modelReady();
         const method = Array.isArray(this.args?.method) ? this.args.method.join('/') : String(this.args?.method || '');
+        try {
+            await requireBridgeToken(bridgeToken);
+            await service.modelReady();
+        } catch (error) {
+            logger.warn('[agent-data] preflight failed method=%s tokenPresent=%s error=%s', method, Boolean(bridgeToken), error instanceof Error ? error.message : String(error));
+            throw error;
+        }
         const body = (this.request.body ?? {}) as Record<string, unknown>;
         try {
             if (method === 'storage/open') {
@@ -366,7 +371,7 @@ export class EjunzAgentChatPageHandler extends Handler<Context> {
     async get() {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         this.response.template = 'agent';
-        this.response.body = { agentId: null };
+        this.response.body = { groupId: null };
     }
 }
 
@@ -382,24 +387,24 @@ export class EjunzAgentWorkspacePageHandler extends Handler<Context> {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         await service.modelReady();
         const scope = scopeOf(this);
-        const agentId = Number(this.args?.docId);
-        if (!Number.isSafeInteger(agentId) || agentId <= 0) {
+        const groupId = Number(this.args?.groupId);
+        if (!Number.isSafeInteger(groupId) || groupId <= 0) {
             this.response.status = 404;
             this.response.body = 'Agent not found';
             return;
         }
-        const agent = await AgentDefinitionModel.get(scope.domainId, agentId, AgentDefinitionModel.PROJECTION_LIST);
+        const agent = await GroupDefinitionModel.get(scope.domainId, groupId, GroupDefinitionModel.PROJECTION_LIST);
         if (!agent) {
             this.response.status = 404;
             this.response.body = 'Agent not found';
             return;
         }
-        const rootNode = await AgentSessionModel.ensureAgentRoot(scope.domainId, scope.userId, agentId, agent.title);
+        const rootNode = await AgentSessionModel.ensureGroupRoot(scope.domainId, scope.userId, groupId, agent.title);
         this.response.template = 'agent_workspace';
         this.response.body = {
-            agentId,
-            rootNodeId: rootNode.nodeId,
-            agent: agentDefinitionView(agent as unknown as Record<string, unknown>),
+            groupId,
+            rootTeamId: rootNode.teamId,
+            group: groupDefinitionView(agent as unknown as Record<string, unknown>),
         };
     }
 }
@@ -431,11 +436,11 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
         if (!/^[A-Za-z][A-Za-z0-9._$/-]*$/.test(method)) throw new Error('bad method');
         envelope.method = method;
         const scope: AgentScope = scopeOf(this, envelope.domainId);
-        if (Object.prototype.hasOwnProperty.call(envelope, 'agentId')) {
-            if (envelope.agentId === null) scope.agentId = null;
-            else if (typeof envelope.agentId === 'number' && Number.isSafeInteger(envelope.agentId) && envelope.agentId > 0
-                && await AgentDefinitionModel.get(scope.domainId, envelope.agentId, AgentDefinitionModel.PROJECTION_LIST)) {
-                scope.agentId = envelope.agentId;
+        if (Object.prototype.hasOwnProperty.call(envelope, 'groupId')) {
+            if (envelope.groupId === null) scope.groupId = null;
+            else if (typeof envelope.groupId === 'number' && Number.isSafeInteger(envelope.groupId) && envelope.groupId > 0
+                && await GroupDefinitionModel.get(scope.domainId, envelope.groupId, GroupDefinitionModel.PROJECTION_LIST)) {
+                scope.groupId = envelope.groupId;
             } else {
                 this.response.type = 'application/json';
                 this.response.body = JSON.stringify(rpcError(envelope.rpcId, 'Agent 不存在或 ID 无效'));
@@ -456,15 +461,15 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
 
     private async dispatch(envelope: RpcEnvelope, scope: AgentScope): Promise<void> {
         const method = String(envelope.method || '');
-        if (method === 'agent.list') {
-            const agents = await AgentDefinitionModel.getMulti(scope.domainId).toArray();
+        if (method === 'group.list') {
+            const agents = await GroupDefinitionModel.getMulti(scope.domainId).toArray();
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(rpcOk(envelope.rpcId, {
-                items: agents.map((agent) => agentDefinitionView(agent as unknown as Record<string, unknown>)),
+                items: agents.map((agent) => groupDefinitionView(agent as unknown as Record<string, unknown>)),
             }));
             return;
         }
-        if (method === 'agent.create') {
+        if (method === 'group.create') {
             const title = typeof envelope.payload?.title === 'string' ? envelope.payload.title.trim() : '';
             const content = typeof envelope.payload?.content === 'string' ? envelope.payload.content : '';
             if (!title || title.length > 256 || content.length > 100000) {
@@ -472,19 +477,19 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
                 this.response.body = JSON.stringify(rpcError(envelope.rpcId, '名称必填且不超过 256 个字符，内容不能超过 100000 个字符'));
                 return;
             }
-            const aid = await AgentDefinitionModel.add(scope.domainId, scope.userId, title, content, this.request.ip);
-            const agent = await AgentDefinitionModel.get(scope.domainId, aid, AgentDefinitionModel.PROJECTION_LIST);
-            if (agent) await AgentSessionModel.ensureAgentRoot(scope.domainId, scope.userId, agent.docId, agent.title);
+            const aid = await GroupDefinitionModel.add(scope.domainId, scope.userId, title, content, this.request.ip);
+            const agent = await GroupDefinitionModel.get(scope.domainId, aid, GroupDefinitionModel.PROJECTION_LIST);
+            if (agent) await AgentSessionModel.ensureGroupRoot(scope.domainId, scope.userId, agent.docId, agent.title);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(rpcOk(envelope.rpcId, {
-                agent: agent ? agentDefinitionView(agent as unknown as Record<string, unknown>) : null,
+                group: agent ? groupDefinitionView(agent as unknown as Record<string, unknown>) : null,
             }));
             return;
         }
-        if (method === 'agent.update' || method === 'agent.delete') {
-            const agentId = Number(envelope.payload?.docId);
-            const agent = Number.isSafeInteger(agentId) && agentId > 0
-                ? await AgentDefinitionModel.get(scope.domainId, agentId, AgentDefinitionModel.PROJECTION_LIST)
+        if (method === 'group.update' || method === 'group.delete') {
+            const groupId = Number(envelope.payload?.groupId);
+            const agent = Number.isSafeInteger(groupId) && groupId > 0
+                ? await GroupDefinitionModel.get(scope.domainId, groupId, GroupDefinitionModel.PROJECTION_LIST)
                 : null;
             if (!agent) {
                 this.response.type = 'application/json';
@@ -492,11 +497,11 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
                 return;
             }
             if (!this.user.own(agent)) {
-                this.checkPerm(method === 'agent.delete' ? PERM.PERM_DELETE_DISCUSSION : PERM.PERM_EDIT_DISCUSSION);
+                this.checkPerm(method === 'group.delete' ? PERM.PERM_DELETE_DISCUSSION : PERM.PERM_EDIT_DISCUSSION);
             }
-            if (method === 'agent.delete') {
-                await AgentSessionModel.detachAgent(scope.domainId, agentId);
-                await AgentDefinitionModel.del(scope.domainId, agentId);
+            if (method === 'group.delete') {
+                await AgentSessionModel.detachGroup(scope.domainId, groupId);
+                await GroupDefinitionModel.del(scope.domainId, groupId);
                 this.response.type = 'application/json';
                 this.response.body = JSON.stringify(rpcOk(envelope.rpcId, { deleted: true }));
                 return;
@@ -508,11 +513,11 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
                 this.response.body = JSON.stringify(rpcError(envelope.rpcId, '名称必填且不超过 256 个字符，内容不能超过 100000 个字符'));
                 return;
             }
-            const updated = await AgentDefinitionModel.edit(scope.domainId, agentId, { title, content });
-            await AgentSessionModel.syncAgentRootTitle(scope.domainId, agentId, title);
+            const updated = await GroupDefinitionModel.edit(scope.domainId, groupId, { title, content });
+            await AgentSessionModel.syncGroupRootTitle(scope.domainId, groupId, title);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(rpcOk(envelope.rpcId, {
-                agent: agentDefinitionView(updated as unknown as Record<string, unknown>),
+                group: groupDefinitionView(updated as unknown as Record<string, unknown>),
             }));
             return;
         }
@@ -567,14 +572,14 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             }));
             return;
         }
-        if (method === 'node.config.save') {
+        if (method === 'team.config.save') {
             this.response.type = 'application/json';
-            this.response.body = JSON.stringify(await saveAgentNodeConfig(envelope, scope, this.ctx));
+            this.response.body = JSON.stringify(await saveTeamConfig(envelope, scope, this.ctx));
             return;
         }
-        if (method.startsWith('node.')) {
+        if (method.startsWith('team.')) {
             this.response.type = 'application/json';
-            this.response.body = JSON.stringify(await nodeRpc(envelope, scope));
+            this.response.body = JSON.stringify(await teamRpc(envelope, scope));
             return;
         }
         if (method.startsWith('workspace.')) {
@@ -583,7 +588,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             return;
         }
         if (method === 'base.list') {
-            if (!await isAgentAddonEnabled(scope.domainId, 'base', scope.agentId)) {
+            if (!await isAgentAddonEnabled(scope.domainId, 'base', scope.groupId)) {
                 this.response.type = 'application/json';
                 this.response.body = JSON.stringify(rpcOk(envelope.rpcId, { items: [] }));
                 return;
@@ -655,14 +660,14 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             this.response.body = JSON.stringify(await runtimeRemove(envelope));
             return;
         }
-        if (method === 'session.card.create') {
+        if (method === 'agent.create') {
             this.response.type = 'application/json';
-            this.response.body = JSON.stringify(await sessionCardCreate(envelope, scope));
+            this.response.body = JSON.stringify(await sessionAgentCreate(envelope, scope));
             return;
         }
-        if (method === 'session.card.update') {
+        if (method === 'agent.update') {
             this.response.type = 'application/json';
-            this.response.body = JSON.stringify(await sessionCardUpdate(envelope, scope));
+            this.response.body = JSON.stringify(await sessionAgentUpdate(envelope, scope));
             return;
         }
         if (method === 'session.list') {
@@ -728,10 +733,10 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
         }
         if (method === 'pluginInventory/sessionList') {
             const args = envelope.payload?.args;
-            const agentId = typeof args === 'object' && args !== null && !Array.isArray(args)
-                ? (args as Record<string, unknown>).agentId
+            const groupId = typeof args === 'object' && args !== null && !Array.isArray(args)
+                ? (args as Record<string, unknown>).groupId
                 : undefined;
-            if (typeof agentId !== 'string' || !await agentDataAdapter.getSession(scope, agentId)) {
+            if (typeof groupId !== 'string' || !await agentDataAdapter.getSession(scope, groupId)) {
                 this.response.type = 'application/json';
                 this.response.body = JSON.stringify(rpcError(envelope.rpcId, 'session not found'));
                 return;
@@ -792,7 +797,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
                     blank: false,
                     creatorUserId: scope.userId,
                     type: parent.type ?? 'generic',
-                    ...(parent.agentId === undefined ? {} : { agentId: parent.agentId }),
+                    ...(parent.groupId === undefined ? {} : { groupId: parent.groupId }),
                     ...(parent.baseDocId === undefined ? {} : { baseDocId: parent.baseDocId }),
                     ...(parent.cwd === undefined ? {} : { cwd: parent.cwd }),
                     ...(parent.agentPreset === undefined ? {} : { agentPreset: parent.agentPreset }),
@@ -816,11 +821,11 @@ export class EjunzAgentResponseHandler extends Handler<Context> {
         const value = result?.value as Record<string, unknown> | undefined;
         const sessionId = typeof value?.sessionId === 'string' ? value.sessionId : undefined;
         const scope: AgentScope = scopeOf(this, body.domainId);
-        if (Object.prototype.hasOwnProperty.call(body, 'agentId')) {
-            if (body.agentId === null) scope.agentId = null;
-            else if (typeof body.agentId === 'number' && Number.isSafeInteger(body.agentId) && body.agentId > 0
-                && await AgentDefinitionModel.get(scope.domainId, body.agentId, AgentDefinitionModel.PROJECTION_LIST)) {
-                scope.agentId = body.agentId;
+        if (Object.prototype.hasOwnProperty.call(body, 'groupId')) {
+            if (body.groupId === null) scope.groupId = null;
+            else if (typeof body.groupId === 'number' && Number.isSafeInteger(body.groupId) && body.groupId > 0
+                && await GroupDefinitionModel.get(scope.domainId, body.groupId, GroupDefinitionModel.PROJECTION_LIST)) {
+                scope.groupId = body.groupId;
             } else {
                 throw new Error('Agent not found');
             }
@@ -839,7 +844,7 @@ export class EjunzAgentResponseHandler extends Handler<Context> {
             return;
         }
         const forwarded = { ...body };
-        delete forwarded.agentId;
+        delete forwarded.groupId;
         const reply = await target.call('/api/respond', forwarded);
         this.response.status = reply.status;
         this.response.type = reply.contentType;
@@ -866,7 +871,7 @@ export class EjunzAgentEventsConnectionHandler extends ConnectionHandler<Context
     private sendChain: Promise<void> = Promise.resolve();
     private domainId = '';
     private userId = 0;
-    private agentId: number | null | undefined;
+    private groupId: number | null | undefined;
 
     async prepare() {
         const stream = String(this.args?.stream || '');
@@ -878,17 +883,17 @@ export class EjunzAgentEventsConnectionHandler extends ConnectionHandler<Context
         const scope = scopeOf(this, this.request.query?.domainId);
         this.domainId = scope.domainId;
         this.userId = scope.userId;
-        const rawQueryAgentId = this.request.query?.agentId;
+        const rawQueryAgentId = this.request.query?.groupId;
         const rawAgentId = Array.isArray(rawQueryAgentId) ? rawQueryAgentId[0] : rawQueryAgentId;
-        if (rawAgentId === 'unassigned') this.agentId = null;
+        if (rawAgentId === 'unassigned') this.groupId = null;
         else if (rawAgentId !== undefined && rawAgentId !== null && rawAgentId !== '') {
-            const agentId = Number(rawAgentId);
-            if (!Number.isSafeInteger(agentId) || agentId <= 0
-                || !await AgentDefinitionModel.get(scope.domainId, agentId, AgentDefinitionModel.PROJECTION_LIST)) {
+            const groupId = Number(rawAgentId);
+            if (!Number.isSafeInteger(groupId) || groupId <= 0
+                || !await GroupDefinitionModel.get(scope.domainId, groupId, GroupDefinitionModel.PROJECTION_LIST)) {
                 this.close(4000, 'Agent not found');
                 return;
             }
-            this.agentId = agentId;
+            this.groupId = groupId;
         }
         const runtimeStream: RuntimeStream = stream === 'events.mux' ? 'mux' : 'host';
         const frames = new AbortController();
@@ -940,20 +945,20 @@ export class EjunzAgentEventsConnectionHandler extends ConnectionHandler<Context
                     const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId : undefined;
                     const session = sessionId === undefined
                         ? undefined
-                        : await agentDataAdapter.getSession({ domainId: this.domainId, userId: this.userId, ...(this.agentId === undefined ? {} : { agentId: this.agentId }) }, sessionId);
+                        : await agentDataAdapter.getSession({ domainId: this.domainId, userId: this.userId, ...(this.groupId === undefined ? {} : { groupId: this.groupId }) }, sessionId);
                     if (sessionId !== undefined && !session) return;
                     const type = String(payload?.type || '');
                     if (type === 'session/projection' && sessionId !== undefined) {
-                        const current = await agentDataAdapter.getSession({ domainId: this.domainId, userId: this.userId, ...(this.agentId === undefined ? {} : { agentId: this.agentId }) }, sessionId);
+                        const current = await agentDataAdapter.getSession({ domainId: this.domainId, userId: this.userId, ...(this.groupId === undefined ? {} : { groupId: this.groupId }) }, sessionId);
                         const key = String(payload?.key || '');
-                        await agentDataAdapter.updateSession({ domainId: this.domainId, userId: this.userId, ...(this.agentId === undefined ? {} : { agentId: this.agentId }) }, sessionId, {
+                        await agentDataAdapter.updateSession({ domainId: this.domainId, userId: this.userId, ...(this.groupId === undefined ? {} : { groupId: this.groupId }) }, sessionId, {
                             projections: { values: { ...(current?.projections?.values ?? {}), [key]: payload?.value } },
                             updatedAt: Date.now(),
                         });
                     } else if (type === 'host/session-status' && sessionId !== undefined) {
-                        await agentDataAdapter.updateSession({ domainId: this.domainId, userId: this.userId, ...(this.agentId === undefined ? {} : { agentId: this.agentId }) }, sessionId, { running: payload?.running === true });
+                        await agentDataAdapter.updateSession({ domainId: this.domainId, userId: this.userId, ...(this.groupId === undefined ? {} : { groupId: this.groupId }) }, sessionId, { running: payload?.running === true });
                     } else if (type === 'host/session-removed' && sessionId !== undefined) {
-                        await agentDataAdapter.updateSession({ domainId: this.domainId, userId: this.userId, ...(this.agentId === undefined ? {} : { agentId: this.agentId }) }, sessionId, { archived: true });
+                        await agentDataAdapter.updateSession({ domainId: this.domainId, userId: this.userId, ...(this.groupId === undefined ? {} : { groupId: this.groupId }) }, sessionId, { archived: true });
                     }
                 try { this.conn.send(JSON.stringify(serverRequestFrame(frame))); } catch { }
             }).catch((error) => logger.warn('Agent event persistence failed: %o', error)));
@@ -1191,12 +1196,12 @@ export class EjunzAgentRuntimeConnectionHandler extends ConnectionHandler<Contex
 
 
 export async function apply(ctx: Context): Promise<void> {
-    ctx.Route('agent_domain', '/agent', EjunzAgentPageHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('agent_chat', '/agent/chat', EjunzAgentChatPageHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('agent_domain', '/corp', EjunzAgentPageHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('agent_chat', '/corp/chat', EjunzAgentChatPageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('agent_market', '/market', EjunzAgentMarketPageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ejunz_agent_status', '/agent/status', EjunzAgentStatusPageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ejunz_agent_link', '/agent-link/:code', EjunzAgentLinkPageHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('agent_workspace', '/agent/:docId', EjunzAgentWorkspacePageHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('agent_workspace', '/corp/group/:groupId', EjunzAgentWorkspacePageHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ejunz_agent_data', '/api/ejunz-agent/data/*method', EjunzAgentDataHandler);
     ctx.Route('ejunz_agent_rpc', '/api/ejunz-agent/rpc/*method', EjunzAgentRpcHandler, PRIV.PRIV_USER_PROFILE);
     ctx.Route('ejunz_agent_response', '/api/ejunz-agent/respond', EjunzAgentResponseHandler, PRIV.PRIV_USER_PROFILE);

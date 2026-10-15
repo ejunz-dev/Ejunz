@@ -2,20 +2,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MarkdownEditor } from '../../../../components/markdown-editor';
 import { renderMarkdown } from '../../../../components/base-detail/markdown';
-import type { AgentNode } from '../../runtime/session';
+import type { AgentTeam } from '../../runtime/session';
 
-interface NodeContextSettingsPanelProps {
-    node: AgentNode;
+interface TeamContextSettingsPanelProps {
+    team: AgentTeam;
     editing: boolean;
     saving: boolean;
     onCloseEdit: () => void;
     onSave: (context: string) => Promise<void>;
 }
 
-const MAX_NODE_CONTEXT_CHARS = 20_000;
+const MAX_TEAM_CONTEXT_CHARS = 20_000;
 
-export function NodeContextSettingsPanel({ node, editing, saving, onCloseEdit, onSave }: NodeContextSettingsPanelProps) {
-    const context = node.config?.context ?? '';
+export function TeamContextSettingsPanel({ team, editing, saving, onCloseEdit, onSave }: TeamContextSettingsPanelProps) {
+    const context = team.config?.context ?? '';
     const editorTheme = typeof document !== 'undefined' && document.documentElement.classList.contains('theme--dark') ? 'dark' : 'light';
     const [draft, setDraft] = useState(context);
     const [error, setError] = useState('');
@@ -53,16 +53,16 @@ export function NodeContextSettingsPanel({ node, editing, saving, onCloseEdit, o
     }, [editing, onCloseEdit, save]);
 
     return <>
-        <div className="bd-drawer__body eza-nodeContextPreview">
+        <div className="bd-drawer__body eza-teamContextPreview">
             {context.trim()
                 ? <div className="bd-markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(context) }} />
-                : <p className="bd-muted">当前节点尚未配置上下文。</p>}
+                : <p className="bd-muted">当前团队尚未配置上下文。</p>}
         </div>
         {editing ? createPortal(
             <div className="bd-edit-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onCloseEdit(); }}>
-                <section className="bd-edit-dialog bd-edit-dialog--card" role="dialog" aria-modal="true" aria-labelledby="agent-node-context-edit-title">
+                <section className="bd-edit-dialog bd-edit-dialog--card" role="dialog" aria-modal="true" aria-labelledby="agent-team-context-edit-title">
                     <header className="bd-edit-dialog__header">
-                        <h2 id="agent-node-context-edit-title">编辑节点上下文</h2>
+                        <h2 id="agent-team-context-edit-title">编辑团队上下文</h2>
                         <div className="bd-edit-dialog__actions">
                             {saving ? <span className="bd-edit-dialog__status">保存中…</span> : null}
                             <button type="button" className="bd-edit-button bd-edit-button--primary" disabled={saving} onClick={() => { void save(); }}>保存</button>
@@ -74,7 +74,7 @@ export function NodeContextSettingsPanel({ node, editing, saving, onCloseEdit, o
                         <div className="bd-edit-field bd-edit-field--content">
                             <span>上下文</span>
                             <MarkdownEditor value={draft} onChange={setDraft} theme={editorTheme} style={{ height: '100%', minHeight: '16rem' }} />
-                            <span className="bd-muted">{draft.length.toLocaleString()} / {MAX_NODE_CONTEXT_CHARS.toLocaleString()}</span>
+                            <span className="bd-muted">{draft.length.toLocaleString()} / {MAX_TEAM_CONTEXT_CHARS.toLocaleString()}</span>
                         </div>
                     </div>
                 </section>

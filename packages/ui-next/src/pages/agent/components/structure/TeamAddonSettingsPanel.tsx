@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Notification } from '@ejunz/ui-next';
-import type { AgentNode } from '../../runtime/session';
+import type { AgentTeam } from '../../runtime/session';
 import type { AgentAddonView } from '../types';
 
-interface NodeAddonSettingsPanelProps {
-    node: AgentNode;
+interface TeamAddonSettingsPanelProps {
+    team: AgentTeam;
     addons: readonly AgentAddonView[];
     saving: boolean;
     onSave: (addonIds: string[]) => Promise<void>;
 }
 
-function selectedAddonIds(node: AgentNode, enabledIds: ReadonlySet<string>): string[] {
-    const config = node.config?.addons;
+function selectedAddonIds(team: AgentTeam, enabledIds: ReadonlySet<string>): string[] {
+    const config = team.config?.addons;
     if (config === undefined) return [...enabledIds].sort();
     return Object.entries(config)
         .filter(([addonId, enabled]) => enabled && enabledIds.has(addonId))
@@ -23,21 +23,21 @@ function selectedKey(addonIds: readonly string[]): string {
     return JSON.stringify([...addonIds].sort());
 }
 
-export function NodeAddonSettingsPanel({ node, addons, saving, onSave }: NodeAddonSettingsPanelProps) {
+export function TeamAddonSettingsPanel({ team, addons, saving, onSave }: TeamAddonSettingsPanelProps) {
     const enabledIds = useMemo(() => new Set(addons.filter((addon) => addon.installed && addon.enabled).map((addon) => addon.addonId)), [addons]);
-    const configuredIds = useMemo(() => selectedAddonIds(node, enabledIds), [enabledIds, node.config?.addons, node.nodeId]);
-    const configuredKey = node.config?.addons === undefined
+    const configuredIds = useMemo(() => selectedAddonIds(team, enabledIds), [enabledIds, team.config?.addons, team.teamId]);
+    const configuredKey = team.config?.addons === undefined
         ? 'inherit-global'
         : `configured:${selectedKey(configuredIds)}`;
     const [draftAddonIds, setDraftAddonIds] = useState(configuredIds);
-    const sourceRef = useRef({ nodeId: node.nodeId, configuredKey });
+    const sourceRef = useRef({ teamId: team.teamId, configuredKey });
     const isDirty = selectedKey(draftAddonIds) !== selectedKey(configuredIds);
 
     useEffect(() => {
-        const sourceChanged = sourceRef.current.nodeId !== node.nodeId || sourceRef.current.configuredKey !== configuredKey;
-        sourceRef.current = { nodeId: node.nodeId, configuredKey };
+        const sourceChanged = sourceRef.current.teamId !== team.teamId || sourceRef.current.configuredKey !== configuredKey;
+        sourceRef.current = { teamId: team.teamId, configuredKey };
         if (sourceChanged || !isDirty) setDraftAddonIds(configuredIds);
-    }, [configuredIds, configuredKey, isDirty, node.nodeId]);
+    }, [configuredIds, configuredKey, isDirty, team.teamId]);
 
     const toggleAddon = (addonId: string) => {
         setDraftAddonIds((current) => current.includes(addonId)
@@ -54,8 +54,8 @@ export function NodeAddonSettingsPanel({ node, addons, saving, onSave }: NodeAdd
         }
     };
 
-    return <div className="eza-nodeAddonSettings">
-        <div className="bd-edit-dialog__body eza-nodeAddonConfig">
+    return <div className="eza-teamAddonSettings">
+        <div className="bd-edit-dialog__body eza-teamAddonConfig">
             <div className="bd-edit-field">
                 <h3>Addons</h3>
                 <p className="bd-muted">可多选；勾选只修改草稿，不会立即保存。选完后统一点击保存配置。未配置时沿用 Agent 全局设置。</p>
@@ -77,7 +77,7 @@ export function NodeAddonSettingsPanel({ node, addons, saving, onSave }: NodeAdd
                 {isDirty && <span className="bd-muted" role="status">已选择 {draftAddonIds.length} 个 Addon，尚未保存</span>}
             </div>
         </div>
-        <footer className="bd-edit-dialog__footer eza-nodeAddonFooter">
+        <footer className="bd-edit-dialog__footer eza-teamAddonFooter">
             <span className="bd-muted">{saving ? '正在保存…' : ''}</span>
             <button type="button" className="eza-inputConfigCreate" disabled={!isDirty || saving} onClick={() => { void save(); }}>保存配置</button>
         </footer>

@@ -7,8 +7,8 @@ import './tokens.css';
 import './page.css';
 import './list.css';
 
-interface AgentDefinition {
-    docId: number;
+interface GroupDefinition {
+    groupId: number;
     aid: string;
     title: string;
     content: string;
@@ -34,7 +34,7 @@ export default function AgentListPage() {
     const { dark } = useAgentTheme();
     const guest = !user || user._id == null || user._id === 0 || user._id === '0';
     const domainName = typeof domain?.name === 'string' && domain.name.trim() ? domain.name : String(domainId || 'system');
-    const [agents, setAgents] = useState<AgentDefinition[]>([]);
+    const [agents, setAgents] = useState<GroupDefinition[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [creating, setCreating] = useState(false);
@@ -46,7 +46,7 @@ export default function AgentListPage() {
     const [editingDocId, setEditingDocId] = useState<number | null>(null);
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
-    const [deleting, setDeleting] = useState<AgentDefinition | null>(null);
+    const [deleting, setDeleting] = useState<GroupDefinition | null>(null);
     const [deleteBusy, setDeleteBusy] = useState(false);
     const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -68,7 +68,7 @@ export default function AgentListPage() {
     const loadAgents = useCallback(async () => {
         setLoading(true);
         try {
-            const value = await rpc('agent.list', {}) as { items?: AgentDefinition[] };
+            const value = await rpc('group.list', {}) as { items?: GroupDefinition[] };
             setAgents(Array.isArray(value.items) ? value.items : []);
             setLoadError(null);
         } catch (error) {
@@ -89,8 +89,8 @@ export default function AgentListPage() {
         setCreateOpen(true);
     }, []);
 
-    const startEdit = useCallback((agent: AgentDefinition) => {
-        setEditingDocId(agent.docId);
+    const startEdit = useCallback((agent: GroupDefinition) => {
+        setEditingDocId(agent.groupId);
         setTitle(agent.title);
         setContent(agent.content);
         setLoadError(null);
@@ -102,12 +102,12 @@ export default function AgentListPage() {
         if (editingDocId === null || !normalizedTitle || saving) return;
         setSaving(true);
         try {
-            const value = await rpc('agent.update', { docId: editingDocId, title: normalizedTitle, content }) as { agent?: AgentDefinition };
-            if (!value.agent) throw new Error('Agent 保存失败');
-            setAgents((items) => items.map((agent) => agent.docId === editingDocId ? value.agent! : agent));
-            startEdit(value.agent);
+            const value = await rpc('group.update', { groupId: editingDocId, title: normalizedTitle, content }) as { group?: GroupDefinition };
+            if (!value.group) throw new Error('Group 保存失败');
+            setAgents((items) => items.map((agent) => agent.groupId === editingDocId ? value.group! : agent));
+            startEdit(value.group);
             setLoadError(null);
-            await Notification.success('Agent 已保存');
+            await Notification.success('Group 已保存');
         } catch (error) {
             setLoadError(error instanceof Error ? error.message : String(error));
         } finally {
@@ -122,13 +122,13 @@ export default function AgentListPage() {
         setCreating(true);
         setCreateError(null);
         try {
-            const value = await rpc('agent.create', { title: normalizedTitle, content: createContent }) as { agent?: AgentDefinition };
-            if (!value.agent) throw new Error('Agent 创建失败');
-            setAgents((items) => [value.agent!, ...items]);
+            const value = await rpc('group.create', { title: normalizedTitle, content: createContent }) as { group?: GroupDefinition };
+            if (!value.group) throw new Error('Group 创建失败');
+            setAgents((items) => [value.group!, ...items]);
             setCreateOpen(false);
             setCreateTitle('');
             setCreateContent('');
-            await Notification.success('Agent 已创建');
+            await Notification.success('Group 已创建');
         } catch (error) {
             setCreateError(error instanceof Error ? error.message : String(error));
         } finally {
@@ -141,16 +141,16 @@ export default function AgentListPage() {
         setDeleteBusy(true);
         setDeleteError(null);
         try {
-            await rpc('agent.delete', { docId: deleting.docId });
-            setAgents((items) => items.filter((agent) => agent.docId !== deleting.docId));
-            if (editingDocId === deleting.docId) {
+            await rpc('group.delete', { groupId: deleting.groupId });
+            setAgents((items) => items.filter((agent) => agent.groupId !== deleting.groupId));
+            if (editingDocId === deleting.groupId) {
                 setEditingDocId(null);
                 setTitle('');
                 setContent('');
                 setLoadError(null);
             }
             setDeleting(null);
-            await Notification.success('Agent 已删除');
+            await Notification.success('Group 已删除');
         } catch (error) {
             setDeleteError(error instanceof Error ? error.message : String(error));
         } finally {
@@ -165,42 +165,42 @@ export default function AgentListPage() {
             <main className="eza-agentCatalog">
                 <header className="eza-agentCatalog__header">
                     <div>
-                        <h1>Agents</h1>
-                        <p>管理 {domainName} 中可用的 Agent 配置。</p>
+                        <h1>Groups</h1>
+                        <p>管理 {domainName} 中可用的 Group。</p>
                     </div>
-                    <nav className="eza-agentCatalog__headerActions" aria-label="Agent 页面操作">
-                        <a className="eza-agentCatalog__link" href={`${domainPrefix(String(domainId || 'system'))}/agent/chat`}>打开聊天工作台</a>
-                        <button type="button" className="eza-agentCatalog__primary" onClick={startCreate}>新建 Agent</button>
+                    <nav className="eza-agentCatalog__headerActions" aria-label="Group 管理操作">
+                        <a className="eza-agentCatalog__link" href={`${domainPrefix(String(domainId || 'system'))}/corp/chat`}>打开聊天工作台</a>
+                        <button type="button" className="eza-agentCatalog__primary" onClick={startCreate}>新建 Group</button>
                     </nav>
                 </header>
 
                 {loadError && !editingDocId ? <p className="eza-agentCatalog__notice" role="alert">{loadError}</p> : null}
 
                 <div className="eza-agentCatalog__layout" data-editing={editingDocId !== null || undefined} aria-busy={loading || saving || creating}>
-                    <section className="eza-agentCatalog__list" aria-label="Agent 列表">
+                    <section className="eza-agentCatalog__list" aria-label="Group 列表">
                         <div className="eza-agentCatalog__listHeader">
                             <h2>配置</h2>
                             <span>{loading ? '加载中…' : `${agents.length} 个`}</span>
                         </div>
-                        {loading ? <p className="eza-agentCatalog__state">正在读取 Agent…</p> : null}
+                        {loading ? <p className="eza-agentCatalog__state">正在读取 Group…</p> : null}
                         {!loading && agents.length === 0 ? (
                             <div className="eza-agentCatalog__empty">
-                                <strong>还没有 Agent</strong>
+                                <strong>还没有 Group</strong>
                                 <p>创建一个配置，保存它的名称和行为说明。</p>
-                                <button type="button" onClick={startCreate}>创建第一个 Agent</button>
+                                <button type="button" onClick={startCreate}>创建第一个 Group</button>
                             </div>
                         ) : null}
                         <ul className="eza-agentCatalog__items">
                             {agents.map((agent) => (
-                                <li key={agent.docId}>
-                                    <article className="eza-agentCatalog__item" data-selected={editingDocId === agent.docId || undefined}>
-                                        <button type="button" className="eza-agentCatalog__itemMain" onClick={() => startEdit(agent)} aria-current={editingDocId === agent.docId ? 'true' : undefined}>
-                                            <span className="eza-agentCatalog__itemTitle">{agent.title || '未命名 Agent'}</span>
-                                            <span className="eza-agentCatalog__itemMeta">#{agent.docId} <span aria-hidden="true">·</span> {formatDate(agent.updateAt) || '尚未更新'}</span>
+                                <li key={agent.groupId}>
+                                    <article className="eza-agentCatalog__item" data-selected={editingDocId === agent.groupId || undefined}>
+                                        <button type="button" className="eza-agentCatalog__itemMain" onClick={() => startEdit(agent)} aria-current={editingDocId === agent.groupId ? 'true' : undefined}>
+                                            <span className="eza-agentCatalog__itemTitle">{agent.title || '未命名 Group'}</span>
+                                            <span className="eza-agentCatalog__itemMeta">#{agent.groupId} <span aria-hidden="true">·</span> {formatDate(agent.updateAt) || '尚未更新'}</span>
                                             <span className="eza-agentCatalog__itemSummary">{summary(agent.content) || '尚未添加行为说明。'}</span>
                                         </button>
                                         <div className="eza-agentCatalog__itemActions">
-                                            <a href={`${domainPrefix(String(domainId || 'system'))}/agent/${agent.docId}`}>打开工作区</a>
+                                            <a href={`${domainPrefix(String(domainId || 'system'))}/corp/group/${agent.groupId}`}>打开 Group 工作区</a>
                                             <button type="button" className="eza-agentCatalog__delete" onClick={() => { setDeleting(agent); setDeleteError(null); }}>删除</button>
                                         </div>
                                     </article>
@@ -209,10 +209,10 @@ export default function AgentListPage() {
                         </ul>
                     </section>
 
-                    {editingDocId !== null && <section className="eza-agentCatalog__editor" aria-label="编辑 Agent">
+                    {editingDocId !== null && <section className="eza-agentCatalog__editor" aria-label="编辑 Group">
                         <div className="eza-agentCatalog__editorHeading">
                             <div>
-                                <h2>编辑 Agent</h2>
+                                <h2>编辑 Group</h2>
                                 <p>配置编号 {editingDocId}</p>
                             </div>
                         </div>
@@ -223,7 +223,7 @@ export default function AgentListPage() {
                             </label>
                             <label className="eza-agentCatalog__field">
                                 <span>行为说明</span>
-                                <textarea value={content} onChange={(event) => setContent(event.target.value)} maxLength={100000} rows={15} placeholder="描述这个 Agent 的职责、目标和工作方式。" />
+                                <textarea value={content} onChange={(event) => setContent(event.target.value)} maxLength={100000} rows={15} placeholder="描述这个 Group 的职责、目标和工作方式。" />
                                 <small>最多 100000 个字符</small>
                             </label>
                             {loadError ? <p className="eza-agentCatalog__notice" role="alert">{loadError}</p> : null}
@@ -236,11 +236,11 @@ export default function AgentListPage() {
                 </div>
             </main>
             {createOpen && <div className="eza-agentCreateModal" role="presentation">
-                <button type="button" className="eza-agentCreateModal__mask" aria-label="关闭新建 Agent 对话框" disabled={creating} onClick={() => setCreateOpen(false)} />
+                <button type="button" className="eza-agentCreateModal__mask" aria-label="关闭新建 Group 对话框" disabled={creating} onClick={() => setCreateOpen(false)} />
                 <section className="eza-agentCreateModal__dialog" role="dialog" aria-modal="true" aria-labelledby="eza-agentCreateModal-title">
                     <header className="eza-agentCreateModal__header">
                         <div>
-                            <h2 id="eza-agentCreateModal-title">新建 Agent</h2>
+                            <h2 id="eza-agentCreateModal-title">新建 Group</h2>
                             <p>填写名称和行为说明，创建后即可打开独立工作区。</p>
                         </div>
                         <button type="button" aria-label="关闭" disabled={creating} onClick={() => setCreateOpen(false)}>×</button>
@@ -252,22 +252,22 @@ export default function AgentListPage() {
                         </label>
                         <label className="eza-agentCatalog__field">
                             <span>行为说明</span>
-                            <textarea value={createContent} onChange={(event) => setCreateContent(event.target.value)} maxLength={100000} rows={10} placeholder="描述这个 Agent 的职责、目标和工作方式。" />
+                            <textarea value={createContent} onChange={(event) => setCreateContent(event.target.value)} maxLength={100000} rows={10} placeholder="描述这个 Group 的职责、目标和工作方式。" />
                             <small>最多 100000 个字符</small>
                         </label>
                         {createError ? <p className="eza-agentCatalog__notice" role="alert">{createError}</p> : null}
                         <div className="eza-agentCatalog__formActions">
                             <button type="button" className="eza-agentCatalog__secondary" disabled={creating} onClick={() => setCreateOpen(false)}>取消</button>
-                            <button type="submit" className="eza-agentCatalog__primary" disabled={creating || !createTitle.trim()}>{creating ? '创建中…' : '创建 Agent'}</button>
+                            <button type="submit" className="eza-agentCatalog__primary" disabled={creating || !createTitle.trim()}>{creating ? '创建中…' : '创建 Group'}</button>
                         </div>
                     </form>
                 </section>
             </div>}
             <ActionDialog
                 open={deleting !== null}
-                title="删除 Agent？"
+                title="删除 Group？"
                 description={deleting ? `删除“${deleting.title}”只会移除这条配置，不会删除现有会话。此操作无法撤销。` : undefined}
-                confirmLabel="删除 Agent"
+                confirmLabel="删除 Group"
                 danger
                 busy={deleteBusy}
                 error={deleteError}

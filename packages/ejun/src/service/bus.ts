@@ -35,17 +35,17 @@ export interface EdgeBridgeEnvelope {
 export interface AgentAddonStateChange {
     domainId: string;
     userId: number;
-    agentId?: number | null;
-    nodeId?: string;
+    groupId?: number | null;
+    teamId?: string;
     addonId: string;
     enabled: boolean;
 }
 
-export interface AgentNodeContextChange {
+export interface AgentTeamContextChange {
     domainId: string;
     userId: number;
-    agentId?: number | null;
-    nodeId: string;
+    groupId?: number | null;
+    teamId: string;
 }
 
 export interface EventMap {
@@ -71,7 +71,7 @@ export interface EventMap {
     'system/setting': (args: Record<string, any>) => VoidReturn;
     'system/setting-loaded': () => VoidReturn;
     'agent/addon-state': (change: AgentAddonStateChange) => VoidReturn;
-    'agent/node-context': (change: AgentNodeContextChange) => VoidReturn;
+    'agent/team-context': (change: AgentTeamContextChange) => VoidReturn;
     'bus/broadcast': (event: keyof EventMap, payload: any, trace?: string) => VoidReturn;
     'monitor/update': (type: 'server' | 'worker', $set: any) => VoidReturn;
     'monitor/collect': (info: any) => VoidReturn;
@@ -146,7 +146,7 @@ export function apply(ctx: Context) {
                 (app.parallel as any)(packet.data.event, ...BSON.EJSON.parse(packet.data.payload));
             });
             ctx.on('bus/broadcast', (event, payload) => {
-                process.send({ type: 'ejunz:broadcast', data: { event, payload: BSON.EJSON.stringify(payload) } });
+                process.send!({ type: 'ejunz:broadcast', data: { event, payload: BSON.EJSON.stringify(payload) } });
             });
             console.debug('Using pm2 event bus');
         });

@@ -470,30 +470,30 @@
   position: relative;
 }
 
-.eza-nodeAddonSettings {
+.eza-teamAddonSettings {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-height: 0;
 }
 
-.eza-nodeAddonConfig {
+.eza-teamAddonConfig {
   flex: 1 1 auto;
 }
 
-.eza-nodeAddonConfig .bd-edit-field > .bd-muted {
+.eza-teamAddonConfig .bd-edit-field > .bd-muted {
   margin: 0;
   font-weight: 400;
 }
 
-.eza-nodeAddonFooter {
+.eza-teamAddonFooter {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: .75rem;
 }
 
-.eza-nodeAddonFooter .bd-muted {
+.eza-teamAddonFooter .bd-muted {
   margin: 0;
 }
 

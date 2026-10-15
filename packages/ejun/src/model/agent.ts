@@ -547,9 +547,9 @@ export interface AgentSessionSummary {
     started?: boolean;
     creatorUserId?: number;
     type?: AgentSessionType;
-    agentId?: number;
+    groupId?: number;
     baseDocId?: string;
-    nodeId?: string;
+    teamId?: string;
     cwd?: string;
     agentPreset?: string;
     /** The host that serves this session; absent until one was chosen. */
@@ -589,22 +589,22 @@ export interface AgentWorkspaceDoc {
     updatedAt: Date;
 }
 
-export interface AgentNodeConfig {
+export interface AgentTeamConfig {
     addons?: Record<string, boolean>;
     context?: string;
 }
 
-export interface AgentNodeDoc {
+export interface AgentTeamDoc {
     _id: ObjectId;
     domainId: string;
     userId: number;
-    agentId?: number;
-    nodeId: string;
-    parentId?: string;
-    isRoot?: boolean;
+    groupId?: number;
+    teamId: string;
+    parentTeamId?: string;
+    isRootTeam?: boolean;
     text: string;
     order: number;
-    config?: AgentNodeConfig;
+    config?: AgentTeamConfig;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -668,7 +668,7 @@ function normalizeAgentDisplayPrefs(raw: unknown): AgentDisplayPrefs {
 const sessions = agentCollection('agent.session');
 const events = agentCollection('agent.session_event');
 const workspaces = agentCollection('agent.workspace');
-const nodes = agentCollection('agent.node');
+const teamsCollection = agentCollection('agent.node');
 const uiPrefs = agentCollection('agent.ui_prefs');
 const domains = agentCollection('domain');
 const credentials = agentCollection('agent.credential');
@@ -718,21 +718,21 @@ function cloneSections(sections: Record<string, Record<string, unknown>>): Recor
     return structuredClone(sections);
 }
 
-function sessionFilter(domainId: string, userId: number, sessionId?: string, agentId?: number | null) {
+function sessionFilter(domainId: string, userId: number, sessionId?: string, groupId?: number | null) {
     return {
         domainId,
         userId,
         ...(sessionId === undefined ? {} : { sessionId }),
-        ...(agentId === undefined ? {} : agentId === null ? { agentId: { $in: [null] } } : { agentId }),
+        ...(groupId === undefined ? {} : groupId === null ? { groupId: { $in: [null] } } : { groupId }),
     };
 }
 
-function agentNodeFilter(domainId: string, userId: number, agentId?: number | null, nodeId?: string) {
+function teamFilter(domainId: string, userId: number, groupId?: number | null, teamId?: string) {
     return {
         domainId,
         userId,
-        ...(agentId === undefined ? {} : agentId === null ? { agentId: { $in: [null] } } : { agentId }),
-        ...(nodeId === undefined ? {} : { nodeId }),
+        ...(groupId === undefined ? {} : groupId === null ? { groupId: { $in: [null] } } : { groupId }),
+        ...(teamId === undefined ? {} : { teamId }),
     };
 }
 
@@ -750,9 +750,9 @@ function sessionToSummary(doc: AgentSessionDoc): AgentSessionSummary {
         started: doc.started !== false,
         creatorUserId: doc.creatorUserId ?? doc.userId,
         type: doc.type ?? 'generic',
-        ...(doc.agentId === undefined ? {} : { agentId: doc.agentId }),
+        ...(doc.groupId === undefined ? {} : { groupId: doc.groupId }),
         ...(doc.baseDocId === undefined ? {} : { baseDocId: doc.baseDocId }),
-        ...(doc.nodeId === undefined ? {} : { nodeId: doc.nodeId }),
+        ...(doc.teamId === undefined ? {} : { teamId: doc.teamId }),
         ...(doc.cwd === undefined ? {} : { cwd: doc.cwd }),
         ...(doc.agentPreset === undefined ? {} : { agentPreset: doc.agentPreset }),
         ...(doc.runtimeId === undefined ? {} : { runtimeId: doc.runtimeId }),
@@ -766,17 +766,17 @@ export class AgentSessionModel {
         await Promise.all([
             sessions.createIndex({ domainId: 1, userId: 1, sessionId: 1 }, { unique: true, background: true, name: 'agent_session_domain_user_id_unique' }),
             sessions.createIndex({ domainId: 1, userId: 1, updatedAt: -1 }, { background: true, name: 'agent_session_domain_user_updated' }),
-            sessions.createIndex({ domainId: 1, userId: 1, agentId: 1, updatedAt: -1 }, { background: true, name: 'agent_session_agent_updated' }),
+            sessions.createIndex({ domainId: 1, userId: 1, groupId: 1, updatedAt: -1 }, { background: true, name: 'agent_session_group_updated_v2' }),
             sessions.createIndex({ domainId: 1, userId: 1, type: 1, baseDocId: 1, updatedAt: -1 }, { background: true, name: 'agent_session_base_detail_lookup' }),
-            sessions.createIndex({ domainId: 1, userId: 1, agentId: 1, type: 1, baseDocId: 1, updatedAt: -1 }, { background: true, name: 'agent_session_agent_base_detail_lookup' }),
-            nodes.createIndex({ domainId: 1, userId: 1, agentId: 1, order: 1 }, { background: true, name: 'agent_node_agent_order' }),
-            nodes.createIndex({ domainId: 1, userId: 1, agentId: 1 }, { unique: true, partialFilterExpression: { isRoot: true }, background: true, name: 'agent_node_agent_root_unique' }),
+            sessions.createIndex({ domainId: 1, userId: 1, groupId: 1, type: 1, baseDocId: 1, updatedAt: -1 }, { background: true, name: 'agent_session_group_base_detail_lookup_v2' }),
+            teamsCollection.createIndex({ domainId: 1, userId: 1, groupId: 1, order: 1 }, { background: true, name: 'agent_team_group_order_v2' }),
+            teamsCollection.createIndex({ domainId: 1, userId: 1, groupId: 1 }, { unique: true, partialFilterExpression: { isRootTeam: true }, background: true, name: 'agent_team_group_root_unique_v2' }),
             events.createIndex({ domainId: 1, userId: 1, sessionId: 1, seq: 1 }, { unique: true, background: true, name: 'agent_event_session_seq_unique' }),
             events.createIndex({ domainId: 1, userId: 1, sessionId: 1, 'event.type': 1 }, { background: true, name: 'agent_event_session_type' }),
             workspaces.createIndex({ domainId: 1, userId: 1, workspaceId: 1 }, { unique: true, background: true, name: 'agent_workspace_domain_user_id_unique' }),
             workspaces.createIndex({ domainId: 1, userId: 1, order: 1 }, { background: true, name: 'agent_workspace_domain_user_order' }),
-            nodes.createIndex({ domainId: 1, userId: 1, nodeId: 1 }, { unique: true, background: true, name: 'agent_node_domain_user_id_unique' }),
-            nodes.createIndex({ domainId: 1, userId: 1, order: 1 }, { background: true, name: 'agent_node_domain_user_order' }),
+            teamsCollection.createIndex({ domainId: 1, userId: 1, teamId: 1 }, { unique: true, background: true, name: 'agent_team_domain_user_id_unique_v2' }),
+            teamsCollection.createIndex({ domainId: 1, userId: 1, order: 1 }, { background: true, name: 'agent_team_domain_user_order_v2' }),
             uiPrefs.createIndex({ domainId: 1, userId: 1 }, { unique: true, background: true, name: 'agent_ui_prefs_domain_user_unique' }),
             credentials.createIndex({ domainId: 1, ref: 1 }, { unique: true, background: true, name: 'agent_credential_domain_ref_unique' }),
         ]);
@@ -786,21 +786,21 @@ export class AgentSessionModel {
         await sessions.updateMany({ running: true }, { $set: { running: false } });
     }
 
-    static async listSessions(domainId: string, userId: number, agentId?: number | null): Promise<AgentSessionSummary[]> {
-        const docs = await sessions.find(sessionFilter(domainId, userId, undefined, agentId)).sort({ updatedAt: -1 }).toArray() as AgentSessionDoc[];
+    static async listSessions(domainId: string, userId: number, groupId?: number | null): Promise<AgentSessionSummary[]> {
+        const docs = await sessions.find(sessionFilter(domainId, userId, undefined, groupId)).sort({ updatedAt: -1 }).toArray() as AgentSessionDoc[];
         return docs.map(sessionToSummary);
     }
 
-    static async getSession(domainId: string, userId: number, sessionId: string, agentId?: number | null): Promise<AgentSessionDoc | null> {
-        return await sessions.findOne(sessionFilter(domainId, userId, sessionId, agentId)) as AgentSessionDoc | null;
+    static async getSession(domainId: string, userId: number, sessionId: string, groupId?: number | null): Promise<AgentSessionDoc | null> {
+        return await sessions.findOne(sessionFilter(domainId, userId, sessionId, groupId)) as AgentSessionDoc | null;
     }
 
-    static async getSessionByContext(domainId: string, userId: number, type: AgentSessionType, baseDocId: string, agentId?: number | null): Promise<AgentSessionDoc | null> {
-        return await sessions.find({ ...sessionFilter(domainId, userId, undefined, agentId), type, baseDocId, archived: { $ne: true } }).sort({ updatedAt: -1 }).limit(1).next() as AgentSessionDoc | null;
+    static async getSessionByContext(domainId: string, userId: number, type: AgentSessionType, baseDocId: string, groupId?: number | null): Promise<AgentSessionDoc | null> {
+        return await sessions.find({ ...sessionFilter(domainId, userId, undefined, groupId), type, baseDocId, archived: { $ne: true } }).sort({ updatedAt: -1 }).limit(1).next() as AgentSessionDoc | null;
     }
 
-    static async listSessionsByContext(domainId: string, userId: number, type: AgentSessionType, baseDocId: string, agentId?: number | null): Promise<AgentSessionSummary[]> {
-        const docs = await sessions.find({ ...sessionFilter(domainId, userId, undefined, agentId), type, baseDocId, archived: { $ne: true } }).sort({ updatedAt: -1 }).toArray() as AgentSessionDoc[];
+    static async listSessionsByContext(domainId: string, userId: number, type: AgentSessionType, baseDocId: string, groupId?: number | null): Promise<AgentSessionSummary[]> {
+        const docs = await sessions.find({ ...sessionFilter(domainId, userId, undefined, groupId), type, baseDocId, archived: { $ne: true } }).sort({ updatedAt: -1 }).toArray() as AgentSessionDoc[];
         return docs.map(sessionToSummary);
     }
 
@@ -836,17 +836,17 @@ export class AgentSessionModel {
         );
     }
 
-    static async updateSession(domainId: string, userId: number, sessionId: string, patch: Partial<AgentSessionSummary> & { archived?: boolean }, agentId?: number | null): Promise<void> {
-        await sessions.updateOne(sessionFilter(domainId, userId, sessionId, agentId), { $set: { ...patch, updatedAt: patch.updatedAt ?? Date.now() } });
+    static async updateSession(domainId: string, userId: number, sessionId: string, patch: Partial<AgentSessionSummary> & { archived?: boolean }, groupId?: number | null): Promise<void> {
+        await sessions.updateOne(sessionFilter(domainId, userId, sessionId, groupId), { $set: { ...patch, updatedAt: patch.updatedAt ?? Date.now() } });
     }
 
-    static async updateSessionContext(domainId: string, userId: number, sessionId: string, baseDocId?: string, cwd?: string, agentId?: number | null): Promise<void> {
+    static async updateSessionContext(domainId: string, userId: number, sessionId: string, baseDocId?: string, cwd?: string, groupId?: number | null): Promise<void> {
         const set: Record<string, unknown> = { updatedAt: Date.now() };
         const unset: Record<string, 1> = {};
         if (baseDocId === undefined) unset.baseDocId = 1;
         else set.baseDocId = baseDocId;
         if (cwd !== undefined) set.cwd = cwd;
-        await sessions.updateOne(sessionFilter(domainId, userId, sessionId, agentId), {
+        await sessions.updateOne(sessionFilter(domainId, userId, sessionId, groupId), {
             $set: set,
             ...(Object.keys(unset).length ? { $unset: unset } : {}),
         });
@@ -906,14 +906,14 @@ export class AgentSessionModel {
         }
     }
 
-    static async countEvents(domainId: string, userId: number, sessionId: string, agentId?: number | null): Promise<number> {
-        const owner = await AgentSessionModel.getSession(domainId, userId, sessionId, agentId);
+    static async countEvents(domainId: string, userId: number, sessionId: string, groupId?: number | null): Promise<number> {
+        const owner = await AgentSessionModel.getSession(domainId, userId, sessionId, groupId);
         if (!owner) return 0;
         return await events.countDocuments({ domainId, userId, sessionId });
     }
 
-    static async countMessages(domainId: string, userId: number, sessionId: string, agentId?: number | null): Promise<number> {
-        const owner = await AgentSessionModel.getSession(domainId, userId, sessionId, agentId);
+    static async countMessages(domainId: string, userId: number, sessionId: string, groupId?: number | null): Promise<number> {
+        const owner = await AgentSessionModel.getSession(domainId, userId, sessionId, groupId);
         if (!owner) return 0;
         return await events.countDocuments({
             domainId,
@@ -949,8 +949,8 @@ export class AgentSessionModel {
         return rows.map((row) => row.event);
     }
 
-    static async listEvents(domainId: string, userId: number, sessionId: string, beforeSeq?: number, limit = 50, agentId?: number | null): Promise<{ events: Record<string, unknown>[]; hasMore: boolean }> {
-        const owner = await AgentSessionModel.getSession(domainId, userId, sessionId, agentId);
+    static async listEvents(domainId: string, userId: number, sessionId: string, beforeSeq?: number, limit = 50, groupId?: number | null): Promise<{ events: Record<string, unknown>[]; hasMore: boolean }> {
+        const owner = await AgentSessionModel.getSession(domainId, userId, sessionId, groupId);
         if (!owner) return { events: [], hasMore: false };
         const filter = {
             domainId,
@@ -963,8 +963,8 @@ export class AgentSessionModel {
         return { events: rows.slice(0, limit).reverse().map((row) => row.event), hasMore };
     }
 
-    static async listMessageEvents(domainId: string, userId: number, sessionId: string, beforeSeq?: number, limit = 50, agentId?: number | null): Promise<{ events: Record<string, unknown>[]; hasMore: boolean }> {
-        const owner = await AgentSessionModel.getSession(domainId, userId, sessionId, agentId);
+    static async listMessageEvents(domainId: string, userId: number, sessionId: string, beforeSeq?: number, limit = 50, groupId?: number | null): Promise<{ events: Record<string, unknown>[]; hasMore: boolean }> {
+        const owner = await AgentSessionModel.getSession(domainId, userId, sessionId, groupId);
         if (!owner) return { events: [], hasMore: false };
         const capped = Math.min(Math.max(limit, 1), 500);
         const filter = {
@@ -1004,153 +1004,153 @@ export class AgentSessionModel {
         return await workspaces.findOne({ domainId, userId, path }) as AgentWorkspaceDoc | null;
     }
 
-    static async ensureAgentRoot(domainId: string, userId: number, agentId: number, title: string): Promise<AgentNodeDoc> {
-        const filter = { domainId, userId, agentId, isRoot: true };
+    static async ensureGroupRoot(domainId: string, userId: number, groupId: number, title: string): Promise<AgentTeamDoc> {
+        const filter = { domainId, userId, groupId, isRootTeam: true };
         const now = new Date();
-        const existing = await nodes.findOne(filter) as AgentNodeDoc | null;
+        const existing = await teamsCollection.findOne(filter) as AgentTeamDoc | null;
         if (existing) {
-            await nodes.updateOne(filter, {
+            await teamsCollection.updateOne(filter, {
                 $set: { text: title, order: -1, updatedAt: now },
-                $unset: { parentId: 1 },
+                $unset: { parentTeamId: 1 },
             });
-            return await nodes.findOne(filter) as AgentNodeDoc;
+            return await teamsCollection.findOne(filter) as AgentTeamDoc;
         }
 
-        const nodeId = `agent-root-${new ObjectId().toHexString()}`;
-        const root: AgentNodeDoc = {
+        const teamId = `agent-root-${new ObjectId().toHexString()}`;
+        const root: AgentTeamDoc = {
             _id: new ObjectId(),
             domainId,
             userId,
-            agentId,
-            nodeId,
-            isRoot: true,
+            groupId,
+            teamId,
+            isRootTeam: true,
             text: title,
             order: -1,
             createdAt: now,
             updatedAt: now,
         };
         try {
-            await nodes.insertOne(root);
+            await teamsCollection.insertOne(root);
             return root;
         } catch (error) {
-            const raced = await nodes.findOne(filter) as AgentNodeDoc | null;
+            const raced = await teamsCollection.findOne(filter) as AgentTeamDoc | null;
             if (!raced) throw error;
-            await nodes.updateOne(filter, { $set: { text: title, order: -1, updatedAt: new Date() } });
-            return await nodes.findOne(filter) as AgentNodeDoc;
+            await teamsCollection.updateOne(filter, { $set: { text: title, order: -1, updatedAt: new Date() } });
+            return await teamsCollection.findOne(filter) as AgentTeamDoc;
         }
     }
 
-    static async syncAgentRootTitle(domainId: string, agentId: number, title: string): Promise<void> {
-        await nodes.updateMany(
-            { domainId, agentId, isRoot: true },
+    static async syncGroupRootTitle(domainId: string, groupId: number, title: string): Promise<void> {
+        await teamsCollection.updateMany(
+            { domainId, groupId, isRootTeam: true },
             { $set: { text: title, updatedAt: new Date() } },
         );
     }
 
-    static async detachAgent(domainId: string, agentId: number): Promise<void> {
+    static async detachGroup(domainId: string, groupId: number): Promise<void> {
         await Promise.all([
-            sessions.updateMany({ domainId, agentId }, { $unset: { agentId: 1 }, $set: { updatedAt: Date.now() } }),
-            nodes.updateMany({ domainId, agentId }, { $unset: { agentId: 1, isRoot: 1 }, $set: { updatedAt: new Date() } }),
+            sessions.updateMany({ domainId, groupId }, { $unset: { groupId: 1 }, $set: { updatedAt: Date.now() } }),
+            teamsCollection.updateMany({ domainId, groupId }, { $unset: { groupId: 1, isRootTeam: 1 }, $set: { updatedAt: new Date() } }),
         ]);
     }
 
-    static async createNode(domainId: string, userId: number, text: string, agentId?: number | null, parentId?: string): Promise<AgentNodeDoc> {
+    static async createTeam(domainId: string, userId: number, text: string, groupId?: number | null, parentTeamId?: string): Promise<AgentTeamDoc> {
         const now = new Date();
-        const scope = agentNodeFilter(domainId, userId, agentId);
-        let actualParentId = parentId;
-        if (typeof agentId === 'number') {
-            const root = await nodes.findOne({ domainId, userId, agentId, isRoot: true }) as AgentNodeDoc | null;
-            if (!root) throw new Error('Agent root node is missing');
-            actualParentId = actualParentId || root.nodeId;
+        const scope = teamFilter(domainId, userId, groupId);
+        let actualParentId = parentTeamId;
+        if (typeof groupId === 'number') {
+            const root = await teamsCollection.findOne({ domainId, userId, groupId, isRootTeam: true }) as AgentTeamDoc | null;
+            if (!root) throw new Error('Group root team is missing');
+            actualParentId = actualParentId || root.teamId;
         }
-        if (actualParentId && !await AgentSessionModel.getNode(domainId, userId, actualParentId, agentId)) {
-            throw new Error('Parent node not found in this Agent');
+        if (actualParentId && !await AgentSessionModel.getTeam(domainId, userId, actualParentId, groupId)) {
+            throw new Error('Parent team not found in this Group');
         }
-        const current = await nodes.countDocuments(scope);
-        const node: AgentNodeDoc = {
+        const current = await teamsCollection.countDocuments(scope);
+        const team: AgentTeamDoc = {
             _id: new ObjectId(),
             domainId,
             userId,
-            ...(agentId === undefined || agentId === null ? {} : { agentId }),
-            nodeId: new ObjectId().toHexString(),
-            ...(actualParentId === undefined ? {} : { parentId: actualParentId }),
+            ...(groupId === undefined || groupId === null ? {} : { groupId }),
+            teamId: new ObjectId().toHexString(),
+            ...(actualParentId === undefined ? {} : { parentTeamId: actualParentId }),
             text: text.trim(),
             order: current,
             createdAt: now,
             updatedAt: now,
         };
-        await nodes.insertOne(node);
-        return node;
+        await teamsCollection.insertOne(team);
+        return team;
     }
 
-    static async listNodes(domainId: string, userId: number, agentId?: number | null): Promise<AgentNodeDoc[]> {
-        return await nodes.find(agentNodeFilter(domainId, userId, agentId)).sort({ order: 1, createdAt: 1 }).toArray() as AgentNodeDoc[];
+    static async listTeams(domainId: string, userId: number, groupId?: number | null): Promise<AgentTeamDoc[]> {
+        return await teamsCollection.find(teamFilter(domainId, userId, groupId)).sort({ order: 1, createdAt: 1 }).toArray() as AgentTeamDoc[];
     }
 
-    static async getNode(domainId: string, userId: number, nodeId: string, agentId?: number | null): Promise<AgentNodeDoc | null> {
-        return await nodes.findOne(agentNodeFilter(domainId, userId, agentId, nodeId)) as AgentNodeDoc | null;
+    static async getTeam(domainId: string, userId: number, teamId: string, groupId?: number | null): Promise<AgentTeamDoc | null> {
+        return await teamsCollection.findOne(teamFilter(domainId, userId, groupId, teamId)) as AgentTeamDoc | null;
     }
 
-    static async updateNodeConfig(domainId: string, userId: number, nodeId: string, config: AgentNodeConfig, agentId?: number | null): Promise<AgentNodeDoc | null> {
-        const filter = agentNodeFilter(domainId, userId, agentId, nodeId);
-        const node = await nodes.findOne(filter) as AgentNodeDoc | null;
-        if (!node) return null;
-        await nodes.updateOne(filter, { $set: { config, updatedAt: new Date() } });
-        return await nodes.findOne(filter) as AgentNodeDoc | null;
+    static async updateTeamConfig(domainId: string, userId: number, teamId: string, config: AgentTeamConfig, groupId?: number | null): Promise<AgentTeamDoc | null> {
+        const filter = teamFilter(domainId, userId, groupId, teamId);
+        const team = await teamsCollection.findOne(filter) as AgentTeamDoc | null;
+        if (!team) return null;
+        await teamsCollection.updateOne(filter, { $set: { config, updatedAt: new Date() } });
+        return await teamsCollection.findOne(filter) as AgentTeamDoc | null;
     }
 
-    static async updateNode(domainId: string, userId: number, nodeId: string, text: string, agentId?: number | null, parentId?: string): Promise<AgentNodeDoc | null> {
-        const filter = agentNodeFilter(domainId, userId, agentId, nodeId);
-        const node = await nodes.findOne(filter) as AgentNodeDoc | null;
-        if (!node) return null;
+    static async updateTeam(domainId: string, userId: number, teamId: string, text: string, groupId?: number | null, parentTeamId?: string): Promise<AgentTeamDoc | null> {
+        const filter = teamFilter(domainId, userId, groupId, teamId);
+        const team = await teamsCollection.findOne(filter) as AgentTeamDoc | null;
+        if (!team) return null;
         const nextText = text.trim();
         if (!nextText) throw new Error('text is required');
-        if (node.isRoot) throw new Error(parentId === undefined ? 'Agent root node cannot be renamed' : 'Agent root node cannot be moved');
+        if (team.isRootTeam) throw new Error(parentTeamId === undefined ? 'Group root team cannot be renamed' : 'Group root team cannot be moved');
         const patch: Record<string, unknown> = { updatedAt: new Date() };
-        if (nextText !== node.text) patch.text = nextText;
-        if (parentId !== undefined) {
-            const nextParentId = parentId.trim();
-            if (!nextParentId) throw new Error('parentId is required when provided');
-            if (nextParentId === nodeId) throw new Error('A node cannot be moved under itself');
-            const parent = await AgentSessionModel.getNode(domainId, userId, nextParentId, agentId);
-            if (!parent) throw new Error('Parent node not found in this Agent');
-            const scoped = await AgentSessionModel.listNodes(domainId, userId, agentId);
-            const parentOf = new Map(scoped.map((item) => [item.nodeId, item.parentId]));
+        if (nextText !== team.text) patch.text = nextText;
+        if (parentTeamId !== undefined) {
+            const nextParentId = parentTeamId.trim();
+            if (!nextParentId) throw new Error('parentTeamId is required when provided');
+            if (nextParentId === teamId) throw new Error('A team cannot be moved under itself');
+            const parent = await AgentSessionModel.getTeam(domainId, userId, nextParentId, groupId);
+            if (!parent) throw new Error('Parent team not found in this Group');
+            const scoped = await AgentSessionModel.listTeams(domainId, userId, groupId);
+            const parentOf = new Map(scoped.map((item) => [item.teamId, item.parentTeamId]));
             const seen = new Set<string>();
             let cursor: string | undefined = nextParentId;
             while (cursor) {
-                if (cursor === nodeId) throw new Error('A node cannot be moved under one of its descendants');
+                if (cursor === teamId) throw new Error('A team cannot be moved under one of its descendants');
                 if (seen.has(cursor)) break;
                 seen.add(cursor);
                 cursor = parentOf.get(cursor);
             }
-            if (nextParentId !== node.parentId) patch.parentId = nextParentId;
+            if (nextParentId !== team.parentTeamId) patch.parentTeamId = nextParentId;
         }
-        if (Object.keys(patch).length > 1) await nodes.updateOne(filter, { $set: patch });
-        return await nodes.findOne(filter) as AgentNodeDoc | null;
+        if (Object.keys(patch).length > 1) await teamsCollection.updateOne(filter, { $set: patch });
+        return await teamsCollection.findOne(filter) as AgentTeamDoc | null;
     }
 
-    static async deleteNode(domainId: string, userId: number, nodeId: string, agentId?: number | null): Promise<void> {
-        const filter = agentNodeFilter(domainId, userId, agentId, nodeId);
-        const node = await nodes.findOne(filter) as AgentNodeDoc | null;
-        if (!node) return;
-        if (node.isRoot) throw new Error('Agent root node cannot be deleted');
-        const root = typeof agentId === 'number'
-            ? await nodes.findOne({ domainId, userId, agentId, isRoot: true }) as AgentNodeDoc | null
+    static async deleteTeam(domainId: string, userId: number, teamId: string, groupId?: number | null): Promise<void> {
+        const filter = teamFilter(domainId, userId, groupId, teamId);
+        const team = await teamsCollection.findOne(filter) as AgentTeamDoc | null;
+        if (!team) return;
+        if (team.isRootTeam) throw new Error('Group root team cannot be deleted');
+        const root = typeof groupId === 'number'
+            ? await teamsCollection.findOne({ domainId, userId, groupId, isRootTeam: true }) as AgentTeamDoc | null
             : null;
-        const parentId = node.parentId || root?.nodeId;
-        const childrenFilter = agentNodeFilter(domainId, userId, agentId);
-        const sessionTargetFilter = sessionFilter(domainId, userId, undefined, agentId);
-        const sessionUpdate = parentId
-            ? { $set: { nodeId: parentId, updatedAt: Date.now() } }
-            : { $unset: { nodeId: 1 }, $set: { updatedAt: Date.now() } };
-        const childUpdate = parentId
-            ? { $set: { parentId, updatedAt: new Date() } }
-            : { $unset: { parentId: 1 }, $set: { updatedAt: new Date() } };
+        const parentTeamId = team.parentTeamId || root?.teamId;
+        const childrenFilter = teamFilter(domainId, userId, groupId);
+        const sessionTargetFilter = sessionFilter(domainId, userId, undefined, groupId);
+        const sessionUpdate = parentTeamId
+            ? { $set: { teamId: parentTeamId, updatedAt: Date.now() } }
+            : { $unset: { teamId: 1 }, $set: { updatedAt: Date.now() } };
+        const childUpdate = parentTeamId
+            ? { $set: { parentTeamId, updatedAt: new Date() } }
+            : { $unset: { parentTeamId: 1 }, $set: { updatedAt: new Date() } };
         await Promise.all([
-            nodes.updateMany({ ...childrenFilter, parentId: nodeId }, childUpdate),
-            sessions.updateMany({ ...sessionTargetFilter, nodeId }, sessionUpdate),
-            nodes.deleteOne(filter),
+            teamsCollection.updateMany({ ...childrenFilter, parentTeamId: teamId }, childUpdate),
+            sessions.updateMany({ ...sessionTargetFilter, teamId }, sessionUpdate),
+            teamsCollection.deleteOne(filter),
         ]);
     }
 
@@ -1184,12 +1184,12 @@ export class AgentSessionModel {
         return await AgentSessionModel.updateWorkspace(domainId, userId, workspaceId, { sessionIds });
     }
 
-    static async search(domainId: string, userId: number, query: string, agentId?: number | null): Promise<{ sessionId: string; snippet: string }[]> {
+    static async search(domainId: string, userId: number, query: string, groupId?: number | null): Promise<{ sessionId: string; snippet: string }[]> {
         const needle = query.trim().toLocaleLowerCase();
         if (!needle) return [];
         let sessionIds: string[] | undefined;
-        if (agentId !== undefined) {
-            const matches = await sessions.find(sessionFilter(domainId, userId, undefined, agentId)).project({ sessionId: 1 }).toArray() as { sessionId: string }[];
+        if (groupId !== undefined) {
+            const matches = await sessions.find(sessionFilter(domainId, userId, undefined, groupId)).project({ sessionId: 1 }).toArray() as { sessionId: string }[];
             sessionIds = matches.map((session) => session.sessionId);
         }
         if (sessionIds?.length === 0) return [];
@@ -1208,14 +1208,14 @@ export class AgentSessionModel {
         return result;
     }
 
-    static async deleteSession(domainId: string, userId: number, sessionId: string, agentId?: number | null): Promise<void> {
-        await AgentSessionModel.deleteSessions(domainId, userId, [sessionId], agentId);
+    static async deleteSession(domainId: string, userId: number, sessionId: string, groupId?: number | null): Promise<void> {
+        await AgentSessionModel.deleteSessions(domainId, userId, [sessionId], groupId);
     }
 
-    static async deleteSessions(domainId: string, userId: number, sessionIds: readonly string[], agentId?: number | null): Promise<void> {
+    static async deleteSessions(domainId: string, userId: number, sessionIds: readonly string[], groupId?: number | null): Promise<void> {
         const requestedIds = [...new Set(sessionIds)].filter(Boolean);
         if (requestedIds.length === 0) return;
-        const filter = { ...sessionFilter(domainId, userId, undefined, agentId), sessionId: { $in: requestedIds } };
+        const filter = { ...sessionFilter(domainId, userId, undefined, groupId), sessionId: { $in: requestedIds } };
         const matched = await sessions.find(filter).project({ sessionId: 1 }).toArray() as { sessionId: string }[];
         const ids = matched.map((session) => session.sessionId);
         if (ids.length === 0) return;
@@ -1238,8 +1238,8 @@ export class AgentSessionModel {
         await workspaces.deleteOne(workspaceFilter(domainId, userId, workspaceId));
     }
 
-    static async archivedSessionIds(domainId: string, userId: number, agentId?: number | null): Promise<string[]> {
-        const rows = await sessions.find({ ...sessionFilter(domainId, userId, undefined, agentId), archived: true }, { projection: { sessionId: 1 } }).toArray() as Pick<AgentSessionDoc, 'sessionId'>[];
+    static async archivedSessionIds(domainId: string, userId: number, groupId?: number | null): Promise<string[]> {
+        const rows = await sessions.find({ ...sessionFilter(domainId, userId, undefined, groupId), archived: true }, { projection: { sessionId: 1 } }).toArray() as Pick<AgentSessionDoc, 'sessionId'>[];
         return rows.map((row) => row.sessionId);
     }
 
@@ -1320,7 +1320,7 @@ export class AgentSessionModel {
             sessions.deleteMany({ domainId }),
             events.deleteMany({ domainId }),
             workspaces.deleteMany({ domainId }),
-            nodes.deleteMany({ domainId }),
+            teamsCollection.deleteMany({ domainId }),
             uiPrefs.deleteMany({ domainId }),
             credentials.deleteMany({ domainId }),
         ]);

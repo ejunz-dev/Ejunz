@@ -65,7 +65,7 @@ inject('Nav', 'homepage', { prefix: 'homepage' });
 inject('Nav', 'learn', { prefix: 'learn' });
 inject('Nav', 'develop', { prefix: 'develop' });
 inject('Nav', 'base_domain', { prefix: 'base' });
-inject('Nav', 'agent_domain', { prefix: 'agent' });
+inject('Nav', 'agent_domain', { prefix: 'corp' });
 // inject('Nav', 'edge_domain', { prefix: 'edge' });
 inject('Nav', 'session_domain', { prefix: 'session' }, PERM.PERM_VIEW_RECORD);
 inject('Nav', 'record_main', { prefix: 'record' }, PERM.PERM_VIEW_RECORD);

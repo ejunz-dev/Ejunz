@@ -7,14 +7,14 @@ import type { Context } from '../context';
 import { Service } from '../context';
 import { Logger } from '../logger';
 import SystemModel from '../model/system';
-import AgentDefinitionModel from '../model/agent';
+import GroupDefinitionModel from '../model/agent';
 import { createProvider } from './provider';
 import { httpServer } from '@ejunz/framework';
 import { AgentSessionModel as AgentModel, AgentRuntimeModel, AgentLinkModel, AgentStorageModel } from '../model/agent';
-import { type AgentDisplayPrefs, type AgentDomainSettings, type AgentNodeConfig, type AgentNodeDoc, type AgentSessionDoc, type AgentSessionSummary, type AgentSessionType, type AgentWorkspaceDoc } from '../model/agent';
+import { type AgentDisplayPrefs, type AgentDomainSettings, type AgentTeamConfig, type AgentTeamDoc, type AgentSessionDoc, type AgentSessionSummary, type AgentSessionType, type AgentWorkspaceDoc } from '../model/agent';
 import { type AgentRuntimeSummary } from '../model/agent';
 import { listAgentAddons } from './addons';
-import type { AgentAddonStateChange, AgentNodeContextChange } from './bus';
+import type { AgentAddonStateChange, AgentTeamContextChange } from './bus';
 
 interface EjunContext {
     server?: { config?: { port?: number; host?: string } };
@@ -434,7 +434,7 @@ async function injectHostSwitchNotice(
     }
 }
 
-async function sessionCardCreate(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
+async function sessionAgentCreate(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const payload = envelope.payload ?? {};
     const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId.trim() : '';
     const title = typeof payload.title === 'string' ? payload.title.trim() : '';
@@ -442,19 +442,19 @@ async function sessionCardCreate(envelope: RpcEnvelope, scope: AgentScope): Prom
     if (!title || title.length > 256) return rpcError(envelope.rpcId, 'session title is required and must not exceed 256 characters');
     if (await agentDataAdapter.getSessionAny(sessionId)) return rpcError(envelope.rpcId, 'session already exists');
 
-    let agentRootNode: AgentNodeDoc | undefined;
-    if (typeof scope.agentId === 'number') {
-        const agent = await AgentDefinitionModel.get(scope.domainId, scope.agentId, AgentDefinitionModel.PROJECTION_LIST);
+    let agentRootNode: AgentTeamDoc | undefined;
+    if (typeof scope.groupId === 'number') {
+        const agent = await GroupDefinitionModel.get(scope.domainId, scope.groupId, GroupDefinitionModel.PROJECTION_LIST);
         if (!agent) return rpcError(envelope.rpcId, 'Agent not found in current domain');
-        agentRootNode = await AgentModel.ensureAgentRoot(scope.domainId, scope.userId, scope.agentId, agent.title);
+        agentRootNode = await AgentModel.ensureGroupRoot(scope.domainId, scope.userId, scope.groupId, agent.title);
     }
-    const hasNodeId = Object.prototype.hasOwnProperty.call(payload, 'nodeId');
-    const requestedNodeId = typeof payload.nodeId === 'string' && payload.nodeId.trim() ? payload.nodeId.trim() : undefined;
-    const nodeId = requestedNodeId ?? (hasNodeId ? undefined : agentRootNode?.nodeId);
-    if (nodeId && !await agentDataAdapter.getNode(scope, nodeId)) return rpcError(envelope.rpcId, 'node not found in this Agent');
+    const hasNodeId = Object.prototype.hasOwnProperty.call(payload, 'teamId');
+    const requestedNodeId = typeof payload.teamId === 'string' && payload.teamId.trim() ? payload.teamId.trim() : undefined;
+    const teamId = requestedNodeId ?? (hasNodeId ? undefined : agentRootNode?.teamId);
+    if (teamId && !await agentDataAdapter.getTeam(scope, teamId)) return rpcError(envelope.rpcId, 'team not found in this Group');
 
     const selectedBaseDocId = baseDocIdOf(payload.baseDocId);
-    if (selectedBaseDocId && !await isAgentAddonEnabled(scope.domainId, 'base', scope.agentId)) {
+    if (selectedBaseDocId && !await isAgentAddonEnabled(scope.domainId, 'base', scope.groupId)) {
         return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
     }
     if (selectedBaseDocId) {
@@ -477,9 +477,9 @@ async function sessionCardCreate(envelope: RpcEnvelope, scope: AgentScope): Prom
         started: false,
         creatorUserId: scope.userId,
         type: 'generic',
-        ...(typeof scope.agentId === 'number' ? { agentId: scope.agentId } : {}),
+        ...(typeof scope.groupId === 'number' ? { groupId: scope.groupId } : {}),
         ...(selectedBaseDocId === null ? {} : { baseDocId: selectedBaseDocId }),
-        ...(nodeId === undefined ? {} : { nodeId }),
+        ...(teamId === undefined ? {} : { teamId }),
         cwd: agentRoot,
         ...(agentPreset === undefined ? {} : { agentPreset }),
         ...(runtimeId === undefined ? {} : { runtimeId }),
@@ -502,14 +502,14 @@ async function sessionCardCreate(envelope: RpcEnvelope, scope: AgentScope): Prom
     return rpcOk(envelope.rpcId, { session: summary });
 }
 
-async function sessionCardUpdate(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
+async function sessionAgentUpdate(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const payload = envelope.payload ?? {};
     const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId : '';
     const rawPatch = payload.patch && typeof payload.patch === 'object' && !Array.isArray(payload.patch)
         ? payload.patch as Record<string, unknown>
         : {};
     const existing = sessionId ? await agentDataAdapter.getSession(scope, sessionId) : null;
-    if (!existing || existing.started !== false) return rpcError(envelope.rpcId, 'unstarted session card not found');
+    if (!existing || existing.started !== false) return rpcError(envelope.rpcId, 'unstarted session agent not found');
     const patch: Partial<AgentSessionSummary> = { updatedAt: Date.now() };
     if (Object.prototype.hasOwnProperty.call(rawPatch, 'title')) {
         const title = typeof rawPatch.title === 'string' ? rawPatch.title.trim() : '';
@@ -517,11 +517,11 @@ async function sessionCardUpdate(envelope: RpcEnvelope, scope: AgentScope): Prom
         patch.projections = { values: { ...(existing.projections?.values ?? {}), title } };
     }
     let movedNodeId: string | undefined;
-    if (Object.prototype.hasOwnProperty.call(rawPatch, 'nodeId')) {
-        movedNodeId = typeof rawPatch.nodeId === 'string' ? rawPatch.nodeId.trim() : '';
-        if (!movedNodeId) return rpcError(envelope.rpcId, 'nodeId is required');
-        if (!await agentDataAdapter.getNode(scope, movedNodeId)) return rpcError(envelope.rpcId, 'node not found');
-        patch.nodeId = movedNodeId;
+    if (Object.prototype.hasOwnProperty.call(rawPatch, 'teamId')) {
+        movedNodeId = typeof rawPatch.teamId === 'string' ? rawPatch.teamId.trim() : '';
+        if (!movedNodeId) return rpcError(envelope.rpcId, 'teamId is required');
+        if (!await agentDataAdapter.getTeam(scope, movedNodeId)) return rpcError(envelope.rpcId, 'team not found');
+        patch.teamId = movedNodeId;
     }
     if (Object.prototype.hasOwnProperty.call(rawPatch, 'agentPreset')) {
         if (typeof rawPatch.agentPreset !== 'string' || !rawPatch.agentPreset.trim()) return rpcError(envelope.rpcId, 'agentPreset is required');
@@ -542,7 +542,7 @@ async function sessionCardUpdate(envelope: RpcEnvelope, scope: AgentScope): Prom
     }
     if (Object.prototype.hasOwnProperty.call(rawPatch, 'baseDocId')) {
         const baseDocId = baseDocIdOf(rawPatch.baseDocId);
-        if (baseDocId && !await isAgentAddonEnabled(scope.domainId, 'base', scope.agentId)) return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
+        if (baseDocId && !await isAgentAddonEnabled(scope.domainId, 'base', scope.groupId)) return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
         if (baseDocId) {
             const baseModel = (global as any).Ejunz?.model?.base;
             const base = baseModel ? await baseModel.get(scope.domainId, Number(baseDocId)) : null;
@@ -551,9 +551,9 @@ async function sessionCardUpdate(envelope: RpcEnvelope, scope: AgentScope): Prom
         await agentDataAdapter.updateSessionContext(scope, sessionId, baseDocId ?? undefined);
     }
     await agentDataAdapter.updateSession(scope, sessionId, patch);
-    const moved = movedNodeId !== undefined && movedNodeId !== existing.nodeId;
-    const failedAddonIds = moved ? await syncSessionAddonsForNode(scope, sessionId, movedNodeId) : [];
-    const failedContextSync = moved ? await syncSessionNodeContextForNode(scope, sessionId, movedNodeId!) : false;
+    const moved = movedNodeId !== undefined && movedNodeId !== existing.teamId;
+    const failedAddonIds = moved ? await syncSessionAddonsForTeam(scope, sessionId, movedNodeId) : [];
+    const failedContextSync = moved ? await syncSessionTeamContextForTeam(scope, sessionId, movedNodeId!) : false;
     return rpcOk(envelope.rpcId, {
         sessionId,
         ...patch,
@@ -579,26 +579,26 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
     }
     const requestedSessionId = typeof payload.sessionId === 'string' && payload.sessionId.length > 0 ? payload.sessionId : undefined;
     const existingSession = requestedSessionId ? await agentDataAdapter.getSessionAny(requestedSessionId) : null;
-    const agentMismatch = existingSession && scope.agentId !== undefined && (existingSession.agentId ?? null) !== scope.agentId;
+    const agentMismatch = existingSession && scope.groupId !== undefined && (existingSession.groupId ?? null) !== scope.groupId;
     if (existingSession && (existingSession.domainId !== scope.domainId || existingSession.userId !== scope.userId || agentMismatch)) {
         return rpcError(envelope.rpcId, 'session not found');
     }
-    let selectedAgentRoot: AgentNodeDoc | undefined;
-    if (typeof scope.agentId === 'number') {
-        const selectedAgent = await AgentDefinitionModel.get(scope.domainId, scope.agentId, AgentDefinitionModel.PROJECTION_LIST);
+    let selectedAgentRoot: AgentTeamDoc | undefined;
+    if (typeof scope.groupId === 'number') {
+        const selectedAgent = await GroupDefinitionModel.get(scope.domainId, scope.groupId, GroupDefinitionModel.PROJECTION_LIST);
         if (!selectedAgent) return rpcError(envelope.rpcId, 'Agent not found in current domain');
-        selectedAgentRoot = await AgentModel.ensureAgentRoot(scope.domainId, scope.userId, scope.agentId, selectedAgent.title);
+        selectedAgentRoot = await AgentModel.ensureGroupRoot(scope.domainId, scope.userId, scope.groupId, selectedAgent.title);
     }
     const workspaceId = typeof payload.workspaceId === 'string' ? payload.workspaceId : undefined;
     const workspace = workspaceId ? await agentDataAdapter.getWorkspace(scope, workspaceId) : null;
     if (workspaceId && !workspace) return rpcError(envelope.rpcId, 'workspace not found');
-    const hasRequestedNodeId = Object.prototype.hasOwnProperty.call(payload, 'nodeId');
-    const requestedNodeId = typeof payload.nodeId === 'string' && payload.nodeId.trim() ? payload.nodeId.trim() : undefined;
-    const nodeId = requestedNodeId ?? (hasRequestedNodeId ? undefined : selectedAgentRoot?.nodeId);
-    const node = nodeId ? await agentDataAdapter.getNode(scope, nodeId) : null;
-    if (nodeId && !node) return rpcError(envelope.rpcId, 'node not found in this Agent');
+    const hasRequestedNodeId = Object.prototype.hasOwnProperty.call(payload, 'teamId');
+    const requestedNodeId = typeof payload.teamId === 'string' && payload.teamId.trim() ? payload.teamId.trim() : undefined;
+    const teamId = requestedNodeId ?? (hasRequestedNodeId ? undefined : selectedAgentRoot?.teamId);
+    const team = teamId ? await agentDataAdapter.getTeam(scope, teamId) : null;
+    if (teamId && !team) return rpcError(envelope.rpcId, 'team not found in this Group');
     const selectedBaseDocId = metadata.baseDocId ?? baseDocIdOf(payload.baseDocId);
-    if (selectedBaseDocId && metadata.type !== 'base_detail' && !await isAgentAddonEnabled(scope.domainId, 'base', scope.agentId)) {
+    if (selectedBaseDocId && metadata.type !== 'base_detail' && !await isAgentAddonEnabled(scope.domainId, 'base', scope.groupId)) {
         return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
     }
     let selectedBase: { docId: number; title?: string } | undefined;
@@ -614,9 +614,9 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
     const link = linkForCreate(requestedHost);
     const sessionId = requestedSessionId ?? `session-${domainKey(scope.domainId)}-${randomUUID()}`;
     delete payload.domainId;
-    delete payload.agentId;
+    delete payload.groupId;
     delete payload.workspaceId;
-    delete payload.nodeId;
+    delete payload.teamId;
     delete payload.baseDocId;
     delete payload.creatorUserId;
     delete payload.type;
@@ -637,10 +637,10 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
         started: true,
         creatorUserId: scope.userId,
         type: metadata.type ?? 'generic',
-        ...(typeof scope.agentId === 'number' ? { agentId: scope.agentId } : {}),
+        ...(typeof scope.groupId === 'number' ? { groupId: scope.groupId } : {}),
         runtimeId: link.runtimeId,
         ...(selectedBaseDocId == null ? {} : { baseDocId: selectedBaseDocId }),
-        ...(nodeId === undefined ? {} : { nodeId }),
+        ...(teamId === undefined ? {} : { teamId }),
         ...(typeof payload.cwd === 'string' ? { cwd: payload.cwd } : {}),
         ...(typeof payload.agentPreset === 'string' && payload.agentPreset.length > 0
             ? { agentPreset: payload.agentPreset }
@@ -695,12 +695,12 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
         }, link);
         if (!injected.body.result?.ok) logger.warn('[agent-base] context injection failed session=%s domain=%s baseId=%d error=%s', sessionId, scope.domainId, selectedBase.docId, injected.body.error?.message || 'unknown error');
     }
-    if (node?.config?.context?.trim()) {
-        const injected = await injectAgentNodeContext(scope, sessionId, node.nodeId, node.config.context, link);
-        if (!injected) logger.warn('[agent-node] context injection failed session=%s node=%s', sessionId, node.nodeId);
+    if (team?.config?.context?.trim()) {
+        const injected = await injectTeamContext(scope, sessionId, team.teamId, team.config.context, link);
+        if (!injected) logger.warn('[agent-team] context injection failed session=%s team=%s', sessionId, team.teamId);
     }
     if (workspace) await agentDataAdapter.reorderWorkspaceSessions(scope, workspace.workspaceId, [...workspace.sessionIds, summary.sessionId]);
-    return rpcOk(envelope.rpcId, { sessionId: summary.sessionId, ...(summary.agentPreset ? { agentPreset: summary.agentPreset } : {}), ...(nodeId ? { nodeId } : {}) });
+    return rpcOk(envelope.rpcId, { sessionId: summary.sessionId, ...(summary.agentPreset ? { agentPreset: summary.agentPreset } : {}), ...(teamId ? { teamId } : {}) });
 }
 
 async function sessionContextSave(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
@@ -716,7 +716,7 @@ async function sessionContextSave(envelope: RpcEnvelope, scope: AgentScope): Pro
     }
     let selectedBase: { docId: number; title?: string } | undefined;
     if (selectedBaseDocId !== undefined) {
-        if (session.type !== 'base_detail' && !await isAgentAddonEnabled(scope.domainId, 'base', scope.agentId)) {
+        if (session.type !== 'base_detail' && !await isAgentAddonEnabled(scope.domainId, 'base', scope.groupId)) {
             return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
         }
         const baseModel = (global as any).Ejunz?.model?.base;
@@ -1151,53 +1151,53 @@ class AgentRunService extends Service implements AgentRunApi {
     }
 }
 
-function nodeView(node: AgentNodeDoc) {
+function teamView(team: AgentTeamDoc) {
     return {
-        nodeId: node.nodeId,
-        ...(node.agentId === undefined ? {} : { agentId: node.agentId }),
-        ...(node.parentId === undefined ? {} : { parentId: node.parentId }),
-        ...(node.isRoot === undefined ? {} : { isRoot: node.isRoot }),
-        text: node.text,
-        order: node.order,
-        ...(node.config === undefined ? {} : { config: node.config }),
-        createdAt: node.createdAt.toISOString(),
-        updatedAt: node.updatedAt.toISOString(),
+        teamId: team.teamId,
+        ...(team.groupId === undefined ? {} : { groupId: team.groupId }),
+        ...(team.parentTeamId === undefined ? {} : { parentTeamId: team.parentTeamId }),
+        ...(team.isRootTeam === undefined ? {} : { isRootTeam: team.isRootTeam }),
+        text: team.text,
+        order: team.order,
+        ...(team.config === undefined ? {} : { config: team.config }),
+        createdAt: team.createdAt.toISOString(),
+        updatedAt: team.updatedAt.toISOString(),
     };
 }
 
-function nodeConfigOwnerFor(nodes: readonly AgentNodeDoc[], nodeId?: string): AgentNodeDoc | undefined {
-    if (!nodeId) return undefined;
-    const byId = new Map(nodes.map((node) => [node.nodeId, node]));
-    const node = byId.get(nodeId);
-    return node;
+function teamConfigOwnerFor(teams: readonly AgentTeamDoc[], teamId?: string): AgentTeamDoc | undefined {
+    if (!teamId) return undefined;
+    const byId = new Map(teams.map((team) => [team.teamId, team]));
+    const team = byId.get(teamId);
+    return team;
 }
 
-async function nodeConfigForNode(scope: AgentScope, nodeId?: string): Promise<AgentNodeConfig | undefined> {
-    if (!nodeId) return undefined;
-    const owner = nodeConfigOwnerFor(await agentDataAdapter.listNodes(scope), nodeId);
+async function teamConfigForTeam(scope: AgentScope, teamId?: string): Promise<AgentTeamConfig | undefined> {
+    if (!teamId) return undefined;
+    const owner = teamConfigOwnerFor(await agentDataAdapter.listTeams(scope), teamId);
     return owner?.config;
 }
 
-async function syncSessionAddonsForNode(scope: AgentScope, sessionId: string, nodeId?: string): Promise<string[]> {
+async function syncSessionAddonsForTeam(scope: AgentScope, sessionId: string, teamId?: string): Promise<string[]> {
     const addons = listAgentAddons();
     let session: AgentSessionDoc | null;
     try {
         session = await agentDataAdapter.getSession(scope, sessionId);
     } catch (error) {
-        logger.warn('[agent-node] add-on state lookup failed session=%s error=%s', sessionId, error instanceof Error ? error.message : String(error));
+        logger.warn('[agent-team] add-on state lookup failed session=%s error=%s', sessionId, error instanceof Error ? error.message : String(error));
         return addons.map((addon) => addon.addonId);
     }
     if (!session || session.started === false) return [];
 
     let settings: AgentDomainSettings;
-    let localSelection: AgentNodeConfig['addons'];
+    let localSelection: AgentTeamConfig['addons'];
     let link: Awaited<ReturnType<typeof linkForSession>>;
     try {
         settings = await agentDataAdapter.getDomainSettings(scope.domainId);
-        localSelection = (await nodeConfigForNode(scope, nodeId))?.addons;
+        localSelection = (await teamConfigForTeam(scope, teamId))?.addons;
         link = await linkForSession(scope, sessionId);
     } catch (error) {
-        logger.warn('[agent-node] add-on state preparation failed session=%s error=%s', sessionId, error instanceof Error ? error.message : String(error));
+        logger.warn('[agent-team] add-on state preparation failed session=%s error=%s', sessionId, error instanceof Error ? error.message : String(error));
         return addons.map((addon) => addon.addonId);
     }
 
@@ -1207,28 +1207,28 @@ async function syncSessionAddonsForNode(scope: AgentScope, sessionId: string, no
             const result = await callUpstream('session.addons', {
                 sessionId,
                 addonId: addon.addonId,
-                enabled: agentAddonEnabled(settings, addon.addonId, scope.agentId)
+                enabled: agentAddonEnabled(settings, addon.addonId, scope.groupId)
                     && (localSelection === undefined || localSelection[addon.addonId] === true),
             }, link);
             if (!result.body.result?.ok) throw new Error(result.body.error?.message || 'add-on state event failed');
         } catch (error) {
             failedAddonIds.push(addon.addonId);
-            logger.warn('[agent-node] add-on state update failed session=%s addon=%s error=%s', sessionId, addon.addonId, error instanceof Error ? error.message : String(error));
+            logger.warn('[agent-team] add-on state update failed session=%s addon=%s error=%s', sessionId, addon.addonId, error instanceof Error ? error.message : String(error));
         }
     }
     return failedAddonIds;
 }
 
-async function injectAgentNodeContext(
+async function injectTeamContext(
     scope: AgentScope,
     sessionId: string,
-    nodeId: string,
+    teamId: string,
     context: string | undefined,
     target?: RuntimeLink,
 ): Promise<boolean> {
     const text = context?.trim()
-        ? `当前会话位于 Agent 节点「${nodeId}」。以下是当前节点配置的专属上下文；它替代先前注入的节点专属上下文，请以此为准：\n\n${context.trim()}`
-        : `当前会话所在的 Agent 节点「${nodeId}」没有配置专属上下文。请忽略此前由其他 Agent 节点注入的节点专属上下文。`;
+        ? `当前会话位于 Agent 节点「${teamId}」。以下是当前节点配置的专属上下文；它替代先前注入的节点专属上下文，请以此为准：\n\n${context.trim()}`
+        : `当前会话所在的 Agent 节点「${teamId}」没有配置专属上下文。请忽略此前由其他 Agent 节点注入的节点专属上下文。`;
     const injected = await callUpstream('session.inject', {
         sessionId,
         plugin: 'ejunz-agent-node-context',
@@ -1237,83 +1237,83 @@ async function injectAgentNodeContext(
     return injected.body.result?.ok === true;
 }
 
-async function syncSessionNodeContextForNode(scope: AgentScope, sessionId: string, nodeId: string): Promise<boolean> {
+async function syncSessionTeamContextForTeam(scope: AgentScope, sessionId: string, teamId: string): Promise<boolean> {
     const session = await agentDataAdapter.getSession(scope, sessionId);
     if (!session || session.started === false) return false;
     try {
-        const context = (await nodeConfigForNode(scope, nodeId))?.context;
-        const injected = await injectAgentNodeContext(scope, sessionId, nodeId, context);
-        if (!injected) logger.warn('[agent-node] context injection failed session=%s node=%s', sessionId, nodeId);
+        const context = (await teamConfigForTeam(scope, teamId))?.context;
+        const injected = await injectTeamContext(scope, sessionId, teamId, context);
+        if (!injected) logger.warn('[agent-team] context injection failed session=%s team=%s', sessionId, teamId);
         return !injected;
     } catch (error) {
-        logger.warn('[agent-node] context sync failed session=%s node=%s error=%s', sessionId, nodeId, error instanceof Error ? error.message : String(error));
+        logger.warn('[agent-team] context sync failed session=%s team=%s error=%s', sessionId, teamId, error instanceof Error ? error.message : String(error));
         return true;
     }
 }
 
-async function recordNodeContextForSessions(change: AgentNodeContextChange): Promise<void> {
+async function recordTeamContextForSessions(change: AgentTeamContextChange): Promise<void> {
     const scope: AgentScope = {
         domainId: change.domainId,
         userId: change.userId,
-        ...(change.agentId === undefined ? {} : { agentId: change.agentId }),
+        ...(change.groupId === undefined ? {} : { groupId: change.groupId }),
     };
     const sessions = (await AgentModel.listAllSessions()).filter((session) =>
         session.domainId === change.domainId
         && session.userId === change.userId
         && !session.archived
-        && (change.agentId === undefined || (session.agentId ?? null) === change.agentId)
-        && session.nodeId === change.nodeId);
+        && (change.groupId === undefined || (session.groupId ?? null) === change.groupId)
+        && session.teamId === change.teamId);
     for (let offset = 0; offset < sessions.length; offset += 8) {
         const batch = sessions.slice(offset, offset + 8);
-        await Promise.all(batch.map((session) => syncSessionNodeContextForNode(scope, session.sessionId, change.nodeId)));
+        await Promise.all(batch.map((session) => syncSessionTeamContextForTeam(scope, session.sessionId, change.teamId)));
     }
 }
 
-async function nodeRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
+async function teamRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const payload = envelope.payload ?? {};
     const method = String(envelope.method || '');
-    if (typeof scope.agentId === 'number') {
-        const agent = await AgentDefinitionModel.get(scope.domainId, scope.agentId, AgentDefinitionModel.PROJECTION_LIST);
+    if (typeof scope.groupId === 'number') {
+        const agent = await GroupDefinitionModel.get(scope.domainId, scope.groupId, GroupDefinitionModel.PROJECTION_LIST);
         if (!agent) return rpcError(envelope.rpcId, 'Agent not found in current domain');
-        await AgentModel.ensureAgentRoot(scope.domainId, scope.userId, scope.agentId, agent.title);
+        await AgentModel.ensureGroupRoot(scope.domainId, scope.userId, scope.groupId, agent.title);
     }
-    if (method === 'node.list') {
-        return rpcOk(envelope.rpcId, { items: (await agentDataAdapter.listNodes(scope)).map(nodeView) });
+    if (method === 'team.list') {
+        return rpcOk(envelope.rpcId, { items: (await agentDataAdapter.listTeams(scope)).map(teamView) });
     }
-    if (method === 'node.create') {
+    if (method === 'team.create') {
         const text = String(payload.text || '').trim();
-        if (!text) return rpcError(envelope.rpcId, 'node name is required');
-        const parentId = typeof payload.parentId === 'string' && payload.parentId.length > 0 ? payload.parentId : undefined;
+        if (!text) return rpcError(envelope.rpcId, 'team name is required');
+        const parentTeamId = typeof payload.parentTeamId === 'string' && payload.parentTeamId.length > 0 ? payload.parentTeamId : undefined;
         try {
-            return rpcOk(envelope.rpcId, { node: nodeView(await agentDataAdapter.createNode(scope, text, parentId)) });
+            return rpcOk(envelope.rpcId, { team: teamView(await agentDataAdapter.createTeam(scope, text, parentTeamId)) });
         } catch (error) {
             return rpcError(envelope.rpcId, error instanceof Error ? error.message : String(error));
         }
     }
-    const nodeId = String(payload.nodeId || '');
-    if (!nodeId) return rpcError(envelope.rpcId, 'nodeId is required');
-    if (method === 'node.rename') {
+    const teamId = String(payload.teamId || '');
+    if (!teamId) return rpcError(envelope.rpcId, 'teamId is required');
+    if (method === 'team.rename') {
         const text = String(payload.text || '').trim();
-        if (!text) return rpcError(envelope.rpcId, 'node name is required');
+        if (!text) return rpcError(envelope.rpcId, 'team name is required');
         try {
-            const node = await agentDataAdapter.updateNode(scope, nodeId, text);
-            return node ? rpcOk(envelope.rpcId, { node: nodeView(node) }) : rpcError(envelope.rpcId, 'node not found');
+            const team = await agentDataAdapter.updateTeam(scope, teamId, text);
+            return team ? rpcOk(envelope.rpcId, { team: teamView(team) }) : rpcError(envelope.rpcId, 'team not found');
         } catch (error) {
             return rpcError(envelope.rpcId, error instanceof Error ? error.message : String(error));
         }
     }
-    if (method === 'node.delete') {
+    if (method === 'team.delete') {
         try {
-            const node = await agentDataAdapter.getNode(scope, nodeId);
-            if (!node) return rpcError(envelope.rpcId, 'node not found');
-            const targetNodeId = node.parentId ?? (await agentDataAdapter.listNodes(scope)).find((item) => item.isRoot)?.nodeId;
-            const sessionsToSync = (await agentDataAdapter.listSessions(scope)).filter((session) => session.nodeId === nodeId);
-            await agentDataAdapter.deleteNode(scope, nodeId);
+            const team = await agentDataAdapter.getTeam(scope, teamId);
+            if (!team) return rpcError(envelope.rpcId, 'team not found');
+            const targetTeamId = team.parentTeamId ?? (await agentDataAdapter.listTeams(scope)).find((item) => item.isRootTeam)?.teamId;
+            const sessionsToSync = (await agentDataAdapter.listSessions(scope)).filter((session) => session.teamId === teamId);
+            await agentDataAdapter.deleteTeam(scope, teamId);
             const updatedSessionIds: string[] = [];
             const failedSessionIds: string[] = [];
             for (const session of sessionsToSync) {
-                const failedAddons = await syncSessionAddonsForNode(scope, session.sessionId, targetNodeId);
-                const failedContext = await syncSessionNodeContextForNode(scope, session.sessionId, targetNodeId ?? '');
+                const failedAddons = await syncSessionAddonsForTeam(scope, session.sessionId, targetTeamId);
+                const failedContext = await syncSessionTeamContextForTeam(scope, session.sessionId, targetTeamId ?? '');
                 (failedAddons.length > 0 || failedContext ? failedSessionIds : updatedSessionIds).push(session.sessionId);
             }
             return rpcOk(envelope.rpcId, { deleted: true, updatedSessionIds, failedSessionIds });
@@ -1321,7 +1321,7 @@ async function nodeRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBod
             return rpcError(envelope.rpcId, error instanceof Error ? error.message : String(error));
         }
     }
-    return rpcError(envelope.rpcId, `unsupported node method: ${method}`);
+    return rpcError(envelope.rpcId, `unsupported team method: ${method}`);
 }
 
 async function workspaceRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
@@ -1399,7 +1399,7 @@ async function baseSessionScope(sessionId: string, optional = false) {
         throw new Error('Base session not found');
     }
     if (session.archived) throw new Error('Base session not found');
-    if (!await isAgentAddonEnabled(session.domainId, 'base', session.agentId)) {
+    if (!await isAgentAddonEnabled(session.domainId, 'base', session.groupId)) {
         if (optional) return { session, scope: undefined };
         throw new Error('Ejunz Base Agent plugin is disabled');
     }
@@ -1468,7 +1468,7 @@ async function onBaseSelect(payload: {
     if (!session || session.domainId !== payload.domainId || session.userId !== payload.owner) {
         throw new Error('Base session not found');
     }
-    if (!await isAgentAddonEnabled(payload.domainId, 'base', session.agentId)) {
+    if (!await isAgentAddonEnabled(payload.domainId, 'base', session.groupId)) {
         throw new Error('Ejunz Base Agent plugin is disabled');
     }
     const scope = { domainId: payload.domainId, userId: payload.owner };
@@ -1729,27 +1729,27 @@ function resetAgentAddonEnablement(section: Record<string, unknown>, addonId: st
     const enabledByAgent = section.enabledByAgent;
     if (!enabledByAgent || typeof enabledByAgent !== 'object' || Array.isArray(enabledByAgent)) return;
     const nextEnabledByAgent: Record<string, unknown> = {};
-    for (const [agentId, value] of Object.entries(enabledByAgent as Record<string, unknown>)) {
+    for (const [groupId, value] of Object.entries(enabledByAgent as Record<string, unknown>)) {
         if (!value || typeof value !== 'object' || Array.isArray(value)) {
-            nextEnabledByAgent[agentId] = value;
+            nextEnabledByAgent[groupId] = value;
             continue;
         }
         const overrides = { ...(value as Record<string, unknown>) };
         delete overrides[addonId];
-        if (Object.keys(overrides).length) nextEnabledByAgent[agentId] = overrides;
+        if (Object.keys(overrides).length) nextEnabledByAgent[groupId] = overrides;
     }
     if (Object.keys(nextEnabledByAgent).length) section.enabledByAgent = nextEnabledByAgent;
     else delete section.enabledByAgent;
 }
 
-function agentAddonEnabled(settings: AgentDomainSettings, addonId: string, agentId?: number | null): boolean {
+function agentAddonEnabled(settings: AgentDomainSettings, addonId: string, groupId?: number | null): boolean {
     const addon = listAgentAddons().find((item) => item.addonId === addonId);
     if (!addon || !agentAddonInstalled(settings, addonId)) return false;
     const section = settings.sections['agent-addons'] ?? {};
     const enabledByAgent = section.enabledByAgent && typeof section.enabledByAgent === 'object' && !Array.isArray(section.enabledByAgent)
         ? section.enabledByAgent as Record<string, unknown>
         : {};
-    const agentKey = typeof agentId === 'number' ? String(agentId) : 'default';
+    const agentKey = typeof groupId === 'number' ? String(groupId) : 'default';
     const agentOverrides = enabledByAgent[agentKey] && typeof enabledByAgent[agentKey] === 'object' && !Array.isArray(enabledByAgent[agentKey])
         ? enabledByAgent[agentKey] as Record<string, unknown>
         : {};
@@ -1759,16 +1759,10 @@ function agentAddonEnabled(settings: AgentDomainSettings, addonId: string, agent
     const marketDefaultsDisabled = section.marketDefaultsDisabled;
     if (Array.isArray(marketDefaultsDisabled) && marketDefaultsDisabled.includes(addonId)) return false;
     const currentEnabled = section.enabled;
-    const legacyEnabled = settings.sections['agent-plugins']?.enabled;
     const currentOverrides = currentEnabled && typeof currentEnabled === 'object' && !Array.isArray(currentEnabled)
         ? currentEnabled as Record<string, unknown>
         : {};
-    const legacyOverrides = legacyEnabled && typeof legacyEnabled === 'object' && !Array.isArray(legacyEnabled)
-        ? legacyEnabled as Record<string, unknown>
-        : {};
-    const override = Object.prototype.hasOwnProperty.call(currentOverrides, addonId)
-        ? currentOverrides[addonId]
-        : legacyOverrides[addonId];
+    const override = currentOverrides[addonId];
     return typeof override === 'boolean' ? override : addon.defaultEnabled !== false;
 }
 
@@ -1812,11 +1806,11 @@ async function initialAddonSnapshotForPrompt(sessionId: string): Promise<{ addon
             return undefined;
         }
         const settings = await agentDataAdapter.getDomainSettings(session.domainId);
-        const nodeConfig = await nodeConfigForNode({ domainId: session.domainId, userId: session.userId, agentId: session.agentId }, session.nodeId);
-        const localSelection = nodeConfig?.addons;
+        const teamConfig = await teamConfigForTeam({ domainId: session.domainId, userId: session.userId, groupId: session.groupId }, session.teamId);
+        const localSelection = teamConfig?.addons;
         return addons.map((addon) => ({
             addonId: addon.addonId,
-            enabled: agentAddonEnabled(settings, addon.addonId, session.agentId)
+            enabled: agentAddonEnabled(settings, addon.addonId, session.groupId)
                 && (localSelection === undefined || localSelection[addon.addonId] === true),
         }));
     })();
@@ -1840,7 +1834,7 @@ async function agentAddonsList(envelope: RpcEnvelope, scope: AgentScope): Promis
     const addons = listAgentAddons().map((addon) => ({
         ...addon,
         installed: installed.has(addon.addonId),
-        enabled: agentAddonEnabled(settings, addon.addonId, scope.agentId),
+        enabled: agentAddonEnabled(settings, addon.addonId, scope.groupId),
         tools: (toolsByAddon.get(addon.addonId) ?? []).sort((left, right) => left.name.localeCompare(right.name)),
     }));
     return rpcOk(envelope.rpcId, { addons });
@@ -1884,12 +1878,10 @@ async function setAgentAddonInstalled(
     else installed.delete(addonId);
 
     const sections = cloneSettingsSections(current.sections);
-    const legacySection = sections['agent-plugins'] ?? {};
     const addonSection = sections['agent-addons'] ?? {};
-    const section: Record<string, unknown> = { ...legacySection, ...addonSection, installed: [...installed].sort() };
+    const section: Record<string, unknown> = { ...addonSection, installed: [...installed].sort() };
     resetAgentAddonEnablement(section, addonId);
     sections['agent-addons'] = section;
-    delete sections['agent-plugins'];
 
     const saved = await agentDataAdapter.updateDomainSettings(scope.domainId, sections, current.revision);
     if (!saved) return rpcError(envelope.rpcId, 'settings revision conflict');
@@ -1912,16 +1904,16 @@ async function recordAddonStateForSessions(change: AgentAddonStateChange): Promi
     const sessions = (await AgentModel.listAllSessions()).filter((session) =>
         session.domainId === change.domainId
         && !session.archived
-        && (change.agentId === undefined || (session.agentId ?? null) === change.agentId)
-        && (change.nodeId === undefined || (session.nodeId === change.nodeId && session.userId === change.userId)));
+        && (change.groupId === undefined || (session.groupId ?? null) === change.groupId)
+        && (change.teamId === undefined || (session.teamId === change.teamId && session.userId === change.userId)));
     for (let offset = 0; offset < sessions.length; offset += 8) {
         const batch = sessions.slice(offset, offset + 8);
         await Promise.all(batch.map(async (session) => {
             const link = session.runtimeId ? runtimeLinks.get(session.runtimeId) : defaultLink();
             if (!link) return;
             try {
-                const nodeConfig = await nodeConfigForNode({ domainId: session.domainId, userId: session.userId, agentId: session.agentId }, session.nodeId);
-                const localSelection = nodeConfig?.addons;
+                const teamConfig = await teamConfigForTeam({ domainId: session.domainId, userId: session.userId, groupId: session.groupId }, session.teamId);
+                const localSelection = teamConfig?.addons;
                 const recorded = await callUpstream('session.addons', {
                     sessionId: session.sessionId,
                     addonId: change.addonId,
@@ -1951,14 +1943,13 @@ async function agentAddonSet(
     const current = await agentDataAdapter.getDomainSettings(scope.domainId);
     if (!agentAddonInstalled(current, addonId)) return rpcError(envelope.rpcId, 'Agent add-on is not installed in this domain');
     const sections = cloneSettingsSections(current.sections);
-    const legacySection = sections['agent-plugins'] ?? {};
     const addonSection = sections['agent-addons'] ?? {};
-    const section: Record<string, unknown> = { ...legacySection, ...addonSection };
+    const section: Record<string, unknown> = { ...addonSection };
     const currentEnabledByAgent = addonSection.enabledByAgent && typeof addonSection.enabledByAgent === 'object' && !Array.isArray(addonSection.enabledByAgent)
         ? addonSection.enabledByAgent as Record<string, unknown>
         : {};
-    const agentId = typeof scope.agentId === 'number' ? scope.agentId : null;
-    const agentKey = agentId === null ? 'default' : String(agentId);
+    const groupId = typeof scope.groupId === 'number' ? scope.groupId : null;
+    const agentKey = groupId === null ? 'default' : String(groupId);
     const currentAgentEnabled = currentEnabledByAgent[agentKey] && typeof currentEnabledByAgent[agentKey] === 'object' && !Array.isArray(currentEnabledByAgent[agentKey])
         ? currentEnabledByAgent[agentKey] as Record<string, unknown>
         : {};
@@ -1968,7 +1959,6 @@ async function agentAddonSet(
     };
     section.enabledByAgent = nextEnabledByAgent;
     sections['agent-addons'] = section;
-    delete sections['agent-plugins'];
 
     const saved = await agentDataAdapter.updateDomainSettings(scope.domainId, sections, current.revision);
     if (!saved) return rpcError(envelope.rpcId, 'settings revision conflict');
@@ -1976,7 +1966,7 @@ async function agentAddonSet(
     const change: AgentAddonStateChange = {
         domainId: scope.domainId,
         userId: scope.userId,
-        agentId,
+        groupId,
         addonId,
         enabled: payload.enabled,
     };
@@ -1988,13 +1978,13 @@ async function agentAddonSet(
     return rpcOk(envelope.rpcId, { addonId, enabled: payload.enabled });
 }
 
-export async function isAgentAddonEnabled(domainId: string, addonId: string, agentId?: number | null): Promise<boolean> {
-    return agentAddonEnabled(await agentDataAdapter.getDomainSettings(domainId), addonId, agentId);
+export async function isAgentAddonEnabled(domainId: string, addonId: string, groupId?: number | null): Promise<boolean> {
+    return agentAddonEnabled(await agentDataAdapter.getDomainSettings(domainId), addonId, groupId);
 }
 
-async function enabledAgentAddonIds(domainId: string, agentId?: number | null): Promise<Set<string>> {
+async function enabledAgentAddonIds(domainId: string, groupId?: number | null): Promise<Set<string>> {
     const settings = await agentDataAdapter.getDomainSettings(domainId);
-    return new Set(listAgentAddons().filter((addon) => agentAddonEnabled(settings, addon.addonId, agentId)).map((addon) => addon.addonId));
+    return new Set(listAgentAddons().filter((addon) => agentAddonEnabled(settings, addon.addonId, groupId)).map((addon) => addon.addonId));
 }
 
 export const isAgentContextPluginEnabled = isAgentAddonEnabled;
@@ -2690,9 +2680,9 @@ export async function initializeAgentRuntime(ctx: EjunContext): Promise<() => Pr
             logger.warn('[addons] state fanout failed domain=%s addon=%s error=%s', change.domainId, change.addonId, error instanceof Error ? error.message : String(error));
         });
     });
-    ctx.on?.('agent/node-context', (change: AgentNodeContextChange) => {
-        void recordNodeContextForSessions(change).catch((error) => {
-            logger.warn('[agent-node] context fanout failed domain=%s node=%s error=%s', change.domainId, change.nodeId, error instanceof Error ? error.message : String(error));
+    ctx.on?.('agent/team-context', (change: AgentTeamContextChange) => {
+        void recordTeamContextForSessions(change).catch((error) => {
+            logger.warn('[agent-team] context fanout failed domain=%s team=%s error=%s', change.domainId, change.teamId, error instanceof Error ? error.message : String(error));
         });
     });
     ctx.on?.('tool/base-select', onBaseSelect);
@@ -3135,7 +3125,7 @@ export interface AgentScope {
     domainId: string;
     userId: number;
     /** Numeric TYPE_AGENT document ID; null scopes the legacy unassigned workspace. */
-    agentId?: number | null;
+    groupId?: number | null;
 }
 
 export interface AgentDataAdapter {
@@ -3157,12 +3147,12 @@ export interface AgentDataAdapter {
     listEventsTailAny(sessionId: string, beforeSeq?: number, limit?: number): Promise<{ events: Record<string, unknown>[]; hasMore: boolean }>;
     search(scope: AgentScope, query: string): Promise<{ sessionId: string; snippet: string }[]>;
     listWorkspaces(scope: AgentScope): Promise<AgentWorkspaceDoc[]>;
-    listNodes(scope: AgentScope): Promise<AgentNodeDoc[]>;
-    getNode(scope: AgentScope, nodeId: string): Promise<AgentNodeDoc | null>;
-    createNode(scope: AgentScope, text: string, parentId?: string): Promise<AgentNodeDoc>;
-    updateNode(scope: AgentScope, nodeId: string, text: string): Promise<AgentNodeDoc | null>;
-    updateNodeConfig(scope: AgentScope, nodeId: string, config: AgentNodeConfig): Promise<AgentNodeDoc | null>;
-    deleteNode(scope: AgentScope, nodeId: string): Promise<void>;
+    listTeams(scope: AgentScope): Promise<AgentTeamDoc[]>;
+    getTeam(scope: AgentScope, teamId: string): Promise<AgentTeamDoc | null>;
+    createTeam(scope: AgentScope, text: string, parentTeamId?: string): Promise<AgentTeamDoc>;
+    updateTeam(scope: AgentScope, teamId: string, text: string): Promise<AgentTeamDoc | null>;
+    updateTeamConfig(scope: AgentScope, teamId: string, config: AgentTeamConfig): Promise<AgentTeamDoc | null>;
+    deleteTeam(scope: AgentScope, teamId: string): Promise<void>;
     getWorkspace(scope: AgentScope, workspaceId: string): Promise<AgentWorkspaceDoc | null>;
     getWorkspaceByPath(scope: AgentScope, path: string): Promise<AgentWorkspaceDoc | null>;
     getDisplayPrefs(scope: AgentScope): Promise<AgentDisplayPrefs>;
@@ -3210,19 +3200,19 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
     }
 
     async listSessions(scope: AgentScope): Promise<AgentSessionSummary[]> {
-        return await AgentModel.listSessions(scope.domainId, scope.userId, scope.agentId);
+        return await AgentModel.listSessions(scope.domainId, scope.userId, scope.groupId);
     }
 
     async getSession(scope: AgentScope, sessionId: string) {
-        return await AgentModel.getSession(scope.domainId, scope.userId, sessionId, scope.agentId);
+        return await AgentModel.getSession(scope.domainId, scope.userId, sessionId, scope.groupId);
     }
 
     async getSessionByContext(scope: AgentScope, type: 'generic' | 'base_detail', baseDocId: string) {
-        return await AgentModel.getSessionByContext(scope.domainId, scope.userId, type, baseDocId, scope.agentId);
+        return await AgentModel.getSessionByContext(scope.domainId, scope.userId, type, baseDocId, scope.groupId);
     }
 
     async listSessionsByContext(scope: AgentScope, type: 'generic' | 'base_detail', baseDocId: string) {
-        return await AgentModel.listSessionsByContext(scope.domainId, scope.userId, type, baseDocId, scope.agentId);
+        return await AgentModel.listSessionsByContext(scope.domainId, scope.userId, type, baseDocId, scope.groupId);
     }
 
     async upsertSession(scope: AgentScope, summary: AgentSessionSummary, archived?: boolean): Promise<void> {
@@ -3230,11 +3220,11 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
     }
 
     async updateSession(scope: AgentScope, sessionId: string, patch: Parameters<typeof AgentModel.updateSession>[3]): Promise<void> {
-        await AgentModel.updateSession(scope.domainId, scope.userId, sessionId, patch, scope.agentId);
+        await AgentModel.updateSession(scope.domainId, scope.userId, sessionId, patch, scope.groupId);
     }
 
     async updateSessionContext(scope: AgentScope, sessionId: string, baseDocId?: string, cwd?: string): Promise<void> {
-        await AgentModel.updateSessionContext(scope.domainId, scope.userId, sessionId, baseDocId, cwd, scope.agentId);
+        await AgentModel.updateSessionContext(scope.domainId, scope.userId, sessionId, baseDocId, cwd, scope.groupId);
     }
 
     async appendEvent(scope: AgentScope, sessionId: string, event: Record<string, unknown>): Promise<void> {
@@ -3242,15 +3232,15 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
     }
 
     async countEvents(scope: AgentScope, sessionId: string): Promise<number> {
-        return await AgentModel.countEvents(scope.domainId, scope.userId, sessionId, scope.agentId);
+        return await AgentModel.countEvents(scope.domainId, scope.userId, sessionId, scope.groupId);
     }
 
     async countMessages(scope: AgentScope, sessionId: string): Promise<number> {
-        return await AgentModel.countMessages(scope.domainId, scope.userId, sessionId, scope.agentId);
+        return await AgentModel.countMessages(scope.domainId, scope.userId, sessionId, scope.groupId);
     }
 
     async listEvents(scope: AgentScope, sessionId: string, beforeSeq?: number, limit = 50) {
-        return await AgentModel.listEvents(scope.domainId, scope.userId, sessionId, beforeSeq, limit, scope.agentId);
+        return await AgentModel.listEvents(scope.domainId, scope.userId, sessionId, beforeSeq, limit, scope.groupId);
     }
 
     async listEventsTailAny(sessionId: string, beforeSeq?: number, limit = 100) {
@@ -3258,7 +3248,7 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
     }
 
     async search(scope: AgentScope, query: string): Promise<{ sessionId: string; snippet: string }[]> {
-        return await AgentModel.search(scope.domainId, scope.userId, query, scope.agentId);
+        return await AgentModel.search(scope.domainId, scope.userId, query, scope.groupId);
     }
 
     async getSessionAny(sessionId: string) {
@@ -3291,28 +3281,28 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
         return await AgentModel.listWorkspaces(scope.domainId, scope.userId);
     }
 
-    async listNodes(scope: AgentScope): Promise<AgentNodeDoc[]> {
-        return await AgentModel.listNodes(scope.domainId, scope.userId, scope.agentId);
+    async listTeams(scope: AgentScope): Promise<AgentTeamDoc[]> {
+        return await AgentModel.listTeams(scope.domainId, scope.userId, scope.groupId);
     }
 
-    async getNode(scope: AgentScope, nodeId: string): Promise<AgentNodeDoc | null> {
-        return await AgentModel.getNode(scope.domainId, scope.userId, nodeId, scope.agentId);
+    async getTeam(scope: AgentScope, teamId: string): Promise<AgentTeamDoc | null> {
+        return await AgentModel.getTeam(scope.domainId, scope.userId, teamId, scope.groupId);
     }
 
-    async createNode(scope: AgentScope, text: string, parentId?: string): Promise<AgentNodeDoc> {
-        return await AgentModel.createNode(scope.domainId, scope.userId, text, scope.agentId, parentId);
+    async createTeam(scope: AgentScope, text: string, parentTeamId?: string): Promise<AgentTeamDoc> {
+        return await AgentModel.createTeam(scope.domainId, scope.userId, text, scope.groupId, parentTeamId);
     }
 
-    async updateNode(scope: AgentScope, nodeId: string, text: string): Promise<AgentNodeDoc | null> {
-        return await AgentModel.updateNode(scope.domainId, scope.userId, nodeId, text, scope.agentId);
+    async updateTeam(scope: AgentScope, teamId: string, text: string): Promise<AgentTeamDoc | null> {
+        return await AgentModel.updateTeam(scope.domainId, scope.userId, teamId, text, scope.groupId);
     }
 
-    async updateNodeConfig(scope: AgentScope, nodeId: string, config: AgentNodeConfig): Promise<AgentNodeDoc | null> {
-        return await AgentModel.updateNodeConfig(scope.domainId, scope.userId, nodeId, config, scope.agentId);
+    async updateTeamConfig(scope: AgentScope, teamId: string, config: AgentTeamConfig): Promise<AgentTeamDoc | null> {
+        return await AgentModel.updateTeamConfig(scope.domainId, scope.userId, teamId, config, scope.groupId);
     }
 
-    async deleteNode(scope: AgentScope, nodeId: string): Promise<void> {
-        await AgentModel.deleteNode(scope.domainId, scope.userId, nodeId, scope.agentId);
+    async deleteTeam(scope: AgentScope, teamId: string): Promise<void> {
+        await AgentModel.deleteTeam(scope.domainId, scope.userId, teamId, scope.groupId);
     }
 
     async getWorkspace(scope: AgentScope, workspaceId: string): Promise<AgentWorkspaceDoc | null> {
@@ -3350,11 +3340,11 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
     }
 
     async deleteSession(scope: AgentScope, sessionId: string): Promise<void> {
-        await AgentModel.deleteSession(scope.domainId, scope.userId, sessionId, scope.agentId);
+        await AgentModel.deleteSession(scope.domainId, scope.userId, sessionId, scope.groupId);
     }
 
     async deleteSessions(scope: AgentScope, sessionIds: readonly string[]): Promise<void> {
-        await AgentModel.deleteSessions(scope.domainId, scope.userId, sessionIds, scope.agentId);
+        await AgentModel.deleteSessions(scope.domainId, scope.userId, sessionIds, scope.groupId);
     }
 
     async updateWorkspace(scope: AgentScope, workspaceId: string, patch: Partial<AgentWorkspaceDoc>): Promise<AgentWorkspaceDoc | null> {
@@ -3374,7 +3364,7 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
     }
 
     async archivedSessionIds(scope: AgentScope): Promise<string[]> {
-        return await AgentModel.archivedSessionIds(scope.domainId, scope.userId, scope.agentId);
+        return await AgentModel.archivedSessionIds(scope.domainId, scope.userId, scope.groupId);
     }
 
     async getDomainSettings(domainId: string) {
@@ -3476,10 +3466,10 @@ export const agentRuntimeHandlerContext = {
     modelReady: () => modelReady,
     requireBridgeToken, baseSessionScope, toolRegistry,
     scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, upstreamValue,
-    nodeRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled,
-    agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, syncSessionAddonsForNode, syncSessionNodeContextForNode, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,
+    teamRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled,
+    agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, syncSessionAddonsForTeam, syncSessionTeamContextForTeam, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,
     baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems,
-    runtimeRelabel, runtimeRemove, sessionCardCreate, sessionCardUpdate, sessionCreate, sessionHistory, sessionMessageCount,
+    runtimeRelabel, runtimeRemove, sessionAgentCreate, sessionAgentUpdate, sessionCreate, sessionHistory, sessionMessageCount,
     sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink,
     agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider,
     logger, WebSocket, randomUUID, parseRuntimeFrame, createSocketLink, addLink, rememberRuntime,
