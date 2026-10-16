@@ -132,9 +132,7 @@ export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWi
                 </div> : hideTabs ? <div className="bd-drawer__tabs"><strong>{title}</strong></div> : <div className="bd-drawer__tabs" role="tablist">
                     <button type="button" role="tab" className={view === 'chat' ? 'is-active' : ''} aria-selected={view === 'chat'} onClick={() => onViewChange('chat')}>对话</button>
                     <button type="button" role="tab" className={view === 'trajectory' ? 'is-active' : ''} aria-selected={view === 'trajectory'} onClick={() => onViewChange('trajectory')}>轨迹</button>
-                    <button type="button" role="tab" className={view === 'model' ? 'is-active' : ''} aria-selected={view === 'model'} onClick={() => onViewChange('model')}>模型</button>
                     <ContextTabSlot view={view} onViewChange={onViewChange} />
-                    <button type="button" role="tab" className={view === 'host' ? 'is-active' : ''} aria-selected={view === 'host'} onClick={() => onViewChange('host')}>主机</button>
                 </div>}
                 <div className="bd-drawer__header-actions">
                     {headerActions}

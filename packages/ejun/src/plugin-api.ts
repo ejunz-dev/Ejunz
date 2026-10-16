@@ -30,8 +30,8 @@ export { default as BlackListModel } from './model/blacklist';
 export { default as DomainModel } from './model/domain';
 export { default as StorageModel } from './model/storage';
 export { default as TaskModel } from './model/task';
-export { default as AgentModel } from './model/agent';
-export { AgentSessionModel } from './model/agent';
+export { default as GroupDefinitionModel } from './model/agent';
+export { AgentModel, AgentSessionModel } from './model/agent';
 export { AgentRuntimeModel } from './model/agent';
 export { AgentLinkModel } from './model/agent';
 export { AgentStorageModel } from './model/agent';
@@ -51,13 +51,17 @@ export type {
 } from './service/runtime';
 export type {
     AgentCredentialDoc,
+    AgentConfig,
+    AgentDoc,
+    AgentSettings,
     AgentDisplayPrefs,
+    GroupDefinitionDoc,
     AgentDomainSettings,
     AgentEventDoc,
     AgentSessionDoc,
     AgentSessionSummary,
+    AgentSessionView,
     AgentSessionType,
-    AgentWorkspaceDoc,
 } from './model/agent';
 export type { AgentRuntimeDoc, AgentRuntimeKind, AgentRuntimeSummary } from './model/agent';
 export type { AgentLinkStatus, AgentLinkSummary } from './model/agent';

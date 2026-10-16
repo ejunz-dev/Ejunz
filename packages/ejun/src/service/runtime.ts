@@ -10,11 +10,11 @@ import SystemModel from '../model/system';
 import GroupDefinitionModel from '../model/agent';
 import { createProvider } from './provider';
 import { httpServer } from '@ejunz/framework';
-import { AgentSessionModel as AgentModel, AgentRuntimeModel, AgentLinkModel, AgentStorageModel } from '../model/agent';
-import { type AgentDisplayPrefs, type AgentDomainSettings, type AgentTeamConfig, type AgentTeamDoc, type AgentSessionDoc, type AgentSessionSummary, type AgentSessionType, type AgentWorkspaceDoc } from '../model/agent';
+import { AgentModel, AgentSessionModel, AgentRuntimeModel, AgentLinkModel, AgentStorageModel } from '../model/agent';
+import { type AgentConfig, type AgentDoc, type AgentSettings, type AgentDisplayPrefs, type AgentDomainSettings, type AgentTeamConfig, type AgentTeamDoc, type AgentSessionDoc, type AgentSessionSummary, type AgentSessionType } from '../model/agent';
 import { type AgentRuntimeSummary } from '../model/agent';
 import { listAgentAddons } from './addons';
-import type { AgentAddonStateChange, AgentTeamContextChange } from './bus';
+import type { AgentAddonStateChange, AgentContextChange, AgentTeamContextChange } from './bus';
 
 interface EjunContext {
     server?: { config?: { port?: number; host?: string } };
@@ -321,10 +321,6 @@ function upstreamValue(body: RpcBody): any {
     return body.result.value;
 }
 
-function workspaceView(workspace: AgentWorkspaceDoc) {
-    return agentDataAdapter.viewWorkspace(workspace);
-}
-
 /** This host's section name in a session's injected context. */
 const HOST_CONTEXT_SECTION = 'ejunz-agent-host';
 
@@ -434,136 +430,33 @@ async function injectHostSwitchNotice(
     }
 }
 
-async function sessionAgentCreate(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
-    const payload = envelope.payload ?? {};
-    const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId.trim() : '';
-    const title = typeof payload.title === 'string' ? payload.title.trim() : '';
-    if (!/^session-[A-Za-z0-9-]{8,160}$/.test(sessionId)) return rpcError(envelope.rpcId, 'invalid session id');
-    if (!title || title.length > 256) return rpcError(envelope.rpcId, 'session title is required and must not exceed 256 characters');
-    if (await agentDataAdapter.getSessionAny(sessionId)) return rpcError(envelope.rpcId, 'session already exists');
-
-    let agentRootNode: AgentTeamDoc | undefined;
-    if (typeof scope.groupId === 'number') {
-        const agent = await GroupDefinitionModel.get(scope.domainId, scope.groupId, GroupDefinitionModel.PROJECTION_LIST);
-        if (!agent) return rpcError(envelope.rpcId, 'Agent not found in current domain');
-        agentRootNode = await AgentModel.ensureGroupRoot(scope.domainId, scope.userId, scope.groupId, agent.title);
-    }
-    const hasNodeId = Object.prototype.hasOwnProperty.call(payload, 'teamId');
-    const requestedNodeId = typeof payload.teamId === 'string' && payload.teamId.trim() ? payload.teamId.trim() : undefined;
-    const teamId = requestedNodeId ?? (hasNodeId ? undefined : agentRootNode?.teamId);
-    if (teamId && !await agentDataAdapter.getTeam(scope, teamId)) return rpcError(envelope.rpcId, 'team not found in this Group');
-
-    const selectedBaseDocId = baseDocIdOf(payload.baseDocId);
-    if (selectedBaseDocId && !await isAgentAddonEnabled(scope.domainId, 'base', scope.groupId)) {
-        return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
-    }
-    if (selectedBaseDocId) {
-        const baseModel = (global as any).Ejunz?.model?.base;
-        const base = baseModel ? await baseModel.get(scope.domainId, Number(selectedBaseDocId)) : null;
-        if (!base) return rpcError(envelope.rpcId, 'Base not found in current domain');
-    }
-    const provider = typeof payload.provider === 'string' ? payload.provider.trim() : '';
-    const model = typeof payload.model === 'string' ? payload.model.trim() : '';
-    if ((provider === '') !== (model === '')) return rpcError(envelope.rpcId, 'provider and model must be selected together');
-    const agentPreset = typeof payload.agentPreset === 'string' && payload.agentPreset.trim() ? payload.agentPreset.trim() : undefined;
-    const runtimeId = typeof payload.runtimeId === 'string' && payload.runtimeId.trim() ? payload.runtimeId.trim() : undefined;
-    const createdAt = Date.now();
-    const summary: AgentSessionSummary = {
-        sessionId,
-        createdAt,
-        updatedAt: createdAt,
-        running: false,
-        blank: true,
-        started: false,
-        creatorUserId: scope.userId,
-        type: 'generic',
-        ...(typeof scope.groupId === 'number' ? { groupId: scope.groupId } : {}),
-        ...(selectedBaseDocId === null ? {} : { baseDocId: selectedBaseDocId }),
-        ...(teamId === undefined ? {} : { teamId }),
-        cwd: agentRoot,
-        ...(agentPreset === undefined ? {} : { agentPreset }),
-        ...(runtimeId === undefined ? {} : { runtimeId }),
-        ...(provider === '' ? {} : { model: { provider, model } }),
-        projections: { values: { title } },
-    };
-    await agentDataAdapter.upsertSession(scope, summary);
-    try {
-        await agentDataAdapter.setSessionHeader(sessionId, {
-            version: 0,
-            id: sessionId,
-            createdAt,
-            cwd: agentRoot,
-            ...(agentPreset === undefined ? {} : { agentPreset }),
-        });
-    } catch (error) {
-        await agentDataAdapter.deleteSession(scope, sessionId);
-        return rpcError(envelope.rpcId, error instanceof Error ? error.message : String(error));
-    }
-    return rpcOk(envelope.rpcId, { session: summary });
-}
-
-async function sessionAgentUpdate(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
-    const payload = envelope.payload ?? {};
-    const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId : '';
-    const rawPatch = payload.patch && typeof payload.patch === 'object' && !Array.isArray(payload.patch)
-        ? payload.patch as Record<string, unknown>
-        : {};
-    const existing = sessionId ? await agentDataAdapter.getSession(scope, sessionId) : null;
-    if (!existing || existing.started !== false) return rpcError(envelope.rpcId, 'unstarted session agent not found');
-    const patch: Partial<AgentSessionSummary> = { updatedAt: Date.now() };
-    if (Object.prototype.hasOwnProperty.call(rawPatch, 'title')) {
-        const title = typeof rawPatch.title === 'string' ? rawPatch.title.trim() : '';
-        if (!title || title.length > 256) return rpcError(envelope.rpcId, 'session title is required and must not exceed 256 characters');
-        patch.projections = { values: { ...(existing.projections?.values ?? {}), title } };
-    }
-    let movedNodeId: string | undefined;
-    if (Object.prototype.hasOwnProperty.call(rawPatch, 'teamId')) {
-        movedNodeId = typeof rawPatch.teamId === 'string' ? rawPatch.teamId.trim() : '';
-        if (!movedNodeId) return rpcError(envelope.rpcId, 'teamId is required');
-        if (!await agentDataAdapter.getTeam(scope, movedNodeId)) return rpcError(envelope.rpcId, 'team not found');
-        patch.teamId = movedNodeId;
-    }
-    if (Object.prototype.hasOwnProperty.call(rawPatch, 'agentPreset')) {
-        if (typeof rawPatch.agentPreset !== 'string' || !rawPatch.agentPreset.trim()) return rpcError(envelope.rpcId, 'agentPreset is required');
-        patch.agentPreset = rawPatch.agentPreset.trim();
-    }
-    if (Object.prototype.hasOwnProperty.call(rawPatch, 'runtimeId')) {
-        if (typeof rawPatch.runtimeId !== 'string' || !rawPatch.runtimeId.trim()) return rpcError(envelope.rpcId, 'runtimeId is required');
-        patch.runtimeId = rawPatch.runtimeId.trim();
-    }
-    if (Object.prototype.hasOwnProperty.call(rawPatch, 'model')) {
-        const value = rawPatch.model && typeof rawPatch.model === 'object' && !Array.isArray(rawPatch.model)
-            ? rawPatch.model as Record<string, unknown>
-            : {};
-        if (typeof value.provider !== 'string' || !value.provider.trim() || typeof value.model !== 'string' || !value.model.trim()) {
-            return rpcError(envelope.rpcId, 'provider and model are required');
-        }
-        patch.model = { provider: value.provider.trim(), model: value.model.trim() };
-    }
-    if (Object.prototype.hasOwnProperty.call(rawPatch, 'baseDocId')) {
-        const baseDocId = baseDocIdOf(rawPatch.baseDocId);
-        if (baseDocId && !await isAgentAddonEnabled(scope.domainId, 'base', scope.groupId)) return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
-        if (baseDocId) {
-            const baseModel = (global as any).Ejunz?.model?.base;
-            const base = baseModel ? await baseModel.get(scope.domainId, Number(baseDocId)) : null;
-            if (!base) return rpcError(envelope.rpcId, 'Base not found in current domain');
-        }
-        await agentDataAdapter.updateSessionContext(scope, sessionId, baseDocId ?? undefined);
-    }
-    await agentDataAdapter.updateSession(scope, sessionId, patch);
-    const moved = movedNodeId !== undefined && movedNodeId !== existing.teamId;
-    const failedAddonIds = moved ? await syncSessionAddonsForTeam(scope, sessionId, movedNodeId) : [];
-    const failedContextSync = moved ? await syncSessionTeamContextForTeam(scope, sessionId, movedNodeId!) : false;
-    return rpcOk(envelope.rpcId, {
-        sessionId,
-        ...patch,
-        ...(failedAddonIds.length ? { failedAddonIds } : {}),
-        ...(failedContextSync ? { failedContextSync: true } : {}),
-    });
-}
-
-async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata: { type?: AgentSessionType; baseDocId?: string } = {}): Promise<RpcBody> {
+async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata: { type?: AgentSessionType; baseDocId?: string; cwd?: string } = {}): Promise<RpcBody> {
     const payload = { ...(envelope.payload ?? {}) };
+    const requestedSessionId = typeof payload.sessionId === 'string' && payload.sessionId.length > 0 ? payload.sessionId : undefined;
+    const requestedSessionTitle = typeof payload.title === 'string' && payload.title.trim() ? payload.title.trim() : undefined;
+    const existingSession = requestedSessionId ? await agentDataAdapter.getSessionAny(requestedSessionId) : null;
+    const agentMismatch = existingSession && scope.groupId !== undefined && (existingSession.groupId ?? null) !== scope.groupId;
+    if (existingSession && (existingSession.domainId !== scope.domainId || existingSession.userId !== scope.userId || agentMismatch)) {
+        return rpcError(envelope.rpcId, 'session not found');
+    }
+    const sessionConfigFields = ['runtimeId', 'provider', 'model', 'baseDocId', 'agentPreset', 'cwd', 'teamId'];
+    if (sessionConfigFields.some((field) => Object.prototype.hasOwnProperty.call(payload, field))) {
+        return rpcError(envelope.rpcId, 'Session configuration belongs to its Agent');
+    }
+    const requestedAgentId = typeof payload.agentId === 'string' && payload.agentId.trim()
+        ? payload.agentId.trim()
+        : existingSession?.agentId;
+    if (!requestedAgentId) return rpcError(envelope.rpcId, 'agentId is required');
+    const selectedAgent = await agentDataAdapter.getAgent(scope, requestedAgentId);
+    if (!selectedAgent) return rpcError(envelope.rpcId, 'Agent not found in this Group');
+    if (existingSession?.agentId && existingSession.agentId !== requestedAgentId) return rpcError(envelope.rpcId, 'Session belongs to a different Agent');
+    if (scope.groupId !== undefined && (selectedAgent.groupId ?? null) !== scope.groupId) return rpcError(envelope.rpcId, 'Agent not found in this Group');
+    const agentSettings = selectedAgent.settings;
+    if (agentSettings.agentPreset) payload.agentPreset = agentSettings.agentPreset;
+    if (agentSettings.model) {
+        payload.provider = agentSettings.model.provider;
+        payload.model = agentSettings.model.model;
+    }
     const domainSettings = await agentDataAdapter.getDomainSettings(scope.domainId);
     const domainDefault = domainSettings.sections['agent-default-model'];
     const deepseekSettings = domainSettings.sections['llm-deepseek'];
@@ -577,28 +470,15 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
         payload.provider = 'deepseek-official';
         payload.model = deepseekSettings.model;
     }
-    const requestedSessionId = typeof payload.sessionId === 'string' && payload.sessionId.length > 0 ? payload.sessionId : undefined;
-    const existingSession = requestedSessionId ? await agentDataAdapter.getSessionAny(requestedSessionId) : null;
-    const agentMismatch = existingSession && scope.groupId !== undefined && (existingSession.groupId ?? null) !== scope.groupId;
-    if (existingSession && (existingSession.domainId !== scope.domainId || existingSession.userId !== scope.userId || agentMismatch)) {
-        return rpcError(envelope.rpcId, 'session not found');
+    const sessionScope: AgentScope = { ...scope, groupId: selectedAgent.groupId ?? null };
+    const teamId = selectedAgent.teamId;
+    const team = await agentDataAdapter.getTeam(sessionScope, teamId);
+    if (!team) return rpcError(envelope.rpcId, 'Team not found for this Agent');
+    const selectedBaseDocId = metadata.baseDocId ?? agentSettings.baseDocId;
+    if (metadata.baseDocId && agentSettings.baseDocId && metadata.baseDocId !== agentSettings.baseDocId) {
+        return rpcError(envelope.rpcId, 'Base tutor Session must use an Agent configured for this Base');
     }
-    let selectedAgentRoot: AgentTeamDoc | undefined;
-    if (typeof scope.groupId === 'number') {
-        const selectedAgent = await GroupDefinitionModel.get(scope.domainId, scope.groupId, GroupDefinitionModel.PROJECTION_LIST);
-        if (!selectedAgent) return rpcError(envelope.rpcId, 'Agent not found in current domain');
-        selectedAgentRoot = await AgentModel.ensureGroupRoot(scope.domainId, scope.userId, scope.groupId, selectedAgent.title);
-    }
-    const workspaceId = typeof payload.workspaceId === 'string' ? payload.workspaceId : undefined;
-    const workspace = workspaceId ? await agentDataAdapter.getWorkspace(scope, workspaceId) : null;
-    if (workspaceId && !workspace) return rpcError(envelope.rpcId, 'workspace not found');
-    const hasRequestedNodeId = Object.prototype.hasOwnProperty.call(payload, 'teamId');
-    const requestedNodeId = typeof payload.teamId === 'string' && payload.teamId.trim() ? payload.teamId.trim() : undefined;
-    const teamId = requestedNodeId ?? (hasRequestedNodeId ? undefined : selectedAgentRoot?.teamId);
-    const team = teamId ? await agentDataAdapter.getTeam(scope, teamId) : null;
-    if (teamId && !team) return rpcError(envelope.rpcId, 'team not found in this Group');
-    const selectedBaseDocId = metadata.baseDocId ?? baseDocIdOf(payload.baseDocId);
-    if (selectedBaseDocId && metadata.type !== 'base_detail' && !await isAgentAddonEnabled(scope.domainId, 'base', scope.groupId)) {
+    if (selectedBaseDocId && metadata.type !== 'base_detail' && !await isAgentAddonEnabled(scope.domainId, 'base', sessionScope.groupId)) {
         return rpcError(envelope.rpcId, 'Ejunz Base Agent plugin is disabled');
     }
     let selectedBase: { docId: number; title?: string } | undefined;
@@ -610,24 +490,31 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
     }
     // The host is chosen with the session and recorded here, so every later call
     // for this session reaches the host that owns it.
-    const requestedHost = typeof payload.runtimeId === 'string' ? payload.runtimeId.trim() : '';
+    const requestedHost = agentSettings.runtimeId?.trim() || '';
     const link = linkForCreate(requestedHost);
     const sessionId = requestedSessionId ?? `session-${domainKey(scope.domainId)}-${randomUUID()}`;
     delete payload.domainId;
     delete payload.groupId;
-    delete payload.workspaceId;
     delete payload.teamId;
     delete payload.baseDocId;
     delete payload.creatorUserId;
     delete payload.type;
+    delete payload.title;
     delete payload.runtimeId;
+    delete payload.agentId;
     payload.sessionId = sessionId;
-    // A stated directory wins over the addon's own root: a caller that starts a run in a named
-    // project must not have it silently replaced by the directory this addon happens to sit in.
-    const statedCwd = typeof payload.cwd === 'string' ? payload.cwd.trim() : '';
-    const sessionCwd = workspace?.path ?? (statedCwd.length > 0 ? statedCwd : agentRoot);
-    payload.cwd = sessionCwd;
+    const statedCwd = typeof metadata.cwd === 'string' ? metadata.cwd.trim() : '';
+    if (statedCwd) payload.cwd = statedCwd;
     const createdAt = Date.now();
+    const priorAgentSessions = await agentDataAdapter.listSessions(sessionScope);
+    const priorTitle = existingSession?.projections?.values?.title;
+    const sessionTitle = requestedSessionTitle ?? (typeof priorTitle === 'string' && priorTitle.trim()
+        ? priorTitle.trim()
+        : `会话 ${(priorAgentSessions.filter((session) => session.agentId === selectedAgent.agentId).length || 0) + 1}`);
+    const selectedModel = typeof payload.provider === 'string' && payload.provider.length > 0
+        && typeof payload.model === 'string' && payload.model.length > 0
+        ? { provider: payload.provider, model: payload.model }
+        : undefined;
     const initialSummary: AgentSessionSummary = {
         sessionId,
         createdAt,
@@ -637,52 +524,40 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
         started: true,
         creatorUserId: scope.userId,
         type: metadata.type ?? 'generic',
-        ...(typeof scope.groupId === 'number' ? { groupId: scope.groupId } : {}),
-        runtimeId: link.runtimeId,
-        ...(selectedBaseDocId == null ? {} : { baseDocId: selectedBaseDocId }),
-        ...(teamId === undefined ? {} : { teamId }),
-        ...(typeof payload.cwd === 'string' ? { cwd: payload.cwd } : {}),
-        ...(typeof payload.agentPreset === 'string' && payload.agentPreset.length > 0
-            ? { agentPreset: payload.agentPreset }
-            : {}),
-        ...(typeof payload.provider === 'string' && payload.provider.length > 0 && typeof payload.model === 'string' && payload.model.length > 0
-            ? { model: { provider: payload.provider, model: payload.model } }
-            : {}),
+        ...(selectedAgent.groupId === undefined ? {} : { groupId: selectedAgent.groupId }),
+        agentId: selectedAgent.agentId,
+        teamId: selectedAgent.teamId,
+        activeRuntimeId: link.runtimeId,
+        projections: { values: { title: sessionTitle } },
     };
     // The record is written before the Agent composes the session, and it states the whole target:
     // the bridge resolves the session's domain — and with it the domain's tools — from this row, so
     // a session created without it starts with no domain-scoped tool; and the Agent treats a create
     // for an already-recorded session as adopting that record, which compares the preset and keeps
     // the recorded model, so a partial record is refused or run without the stated model.
-    await agentDataAdapter.upsertSession(scope, initialSummary);
-    // The header states the preset too: the Agent resolves a session's composition from the creation
-    // header, and a create that names a preset for a record whose header names none is refused as an
-    // adoption under a different composition, so a timer run never started.
+    await agentDataAdapter.upsertSession(sessionScope, initialSummary);
+    // Runtime headers retain the Agent's initial composition for the runtime's own session restore.
     await agentDataAdapter.setSessionHeader(sessionId, {
         version: 0,
         id: sessionId,
         createdAt,
-        ...(initialSummary.cwd === undefined ? {} : { cwd: initialSummary.cwd }),
-        ...(initialSummary.agentPreset === undefined ? {} : { agentPreset: initialSummary.agentPreset }),
+        agentId: selectedAgent.agentId,
+        ...(statedCwd ? { cwd: statedCwd } : {}),
+        ...(agentSettings.agentPreset === undefined ? {} : { agentPreset: agentSettings.agentPreset }),
     });
     const upstream = await callUpstream('session.create', payload, link);
     if (!upstream.body.result?.ok) {
         if (existingSession?.started === false) {
-            await agentDataAdapter.updateSession(scope, sessionId, { started: false, running: false, blank: true });
+            await agentDataAdapter.updateSession(sessionScope, sessionId, { started: false, running: false, blank: true });
             if (existingSession.header) await agentDataAdapter.setSessionHeader(sessionId, existingSession.header);
         } else {
-            await agentDataAdapter.deleteSession(scope, sessionId);
+            await agentDataAdapter.deleteSession(sessionScope, sessionId);
         }
         return upstream.body;
     }
-    const value = upstreamValue(upstream.body) as Record<string, unknown>;
-    const summary: AgentSessionSummary = {
-        ...initialSummary,
-        updatedAt: Date.now(),
-        ...(typeof value.agentPreset === 'string' ? { agentPreset: value.agentPreset } : {}),
-    };
-    await agentDataAdapter.upsertSession(scope, summary);
-    await selectHostModel(sessionId, link, summary.model);
+    const summary: AgentSessionSummary = { ...initialSummary, updatedAt: Date.now() };
+    await agentDataAdapter.upsertSession(sessionScope, summary);
+    await selectHostModel(sessionId, link, selectedModel);
     await injectHostContext(sessionId, link);
     if (selectedBase) {
         const injected = await callUpstream('session.inject', {
@@ -695,12 +570,13 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
         }, link);
         if (!injected.body.result?.ok) logger.warn('[agent-base] context injection failed session=%s domain=%s baseId=%d error=%s', sessionId, scope.domainId, selectedBase.docId, injected.body.error?.message || 'unknown error');
     }
-    if (team?.config?.context?.trim()) {
-        const injected = await injectTeamContext(scope, sessionId, team.teamId, team.config.context, link);
+    if (team.config?.context?.trim()) {
+        const injected = await injectTeamContext(sessionScope, sessionId, team.teamId, team.config.context, link);
         if (!injected) logger.warn('[agent-team] context injection failed session=%s team=%s', sessionId, team.teamId);
     }
-    if (workspace) await agentDataAdapter.reorderWorkspaceSessions(scope, workspace.workspaceId, [...workspace.sessionIds, summary.sessionId]);
-    return rpcOk(envelope.rpcId, { sessionId: summary.sessionId, ...(summary.agentPreset ? { agentPreset: summary.agentPreset } : {}), ...(teamId ? { teamId } : {}) });
+    const agentContextInjected = await injectAgentContext(sessionScope, sessionId, selectedAgent.agentId, selectedAgent.config?.context, link);
+    if (!agentContextInjected) logger.warn('[agent] context injection failed session=%s agent=%s', sessionId, selectedAgent.agentId);
+    return rpcOk(envelope.rpcId, { sessionId: summary.sessionId, agentId: selectedAgent.agentId, teamId, activeRuntimeId: link.runtimeId, title: sessionTitle });
 }
 
 async function sessionContextSave(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
@@ -725,16 +601,6 @@ async function sessionContextSave(envelope: RpcEnvelope, scope: AgentScope): Pro
         selectedBase = { docId: Number(base.docId), ...(base.title ? { title: String(base.title) } : {}) };
     }
 
-    const workspaces = await agentDataAdapter.listWorkspaces(scope);
-    const currentWorkspace = workspaces.find((workspace) => workspace.sessionIds.includes(sessionId));
-    const hasWorkspace = Object.prototype.hasOwnProperty.call(payload, 'workspaceId');
-    const requestedWorkspaceId = hasWorkspace
-        ? (typeof payload.workspaceId === 'string' && payload.workspaceId ? payload.workspaceId : undefined)
-        : currentWorkspace?.workspaceId;
-    const selectedWorkspace = requestedWorkspaceId === undefined
-        ? undefined
-        : workspaces.find((workspace) => workspace.workspaceId === requestedWorkspaceId);
-    if (requestedWorkspaceId !== undefined && !selectedWorkspace) return rpcError(envelope.rpcId, 'workspace not found');
 
     if (selectedBase) {
         const injected = await callUpstream('session.inject', {
@@ -758,18 +624,8 @@ async function sessionContextSave(envelope: RpcEnvelope, scope: AgentScope): Pro
         if (!injected.body.result?.ok) return rpcError(envelope.rpcId, injected.body.error?.message || '知识库上下文关闭失败');
     }
 
-    await agentDataAdapter.updateSessionContext(scope, sessionId, selectedBaseDocId ?? undefined, selectedWorkspace?.path);
-    if (currentWorkspace && currentWorkspace.workspaceId !== selectedWorkspace?.workspaceId) {
-        await agentDataAdapter.reorderWorkspaceSessions(scope, currentWorkspace.workspaceId, currentWorkspace.sessionIds.filter((id) => id !== sessionId));
-    }
-    if (selectedWorkspace && selectedWorkspace.workspaceId !== currentWorkspace?.workspaceId) {
-        await agentDataAdapter.reorderWorkspaceSessions(scope, selectedWorkspace.workspaceId, [...selectedWorkspace.sessionIds.filter((id) => id !== sessionId), sessionId]);
-    }
-    return rpcOk(envelope.rpcId, {
-        sessionId,
-        baseDocId: selectedBaseDocId ?? null,
-        workspaceId: selectedWorkspace?.workspaceId ?? null,
-    });
+    await agentDataAdapter.updateSessionContext(scope, sessionId, selectedBaseDocId ?? undefined);
+    return rpcOk(envelope.rpcId, { sessionId, baseDocId: selectedBaseDocId ?? null });
 }
 
 async function sessionHistory(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
@@ -809,7 +665,13 @@ async function baseTutorList(envelope: RpcEnvelope, scope: AgentScope): Promise<
 async function baseTutorCreate(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const baseDocId = baseDocIdOf(envelope.payload?.baseDocId);
     if (!baseDocId) return rpcError(envelope.rpcId, 'base document is required');
-    const created = await sessionCreate({ ...envelope, payload: {} }, scope, { type: 'base_detail', baseDocId });
+    let agent = (await agentDataAdapter.listAgents(scope)).find((item) => item.settings.baseDocId === baseDocId);
+    if (!agent) {
+        const team = await defaultTeamForScope(scope, 'Base 助手');
+        if (!team) return rpcError(envelope.rpcId, 'Group not found');
+        agent = await agentDataAdapter.createAgent(scope, team.teamId, `Base #${baseDocId}`, { baseDocId });
+    }
+    const created = await sessionCreate({ ...envelope, payload: { agentId: agent.agentId } }, scope, { type: 'base_detail', baseDocId });
     if (!created.result?.ok) return created;
     const value = created.result.value as Record<string, unknown> | undefined;
     const sessionId = typeof value?.sessionId === 'string' ? value.sessionId : '';
@@ -883,7 +745,6 @@ async function baseTutorPrompt(envelope: RpcEnvelope, scope: AgentScope): Promis
 interface AgentTargetCatalog {
     presets: string[];
     providers: { id: string; models: string[] }[];
-    defaultCwd: string;
     /** Permission preset every session of this deployment starts under. */
     defaultPermissionPreset: string;
     /** Permission presets a caller may state for the session it starts. */
@@ -966,6 +827,8 @@ function catalogProviders(body: RpcBody): { id: string; models: string[] }[] {
 interface AgentRunRequest {
     domainId: string;
     userId: number;
+    /** Existing team to attach the generated Agent to. If omitted, a default team is created. */
+    teamId?: string;
     /** Ejunz Base the run works on, when the caller selected one. */
     baseDocId?: number;
     /** Agent preset the run composes. The caller states it; a run never falls back to a default. */
@@ -981,7 +844,7 @@ interface AgentRunRequest {
      * none keeps whatever the deployment gives a new session.
      */
     permissionPreset?: string;
-    /** Session title, which the Agent session list shows. */
+    /** Agent name that owns the scheduled sessions. */
     title: string;
     /** First message of the session. */
     message: string;
@@ -994,8 +857,7 @@ interface AgentRunApi {
     /**
      * List every session target one domain can compose.
      * @param input - the domain whose targets are wanted.
-     * @returns the presets, the providers with their model ids, the directory a run opens in, and
-     * the permission presets a session may start under.
+     * @returns the available presets, providers with their model ids, and session permission presets.
      */
     targets(input: { domainId: string }): Promise<AgentTargetCatalog>;
 
@@ -1025,45 +887,24 @@ class AgentRunService extends Service implements AgentRunApi {
      * @throws when the Agent upstream refuses to create the session or to queue the command.
      */
     async start(input: AgentRunRequest): Promise<{ sessionId: string }> {
-        const scope = { domainId: input.domainId, userId: input.userId };
-        const created = await sessionCreate({
-            payload: {
-                agentPreset: input.agentPreset,
-                provider: input.provider,
-                model: input.model,
-                cwd: input.cwd,
-                ...(input.baseDocId === undefined ? {} : { baseDocId: input.baseDocId }),
-            },
-        }, scope, { type: 'generic' });
-        if (!created.result?.ok) throw new Error(upstreamErrorMessage(created) || 'The Agent runtime refused to create a session.');
+        const scope: AgentScope = { domainId: input.domainId, userId: input.userId, groupId: null };
+        const team = input.teamId
+            ? await agentDataAdapter.getTeam(scope, input.teamId)
+            : await defaultTeamForScope(scope, '定时任务');
+        if (!team) throw new Error('The Group for this scheduled run no longer exists.');
+        const settings: AgentSettings = {
+            agentPreset: input.agentPreset,
+            model: { provider: input.provider, model: input.model },
+            ...(input.baseDocId === undefined ? {} : { baseDocId: String(input.baseDocId) }),
+        };
+        const agent = await agentDataAdapter.createAgent(scope, team.teamId, input.title, settings);
+        const created = await sessionCreate({ payload: { agentId: agent.agentId } }, scope, { type: 'generic', cwd: input.cwd });
+        if (!created.result?.ok) {
+            await agentDataAdapter.deleteAgent(scope, agent.agentId);
+            throw new Error(upstreamErrorMessage(created) || 'The Agent runtime refused to create a session.');
+        }
         const sessionId = String((created.result.value as Record<string, unknown> | undefined)?.sessionId || '');
         if (!sessionId) throw new Error('The Agent runtime created a session without an id.');
-        const acceptedPreset = (created.result.value as Record<string, unknown> | undefined)?.agentPreset;
-        // The adopted session keeps the composition and the model its record carries, so the model
-        // this run states is bound on the session explicitly before the command is queued.
-        const selected = await callUpstream('session.selectModel', {
-            sessionId,
-            provider: input.provider,
-            model: input.model,
-            persistDefault: false,
-        });
-        if (!selected.body.result?.ok) {
-            throw new Error(upstreamErrorMessage(selected.body) || 'The Agent runtime refused to select the stated model for this session.');
-        }
-        await agentDataAdapter.updateSession(scope, sessionId, {
-            model: { provider: input.provider, model: input.model },
-            ...(typeof acceptedPreset === 'string' ? { agentPreset: acceptedPreset } : {}),
-        });
-        if (input.title) {
-            const renamed = await callUpstream('session.rename', { sessionId, title: input.title });
-            const title = String((renamed.body.result?.value as Record<string, unknown> | undefined)?.title || '');
-            if (title) {
-                const existing = await agentDataAdapter.getSession(scope, sessionId);
-                await agentDataAdapter.updateSession(scope, sessionId, {
-                    projections: { values: { ...(existing?.projections?.values ?? {}), title } },
-                });
-            }
-        }
         // The permission preset is switched before the command is queued, because a session's
         // sandbox and approval policy decide whether that first turn can act at all: a session
         // left on the deployment default can be unable to run any command it needs.
@@ -1100,16 +941,14 @@ class AgentRunService extends Service implements AgentRunApi {
      * namespace: a session's sandbox and approval policy decide whether its first turn can act, so a
      * caller states one from this list rather than inheriting the deployment default.
      * @param input - the domain whose targets are wanted.
-     * @returns the presets, the providers with their model ids, the directory a run opens in, and
-     * the permission presets a session may start under.
+     * @returns the available presets, providers with their model ids, and session permission presets.
      * @throws when the Agent upstream refuses either catalog, because a caller that cannot read the
      * choices would have to guess a target the run then refuses.
      */
     async targets(input: { domainId: string }): Promise<AgentTargetCatalog> {
-        const [presets, models, described] = await Promise.all([
+        const [presets, models] = await Promise.all([
             callUpstream('agentPreset.list', {}),
             callUpstream('llm.models', {}),
-            callUpstream('host.describe', {}),
         ]);
         if (!presets.body.result?.ok) {
             throw new Error(upstreamErrorMessage(presets.body) || 'the Agent upstream refused the preset roster');
@@ -1121,16 +960,9 @@ class AgentRunService extends Service implements AgentRunApi {
         const projected = await callUpstream('settings.project', { sections: domainSettings.sections });
         const permission = permissionCatalog(projected.body.result?.ok ? projected.body.result.value : undefined);
         const merged = mergeDomainModels(models.body, domainSettings.sections);
-        const describedValue = described.body.result?.ok
-            ? described.body.result.value as Record<string, unknown> | undefined
-            : undefined;
-        const catalogCwd = typeof describedValue?.cwd === 'string' && describedValue.cwd.length > 0
-            ? describedValue.cwd
-            : agentRoot;
         return {
             presets: catalogPresets(presets.body),
             providers: catalogProviders(merged),
-            defaultCwd: catalogCwd,
             defaultPermissionPreset: permission.current,
             permissionPresets: permission.presets,
         };
@@ -1163,6 +995,68 @@ function teamView(team: AgentTeamDoc) {
         createdAt: team.createdAt.toISOString(),
         updatedAt: team.updatedAt.toISOString(),
     };
+}
+
+async function defaultTeamForScope(scope: AgentScope, title: string): Promise<AgentTeamDoc | null> {
+    const scoped: AgentScope = scope.groupId === undefined ? { ...scope, groupId: null } : scope;
+    if (typeof scoped.groupId === 'number') {
+        const group = await GroupDefinitionModel.get(scoped.domainId, scoped.groupId, GroupDefinitionModel.PROJECTION_LIST);
+        if (!group) return null;
+        await AgentSessionModel.ensureGroupRoot(scoped.domainId, scoped.userId, scoped.groupId, group.title);
+    }
+    const teams = await agentDataAdapter.listTeams(scoped);
+    return teams.find((team) => team.isRootTeam)
+        ?? teams.filter((team) => !team.parentTeamId).sort((a, b) => a.order - b.order)[0]
+        ?? await agentDataAdapter.createTeam(scoped, title);
+}
+
+function agentView(agent: AgentDoc) {
+    return {
+        agentId: agent.agentId,
+        ...(agent.groupId === undefined ? {} : { groupId: agent.groupId }),
+        teamId: agent.teamId,
+        title: agent.title,
+        order: agent.order,
+        settings: agent.settings,
+        ...(agent.config === undefined ? {} : { config: agent.config }),
+        createdAt: agent.createdAt.toISOString(),
+        updatedAt: agent.updatedAt.toISOString(),
+    };
+}
+
+function parseAgentSettings(raw: unknown): AgentSettings {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('settings must be an object');
+    const value = raw as Record<string, unknown>;
+    const settings: AgentSettings = {};
+    if (typeof value.runtimeId === 'string' && value.runtimeId.trim()) settings.runtimeId = value.runtimeId.trim();
+    if (value.model !== undefined) {
+        const model = value.model && typeof value.model === 'object' && !Array.isArray(value.model)
+            ? value.model as Record<string, unknown>
+            : {};
+        if (typeof model.provider !== 'string' || !model.provider.trim() || typeof model.model !== 'string' || !model.model.trim()) {
+            throw new Error('settings.model must include provider and model');
+        }
+        settings.model = { provider: model.provider.trim(), model: model.model.trim() };
+    }
+    if (value.baseDocId !== undefined && value.baseDocId !== null && value.baseDocId !== '') {
+        const baseDocId = baseDocIdOf(value.baseDocId);
+        if (!baseDocId) throw new Error('settings.baseDocId is invalid');
+        settings.baseDocId = baseDocId;
+    }
+    if (typeof value.agentPreset === 'string' && value.agentPreset.trim()) settings.agentPreset = value.agentPreset.trim();
+    return settings;
+}
+
+function parseAgentConfig(raw: unknown): AgentConfig {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('config must be an object');
+    const value = raw as Record<string, unknown>;
+    const config: AgentConfig = {};
+    if (value.context !== undefined) {
+        if (typeof value.context !== 'string') throw new Error('config.context must be a string');
+        if (value.context.length > 20_000) throw new Error('config.context must not exceed 20000 characters');
+        config.context = value.context;
+    }
+    return config;
 }
 
 function teamConfigOwnerFor(teams: readonly AgentTeamDoc[], teamId?: string): AgentTeamDoc | undefined {
@@ -1227,14 +1121,46 @@ async function injectTeamContext(
     target?: RuntimeLink,
 ): Promise<boolean> {
     const text = context?.trim()
-        ? `当前会话位于 Agent 节点「${teamId}」。以下是当前节点配置的专属上下文；它替代先前注入的节点专属上下文，请以此为准：\n\n${context.trim()}`
-        : `当前会话所在的 Agent 节点「${teamId}」没有配置专属上下文。请忽略此前由其他 Agent 节点注入的节点专属上下文。`;
+        ? `当前会话位于团队「${teamId}」。以下是当前团队配置的专属上下文；它替代先前注入的团队专属上下文，请以此为准：\n\n${context.trim()}`
+        : `当前会话所在的团队「${teamId}」没有配置专属上下文。请忽略此前由其他团队注入的团队专属上下文。`;
     const injected = await callUpstream('session.inject', {
         sessionId,
-        plugin: 'ejunz-agent-node-context',
-        sections: [{ name: 'ejunz-agent-node-context', text }],
+        plugin: 'team',
+        sections: [{ name: 'team', text }],
     }, target ?? await linkForSession(scope, sessionId));
     return injected.body.result?.ok === true;
+}
+
+async function injectAgentContext(
+    scope: AgentScope,
+    sessionId: string,
+    agentId: string,
+    context: string | undefined,
+    target?: RuntimeLink,
+): Promise<boolean> {
+    const text = context?.trim()
+        ? `当前会话属于 Agent「${agentId}」。以下是该 Agent 配置的专属上下文；它替代先前注入的 Agent 专属上下文，请以此为准：\n\n${context.trim()}`
+        : `当前会话所属的 Agent「${agentId}」没有配置专属上下文。请忽略此前由其他 Agent 注入的 Agent 专属上下文。`;
+    const injected = await callUpstream('session.inject', {
+        sessionId,
+        plugin: 'agent',
+        sections: [{ name: 'agent', text }],
+    }, target ?? await linkForSession(scope, sessionId));
+    return injected.body.result?.ok === true;
+}
+
+async function syncSessionAgentContextForAgent(scope: AgentScope, sessionId: string, agentId: string): Promise<boolean> {
+    const session = await agentDataAdapter.getSession(scope, sessionId);
+    if (!session || session.started === false) return false;
+    try {
+        const agent = await agentDataAdapter.getAgent(scope, agentId);
+        const injected = await injectAgentContext(scope, sessionId, agentId, agent?.config?.context);
+        if (!injected) logger.warn('[agent] context injection failed session=%s agent=%s', sessionId, agentId);
+        return !injected;
+    } catch (error) {
+        logger.warn('[agent] context sync failed session=%s agent=%s error=%s', sessionId, agentId, error instanceof Error ? error.message : String(error));
+        return true;
+    }
 }
 
 async function syncSessionTeamContextForTeam(scope: AgentScope, sessionId: string, teamId: string): Promise<boolean> {
@@ -1257,7 +1183,7 @@ async function recordTeamContextForSessions(change: AgentTeamContextChange): Pro
         userId: change.userId,
         ...(change.groupId === undefined ? {} : { groupId: change.groupId }),
     };
-    const sessions = (await AgentModel.listAllSessions()).filter((session) =>
+    const sessions = (await AgentSessionModel.listAllSessions()).filter((session) =>
         session.domainId === change.domainId
         && session.userId === change.userId
         && !session.archived
@@ -1269,13 +1195,130 @@ async function recordTeamContextForSessions(change: AgentTeamContextChange): Pro
     }
 }
 
+async function recordAgentContextForSessions(change: AgentContextChange): Promise<void> {
+    const scope: AgentScope = {
+        domainId: change.domainId,
+        userId: change.userId,
+        ...(change.groupId === undefined ? {} : { groupId: change.groupId }),
+    };
+    const sessions = (await AgentSessionModel.listAllSessions()).filter((session) =>
+        session.domainId === change.domainId
+        && session.userId === change.userId
+        && !session.archived
+        && (change.groupId === undefined || (session.groupId ?? null) === change.groupId)
+        && session.agentId === change.agentId);
+    for (let offset = 0; offset < sessions.length; offset += 8) {
+        const batch = sessions.slice(offset, offset + 8);
+        await Promise.all(batch.map((session) => syncSessionAgentContextForAgent(scope, session.sessionId, change.agentId)));
+    }
+}
+
+async function agentRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
+    const payload = envelope.payload ?? {};
+    const method = String(envelope.method || '');
+    if (typeof scope.groupId === 'number') {
+        const group = await GroupDefinitionModel.get(scope.domainId, scope.groupId, GroupDefinitionModel.PROJECTION_LIST);
+        if (!group) return rpcError(envelope.rpcId, 'Group not found in current domain');
+        await AgentSessionModel.ensureGroupRoot(scope.domainId, scope.userId, scope.groupId, group.title);
+    }
+    if (method === 'agent.list') {
+        const teamId = typeof payload.teamId === 'string' && payload.teamId.trim() ? payload.teamId.trim() : undefined;
+        if (teamId && !await agentDataAdapter.getTeam(scope, teamId)) return rpcError(envelope.rpcId, 'Team not found in this Group');
+        const agents = await agentDataAdapter.listAgents(scope, teamId);
+        return rpcOk(envelope.rpcId, { items: agents.map(agentView) });
+    }
+    if (method === 'agent.create') {
+        const teamId = typeof payload.teamId === 'string' ? payload.teamId.trim() : '';
+        const title = typeof payload.title === 'string' ? payload.title.trim() : '';
+        if (!teamId) return rpcError(envelope.rpcId, 'teamId is required');
+        if (!title) return rpcError(envelope.rpcId, 'Agent name is required');
+        try {
+            const settings = payload.settings === undefined ? {} : parseAgentSettings(payload.settings);
+            const config = payload.config === undefined ? undefined : parseAgentConfig(payload.config);
+            return rpcOk(envelope.rpcId, { agent: agentView(await agentDataAdapter.createAgent(scope, teamId, title, settings, config)) });
+        } catch (error) {
+            return rpcError(envelope.rpcId, error instanceof Error ? error.message : String(error));
+        }
+    }
+    const agentId = typeof payload.agentId === 'string' ? payload.agentId.trim() : '';
+    if (!agentId) return rpcError(envelope.rpcId, 'agentId is required');
+    if (method === 'agent.update') {
+        const patch: { title?: string; teamId?: string; settings?: AgentSettings; config?: AgentConfig } = {};
+        if (typeof payload.title === 'string') patch.title = payload.title;
+        if (typeof payload.teamId === 'string') patch.teamId = payload.teamId;
+        if (Object.prototype.hasOwnProperty.call(payload, 'settings')) {
+            try { patch.settings = parseAgentSettings(payload.settings); }
+            catch (error) { return rpcError(envelope.rpcId, error instanceof Error ? error.message : String(error)); }
+        }
+        if (Object.prototype.hasOwnProperty.call(payload, 'config')) {
+            try { patch.config = parseAgentConfig(payload.config); }
+            catch (error) { return rpcError(envelope.rpcId, error instanceof Error ? error.message : String(error)); }
+        }
+        if (Object.keys(patch).length === 0) return rpcError(envelope.rpcId, 'Agent update is empty');
+        try {
+            const previous = await agentDataAdapter.getAgent(scope, agentId);
+            if (!previous) return rpcError(envelope.rpcId, 'Agent not found');
+            const titleSession = patch.title !== undefined && typeof payload.sessionId === 'string'
+                ? await agentDataAdapter.getSession(scope, payload.sessionId)
+                : null;
+            if (patch.title !== undefined && typeof payload.sessionId === 'string'
+                && (!titleSession || titleSession.agentId !== agentId)) {
+                return rpcError(envelope.rpcId, 'Session not found for this Agent');
+            }
+            const agent = await agentDataAdapter.updateAgent(scope, agentId, patch);
+            if (!agent) return rpcError(envelope.rpcId, 'Agent not found');
+            if (titleSession && patch.title !== undefined) {
+                await agentDataAdapter.updateSession(scope, titleSession.sessionId, {
+                    projections: { values: { ...(titleSession.projections?.values ?? {}), title: patch.title.trim() } },
+                });
+            }
+            const updatedSessionIds: string[] = [];
+            const failedSessionIds: string[] = [];
+            const sessions = (patch.teamId && patch.teamId !== previous.teamId) || patch.config !== undefined
+                ? (await agentDataAdapter.listSessions(scope)).filter((session) => session.agentId === agentId)
+                : [];
+            if (patch.teamId && patch.teamId !== previous.teamId) {
+                for (const session of sessions) {
+                    const failedAddons = await syncSessionAddonsForTeam(scope, session.sessionId, patch.teamId);
+                    const failedContext = await syncSessionTeamContextForTeam(scope, session.sessionId, patch.teamId);
+                    (failedAddons.length > 0 || failedContext ? failedSessionIds : updatedSessionIds).push(session.sessionId);
+                }
+            }
+            if (patch.config !== undefined) {
+                for (const session of sessions) {
+                    const failedContext = await syncSessionAgentContextForAgent(scope, session.sessionId, agentId);
+                    (failedContext ? failedSessionIds : updatedSessionIds).push(session.sessionId);
+                }
+            }
+            return rpcOk(envelope.rpcId, { agent: agentView(agent), updatedSessionIds: [...new Set(updatedSessionIds)], failedSessionIds: [...new Set(failedSessionIds)] });
+        } catch (error) {
+            return rpcError(envelope.rpcId, error instanceof Error ? error.message : String(error));
+        }
+    }
+    if (method === 'agent.delete') {
+        try {
+            const agent = await agentDataAdapter.getAgent(scope, agentId);
+            if (!agent) return rpcError(envelope.rpcId, 'Agent not found');
+            const sessionIds = payload.deleteSessions === true
+                ? (await agentDataAdapter.listSessions(scope)).filter((session) => session.agentId === agentId).map((session) => session.sessionId)
+                : [];
+            if (sessionIds.length) await agentDataAdapter.deleteSessions(scope, sessionIds);
+            await agentDataAdapter.deleteAgent(scope, agentId);
+            return rpcOk(envelope.rpcId, { deleted: true, sessionIds });
+        } catch (error) {
+            return rpcError(envelope.rpcId, error instanceof Error ? error.message : String(error));
+        }
+    }
+    return rpcError(envelope.rpcId, `unsupported Agent method: ${method}`);
+}
+
 async function teamRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
     const payload = envelope.payload ?? {};
     const method = String(envelope.method || '');
     if (typeof scope.groupId === 'number') {
         const agent = await GroupDefinitionModel.get(scope.domainId, scope.groupId, GroupDefinitionModel.PROJECTION_LIST);
         if (!agent) return rpcError(envelope.rpcId, 'Agent not found in current domain');
-        await AgentModel.ensureGroupRoot(scope.domainId, scope.userId, scope.groupId, agent.title);
+        await AgentSessionModel.ensureGroupRoot(scope.domainId, scope.userId, scope.groupId, agent.title);
     }
     if (method === 'team.list') {
         return rpcOk(envelope.rpcId, { items: (await agentDataAdapter.listTeams(scope)).map(teamView) });
@@ -1322,61 +1365,6 @@ async function teamRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBod
         }
     }
     return rpcError(envelope.rpcId, `unsupported team method: ${method}`);
-}
-
-async function workspaceRpc(envelope: RpcEnvelope, scope: AgentScope): Promise<RpcBody> {
-    const payload = envelope.payload ?? {};
-    const method = String(envelope.method || '');
-    if (method === 'workspace.list') {
-        const [items, archivedSessionIds] = await Promise.all([
-            agentDataAdapter.listWorkspaces(scope),
-            agentDataAdapter.archivedSessionIds(scope),
-        ]);
-        return rpcOk(envelope.rpcId, { items: items.map(workspaceView), archivedSessionIds });
-    }
-    if (method === 'workspace.create') {
-        const pathValue = String(payload.path || '').trim();
-        if (!pathValue) return rpcError(envelope.rpcId, 'workspace path is required');
-        const existing = await agentDataAdapter.getWorkspaceByPath(scope, pathValue);
-        if (existing) return rpcOk(envelope.rpcId, { workspace: workspaceView(existing), created: false });
-        const created = await agentDataAdapter.createWorkspace(scope, pathValue);
-        return rpcOk(envelope.rpcId, { workspace: workspaceView(created.workspace), created: created.created });
-    }
-    if (method === 'workspace.archiveSession') {
-        const sessionId = String(payload.sessionId || '');
-        if (!await agentDataAdapter.getSession(scope, sessionId)) return rpcError(envelope.rpcId, 'session not found');
-        await agentDataAdapter.updateSession(scope, sessionId, { archived: true });
-        return rpcOk(envelope.rpcId, { archivedSessionIds: await agentDataAdapter.archivedSessionIds(scope) });
-    }
-    const workspaceId = String(payload.workspaceId || '');
-    const workspace = await agentDataAdapter.getWorkspace(scope, workspaceId);
-    if (!workspace) return rpcError(envelope.rpcId, 'workspace not found');
-    if (method === 'workspace.rename') {
-        const updated = await agentDataAdapter.updateWorkspace(scope, workspaceId, { title: String(payload.title || '').trim() });
-        return rpcOk(envelope.rpcId, { workspace: workspaceView(updated!) });
-    }
-    if (method === 'workspace.delete') {
-        await agentDataAdapter.deleteWorkspace(scope, workspaceId);
-        return rpcOk(envelope.rpcId, { deleted: true });
-    }
-    if (method === 'workspace.insertBefore') {
-        const items = await agentDataAdapter.listWorkspaces(scope);
-        const ids = items.map((item) => item.workspaceId).filter((id) => id !== workspaceId);
-        const before = typeof payload.beforeWorkspaceId === 'string' ? ids.indexOf(payload.beforeWorkspaceId) : -1;
-        ids.splice(before < 0 ? ids.length : before, 0, workspaceId);
-        await agentDataAdapter.reorderWorkspaces(scope, ids);
-        return rpcOk(envelope.rpcId, { workspaceIds: ids });
-    }
-    if (method === 'workspace.insertSessionBefore') {
-        const sessionId = String(payload.sessionId || '');
-        if (!await agentDataAdapter.getSession(scope, sessionId)) return rpcError(envelope.rpcId, 'session not found');
-        const ids = workspace.sessionIds.filter((id) => id !== sessionId);
-        const before = typeof payload.beforeSessionId === 'string' ? ids.indexOf(payload.beforeSessionId) : -1;
-        ids.splice(before < 0 ? ids.length : before, 0, sessionId);
-        const updated = await agentDataAdapter.reorderWorkspaceSessions(scope, workspaceId, ids);
-        return rpcOk(envelope.rpcId, { workspace: workspaceView(updated!) });
-    }
-    return rpcError(envelope.rpcId, `unsupported workspace method: ${method}`);
 }
 
 function agentDataOrigin(ctx: EjunContext): string {
@@ -1464,7 +1452,7 @@ async function onBaseSelect(payload: {
     baseDocId: number;
     baseName?: string;
 }): Promise<void> {
-    const session = await AgentModel.getSessionAny(payload.sessionId);
+    const session = await AgentSessionModel.getSessionAny(payload.sessionId);
     if (!session || session.domainId !== payload.domainId || session.userId !== payload.owner) {
         throw new Error('Base session not found');
     }
@@ -1782,9 +1770,9 @@ async function initialAddonSnapshotForPrompt(sessionId: string): Promise<{ addon
     const pending = pendingAddonSnapshots.get(sessionId);
     if (pending) return await pending;
     const preparation = (async () => {
-        const session = await AgentModel.getSessionAny(sessionId);
+        const session = await AgentSessionModel.getSessionAny(sessionId);
         if (!session) return undefined;
-        const events = await AgentModel.listAddonEvents(session.domainId, session.userId, sessionId);
+        const events = await AgentSessionModel.listAddonEvents(session.domainId, session.userId, sessionId);
         const recordedAddonIds = new Set<string>();
         for (const entry of events) {
             const data = entry.data && typeof entry.data === 'object' ? entry.data as Record<string, unknown> : {};
@@ -1901,7 +1889,7 @@ async function setAgentAddonInstalled(
 }
 
 async function recordAddonStateForSessions(change: AgentAddonStateChange): Promise<void> {
-    const sessions = (await AgentModel.listAllSessions()).filter((session) =>
+    const sessions = (await AgentSessionModel.listAllSessions()).filter((session) =>
         session.domainId === change.domainId
         && !session.archived
         && (change.groupId === undefined || (session.groupId ?? null) === change.groupId)
@@ -2369,7 +2357,15 @@ async function applyLiveHostMove(input: {
             return;
         }
         const previousRuntimeId = input.previousRuntimeId;
-        await agentDataAdapter.updateSession(scope, sessionId, { runtimeId: input.runtimeId });
+        if (!session.agentId) {
+            logger.warn('Agent host move skipped session=%s reason=agent-not-found', sessionId);
+            return;
+        }
+        const agent = await agentDataAdapter.getAgent(scope, session.agentId);
+        if (!agent) return;
+        const previousAgentRuntimeId = agent.settings.runtimeId;
+        await agentDataAdapter.updateAgent(scope, agent.agentId, { settings: { ...agent.settings, runtimeId: input.runtimeId } });
+        await agentDataAdapter.updateSession(scope, sessionId, { activeRuntimeId: input.runtimeId });
         const adopted = await callUpstream('session.create', {
             sessionId,
             ...(session.cwd === undefined ? {} : { cwd: session.cwd }),
@@ -2377,7 +2373,8 @@ async function applyLiveHostMove(input: {
             ...(session.model === undefined ? {} : { provider: session.model.provider, model: session.model.model }),
         }, link);
         if (!adopted.body.result?.ok) {
-            await agentDataAdapter.updateSession(scope, sessionId, { runtimeId: previousRuntimeId || '' });
+            await agentDataAdapter.updateSession(scope, sessionId, { activeRuntimeId: previousRuntimeId || '' });
+            await agentDataAdapter.updateAgent(scope, agent.agentId, { settings: { ...agent.settings, ...(previousAgentRuntimeId === undefined ? {} : { runtimeId: previousAgentRuntimeId }) } });
             logger.warn(
                 'Agent host move refused session=%s host=%s error=%s',
                 sessionId,
@@ -2509,18 +2506,22 @@ async function sessionSetHost(
     if (!requested) return rpcError(envelope.rpcId, 'runtimeId is required');
     const session = await agentDataAdapter.getSession(scope, sessionId);
     if (!session) return rpcError(envelope.rpcId, 'session not found');
+    if (!session.agentId) return rpcError(envelope.rpcId, 'Session has no Agent');
+    const agent = await agentDataAdapter.getAgent(scope, session.agentId);
+    if (!agent) return rpcError(envelope.rpcId, 'Agent not found');
     if (session.runtimeId === requested) return rpcOk(envelope.rpcId, { sessionId, runtimeId: requested, label: hostLabel(requested) });
     const link = runtimeLinks.get(requested);
     if (link === undefined) return rpcError(envelope.rpcId, `host「${hostLabel(requested)}」不在线`);
     // A tool may have queued the same move; drop it so its mover does not redo it.
     liveHostMoves.delete(sessionId);
     const previousRuntimeId = session.runtimeId;
+    const previousAgentRuntimeId = agent.settings.runtimeId;
     if (options?.cancelPrevious !== false) {
         await fencePreviousHostWriter(sessionId, previousRuntimeId, scope);
     }
-    // Claim the shared log before the new host resumes it, so a flush from the
-    // previous host cannot race the adopt/inject writes.
-    await agentDataAdapter.updateSession(scope, sessionId, { runtimeId: requested, running: false });
+    // The Agent owns the preferred host; the Session stores only its active route.
+    await agentDataAdapter.updateAgent(scope, agent.agentId, { settings: { ...agent.settings, runtimeId: requested } });
+    await agentDataAdapter.updateSession(scope, sessionId, { activeRuntimeId: requested, running: false });
     // Same sessionId: the new host resumes from this server's event log, so the
     // chat continues rather than starting empty.
     const adopted = await callUpstream('session.create', {
@@ -2530,10 +2531,8 @@ async function sessionSetHost(
         ...(session.model === undefined ? {} : { provider: session.model.provider, model: session.model.model }),
     }, link);
     if (!adopted.body.result?.ok) {
-        await agentDataAdapter.updateSession(scope, sessionId, {
-            runtimeId: previousRuntimeId || '',
-            running: false,
-        });
+        await agentDataAdapter.updateSession(scope, sessionId, { activeRuntimeId: previousRuntimeId || '', running: false });
+        await agentDataAdapter.updateAgent(scope, agent.agentId, { settings: { ...agent.settings, ...(previousAgentRuntimeId === undefined ? {} : { runtimeId: previousAgentRuntimeId }) } });
         return rpcError(envelope.rpcId, adopted.body.error?.message || `host「${link.runtimeId}」无法接管这个会话`);
     }
     await selectHostModel(sessionId, link, session.model);
@@ -2683,6 +2682,11 @@ export async function initializeAgentRuntime(ctx: EjunContext): Promise<() => Pr
     ctx.on?.('agent/team-context', (change: AgentTeamContextChange) => {
         void recordTeamContextForSessions(change).catch((error) => {
             logger.warn('[agent-team] context fanout failed domain=%s team=%s error=%s', change.domainId, change.teamId, error instanceof Error ? error.message : String(error));
+        });
+    });
+    ctx.on?.('agent/agent-context', (change: AgentContextChange) => {
+        void recordAgentContextForSessions(change).catch((error) => {
+            logger.warn('[agent] context fanout failed domain=%s agent=%s error=%s', change.domainId, change.agentId, error instanceof Error ? error.message : String(error));
         });
     });
     ctx.on?.('tool/base-select', onBaseSelect);
@@ -3124,7 +3128,7 @@ export function createSocketLink(runtimeId: string, peer: SocketPeer): RuntimeLi
 export interface AgentScope {
     domainId: string;
     userId: number;
-    /** Numeric TYPE_AGENT document ID; null scopes the legacy unassigned workspace. */
+    /** Numeric TYPE_AGENT document ID; null scopes sessions that are not assigned to a Group. */
     groupId?: number | null;
 }
 
@@ -3132,12 +3136,12 @@ export interface AgentDataAdapter {
     ensureIndexes(): Promise<void>;
     resetRunningSessions(): Promise<void>;
     listSessions(scope: AgentScope): Promise<AgentSessionSummary[]>;
-    getSession(scope: AgentScope, sessionId: string): Promise<Awaited<ReturnType<typeof AgentModel.getSession>>>;
-    getSessionByContext(scope: AgentScope, type: 'generic' | 'base_detail', baseDocId: string): Promise<Awaited<ReturnType<typeof AgentModel.getSessionByContext>>>;
+    getSession(scope: AgentScope, sessionId: string): Promise<Awaited<ReturnType<typeof AgentSessionModel.getSession>>>;
+    getSessionByContext(scope: AgentScope, type: 'generic' | 'base_detail', baseDocId: string): Promise<Awaited<ReturnType<typeof AgentSessionModel.getSessionByContext>>>;
     listSessionsByContext(scope: AgentScope, type: 'generic' | 'base_detail', baseDocId: string): Promise<AgentSessionSummary[]>;
     upsertSession(scope: AgentScope, summary: AgentSessionSummary, archived?: boolean): Promise<void>;
-    updateSession(scope: AgentScope, sessionId: string, patch: Parameters<typeof AgentModel.updateSession>[3]): Promise<void>;
-    updateSessionContext(scope: AgentScope, sessionId: string, baseDocId?: string, cwd?: string): Promise<void>;
+    updateSession(scope: AgentScope, sessionId: string, patch: Parameters<typeof AgentSessionModel.updateSession>[3]): Promise<void>;
+    updateSessionContext(scope: AgentScope, sessionId: string, baseDocId?: string): Promise<void>;
     deleteSessions(scope: AgentScope, sessionIds: readonly string[]): Promise<void>;
     appendEvent(scope: AgentScope, sessionId: string, event: Record<string, unknown>): Promise<void>;
     appendEventsAny(sessionId: string, events: readonly Record<string, unknown>[]): Promise<void>;
@@ -3146,22 +3150,19 @@ export interface AgentDataAdapter {
     listEvents(scope: AgentScope, sessionId: string, beforeSeq?: number, limit?: number): Promise<{ events: Record<string, unknown>[]; hasMore: boolean }>;
     listEventsTailAny(sessionId: string, beforeSeq?: number, limit?: number): Promise<{ events: Record<string, unknown>[]; hasMore: boolean }>;
     search(scope: AgentScope, query: string): Promise<{ sessionId: string; snippet: string }[]>;
-    listWorkspaces(scope: AgentScope): Promise<AgentWorkspaceDoc[]>;
     listTeams(scope: AgentScope): Promise<AgentTeamDoc[]>;
     getTeam(scope: AgentScope, teamId: string): Promise<AgentTeamDoc | null>;
+    listAgents(scope: AgentScope, teamId?: string): Promise<AgentDoc[]>;
+    getAgent(scope: AgentScope, agentId: string): Promise<AgentDoc | null>;
+    createAgent(scope: AgentScope, teamId: string, title: string, settings?: AgentSettings, config?: AgentConfig): Promise<AgentDoc>;
+    updateAgent(scope: AgentScope, agentId: string, patch: { title?: string; teamId?: string; settings?: AgentSettings; config?: AgentConfig }): Promise<AgentDoc | null>;
+    deleteAgent(scope: AgentScope, agentId: string): Promise<void>;
     createTeam(scope: AgentScope, text: string, parentTeamId?: string): Promise<AgentTeamDoc>;
     updateTeam(scope: AgentScope, teamId: string, text: string): Promise<AgentTeamDoc | null>;
     updateTeamConfig(scope: AgentScope, teamId: string, config: AgentTeamConfig): Promise<AgentTeamDoc | null>;
     deleteTeam(scope: AgentScope, teamId: string): Promise<void>;
-    getWorkspace(scope: AgentScope, workspaceId: string): Promise<AgentWorkspaceDoc | null>;
-    getWorkspaceByPath(scope: AgentScope, path: string): Promise<AgentWorkspaceDoc | null>;
     getDisplayPrefs(scope: AgentScope): Promise<AgentDisplayPrefs>;
     saveDisplayPrefs(scope: AgentScope, raw: unknown): Promise<AgentDisplayPrefs>;
-    createWorkspace(scope: AgentScope, path: string): Promise<{ workspace: AgentWorkspaceDoc; created: boolean }>;
-    updateWorkspace(scope: AgentScope, workspaceId: string, patch: Partial<AgentWorkspaceDoc>): Promise<AgentWorkspaceDoc | null>;
-    deleteWorkspace(scope: AgentScope, workspaceId: string): Promise<void>;
-    reorderWorkspaces(scope: AgentScope, workspaceIds: string[]): Promise<void>;
-    reorderWorkspaceSessions(scope: AgentScope, workspaceId: string, sessionIds: string[]): Promise<AgentWorkspaceDoc | null>;
     archivedSessionIds(scope: AgentScope): Promise<string[]>;
     getDomainSettings(domainId: string): Promise<AgentDomainSettings>;
     updateDomainSettings(domainId: string, sections: Record<string, Record<string, unknown>>, expectedRevision?: number): Promise<AgentDomainSettings | null>;
@@ -3179,88 +3180,77 @@ export interface AgentDataAdapter {
     removeRuntime(runtimeId: string): Promise<boolean>;
 }
 
-function adapterWorkspaceView(workspace: AgentWorkspaceDoc) {
-    return {
-        workspaceId: workspace.workspaceId,
-        path: workspace.path,
-        title: workspace.title,
-        sessionIds: workspace.sessionIds,
-        createdAt: workspace.createdAt.toISOString(),
-        updatedAt: workspace.updatedAt.toISOString(),
-    };
-}
-
 export class MongoAgentDataAdapter implements AgentDataAdapter {
     async ensureIndexes(): Promise<void> {
-        await AgentModel.ensureIndexes();
+        await AgentSessionModel.ensureIndexes();
     }
 
     async resetRunningSessions(): Promise<void> {
-        await AgentModel.resetRunningSessions();
+        await AgentSessionModel.resetRunningSessions();
     }
 
     async listSessions(scope: AgentScope): Promise<AgentSessionSummary[]> {
-        return await AgentModel.listSessions(scope.domainId, scope.userId, scope.groupId);
+        return await AgentSessionModel.listSessions(scope.domainId, scope.userId, scope.groupId);
     }
 
     async getSession(scope: AgentScope, sessionId: string) {
-        return await AgentModel.getSession(scope.domainId, scope.userId, sessionId, scope.groupId);
+        return await AgentSessionModel.getSession(scope.domainId, scope.userId, sessionId, scope.groupId);
     }
 
     async getSessionByContext(scope: AgentScope, type: 'generic' | 'base_detail', baseDocId: string) {
-        return await AgentModel.getSessionByContext(scope.domainId, scope.userId, type, baseDocId, scope.groupId);
+        return await AgentSessionModel.getSessionByContext(scope.domainId, scope.userId, type, baseDocId, scope.groupId);
     }
 
     async listSessionsByContext(scope: AgentScope, type: 'generic' | 'base_detail', baseDocId: string) {
-        return await AgentModel.listSessionsByContext(scope.domainId, scope.userId, type, baseDocId, scope.groupId);
+        return await AgentSessionModel.listSessionsByContext(scope.domainId, scope.userId, type, baseDocId, scope.groupId);
     }
 
     async upsertSession(scope: AgentScope, summary: AgentSessionSummary, archived?: boolean): Promise<void> {
-        await AgentModel.upsertSession(scope.domainId, scope.userId, summary, archived);
+        await AgentSessionModel.upsertSession(scope.domainId, scope.userId, summary, archived);
     }
 
-    async updateSession(scope: AgentScope, sessionId: string, patch: Parameters<typeof AgentModel.updateSession>[3]): Promise<void> {
-        await AgentModel.updateSession(scope.domainId, scope.userId, sessionId, patch, scope.groupId);
+    async updateSession(scope: AgentScope, sessionId: string, patch: Parameters<typeof AgentSessionModel.updateSession>[3]): Promise<void> {
+        await AgentSessionModel.updateSession(scope.domainId, scope.userId, sessionId, patch, scope.groupId);
     }
 
-    async updateSessionContext(scope: AgentScope, sessionId: string, baseDocId?: string, cwd?: string): Promise<void> {
-        await AgentModel.updateSessionContext(scope.domainId, scope.userId, sessionId, baseDocId, cwd, scope.groupId);
+    async updateSessionContext(scope: AgentScope, sessionId: string, baseDocId?: string): Promise<void> {
+        await AgentSessionModel.updateSessionContext(scope.domainId, scope.userId, sessionId, baseDocId, scope.groupId);
     }
 
     async appendEvent(scope: AgentScope, sessionId: string, event: Record<string, unknown>): Promise<void> {
-        await AgentModel.appendEvent(scope.domainId, scope.userId, sessionId, event);
+        await AgentSessionModel.appendEvent(scope.domainId, scope.userId, sessionId, event);
     }
 
     async countEvents(scope: AgentScope, sessionId: string): Promise<number> {
-        return await AgentModel.countEvents(scope.domainId, scope.userId, sessionId, scope.groupId);
+        return await AgentSessionModel.countEvents(scope.domainId, scope.userId, sessionId, scope.groupId);
     }
 
     async countMessages(scope: AgentScope, sessionId: string): Promise<number> {
-        return await AgentModel.countMessages(scope.domainId, scope.userId, sessionId, scope.groupId);
+        return await AgentSessionModel.countMessages(scope.domainId, scope.userId, sessionId, scope.groupId);
     }
 
     async listEvents(scope: AgentScope, sessionId: string, beforeSeq?: number, limit = 50) {
-        return await AgentModel.listEvents(scope.domainId, scope.userId, sessionId, beforeSeq, limit, scope.groupId);
+        return await AgentSessionModel.listEvents(scope.domainId, scope.userId, sessionId, beforeSeq, limit, scope.groupId);
     }
 
     async listEventsTailAny(sessionId: string, beforeSeq?: number, limit = 100) {
-        return await AgentModel.listEventsTailAny(sessionId, beforeSeq, limit);
+        return await AgentSessionModel.listEventsTailAny(sessionId, beforeSeq, limit);
     }
 
     async search(scope: AgentScope, query: string): Promise<{ sessionId: string; snippet: string }[]> {
-        return await AgentModel.search(scope.domainId, scope.userId, query, scope.groupId);
+        return await AgentSessionModel.search(scope.domainId, scope.userId, query, scope.groupId);
     }
 
     async getSessionAny(sessionId: string) {
-        return await AgentModel.getSessionAny(sessionId);
+        return await AgentSessionModel.getSessionAny(sessionId);
     }
 
     async setSessionHeader(sessionId: string, header: Record<string, unknown>): Promise<void> {
-        await AgentModel.setSessionHeader(sessionId, header);
+        await AgentSessionModel.setSessionHeader(sessionId, header);
     }
 
     async listAllSessions() {
-        return await AgentModel.listAllSessions();
+        return await AgentSessionModel.listAllSessions();
     }
 
     async appendEventAny(sessionId: string, event: Record<string, unknown>): Promise<void> {
@@ -3270,133 +3260,107 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
     async appendEventsAny(sessionId: string, items: readonly Record<string, unknown>[]): Promise<void> {
         const session = await this.getSessionAny(sessionId);
         if (!session) throw new Error(`session "${sessionId}" not found`);
-        await AgentModel.appendEvents(session.domainId, session.userId, sessionId, items);
+        await AgentSessionModel.appendEvents(session.domainId, session.userId, sessionId, items);
     }
 
     async loadEventsAny(sessionId: string): Promise<Record<string, unknown>[]> {
-        return await AgentModel.listAllEventsAny(sessionId);
-    }
-
-    async listWorkspaces(scope: AgentScope): Promise<AgentWorkspaceDoc[]> {
-        return await AgentModel.listWorkspaces(scope.domainId, scope.userId);
+        return await AgentSessionModel.listAllEventsAny(sessionId);
     }
 
     async listTeams(scope: AgentScope): Promise<AgentTeamDoc[]> {
-        return await AgentModel.listTeams(scope.domainId, scope.userId, scope.groupId);
+        return await AgentSessionModel.listTeams(scope.domainId, scope.userId, scope.groupId);
     }
 
     async getTeam(scope: AgentScope, teamId: string): Promise<AgentTeamDoc | null> {
-        return await AgentModel.getTeam(scope.domainId, scope.userId, teamId, scope.groupId);
+        return await AgentSessionModel.getTeam(scope.domainId, scope.userId, teamId, scope.groupId);
+    }
+
+    async listAgents(scope: AgentScope, teamId?: string): Promise<AgentDoc[]> {
+        return await AgentModel.listAgents(scope.domainId, scope.userId, scope.groupId, teamId);
+    }
+
+    async getAgent(scope: AgentScope, agentId: string): Promise<AgentDoc | null> {
+        return await AgentModel.getAgent(scope.domainId, scope.userId, agentId, scope.groupId);
+    }
+
+    async createAgent(scope: AgentScope, teamId: string, title: string, settings?: AgentSettings, config?: AgentConfig): Promise<AgentDoc> {
+        return await AgentModel.createAgent(scope.domainId, scope.userId, scope.groupId, teamId, title, settings, config);
+    }
+
+    async updateAgent(scope: AgentScope, agentId: string, patch: { title?: string; teamId?: string; settings?: AgentSettings; config?: AgentConfig }): Promise<AgentDoc | null> {
+        return await AgentModel.updateAgent(scope.domainId, scope.userId, agentId, patch, scope.groupId);
+    }
+
+    async deleteAgent(scope: AgentScope, agentId: string): Promise<void> {
+        await AgentModel.deleteAgent(scope.domainId, scope.userId, agentId, scope.groupId);
     }
 
     async createTeam(scope: AgentScope, text: string, parentTeamId?: string): Promise<AgentTeamDoc> {
-        return await AgentModel.createTeam(scope.domainId, scope.userId, text, scope.groupId, parentTeamId);
+        return await AgentSessionModel.createTeam(scope.domainId, scope.userId, text, scope.groupId, parentTeamId);
     }
 
     async updateTeam(scope: AgentScope, teamId: string, text: string): Promise<AgentTeamDoc | null> {
-        return await AgentModel.updateTeam(scope.domainId, scope.userId, teamId, text, scope.groupId);
+        return await AgentSessionModel.updateTeam(scope.domainId, scope.userId, teamId, text, scope.groupId);
     }
 
     async updateTeamConfig(scope: AgentScope, teamId: string, config: AgentTeamConfig): Promise<AgentTeamDoc | null> {
-        return await AgentModel.updateTeamConfig(scope.domainId, scope.userId, teamId, config, scope.groupId);
+        return await AgentSessionModel.updateTeamConfig(scope.domainId, scope.userId, teamId, config, scope.groupId);
     }
 
     async deleteTeam(scope: AgentScope, teamId: string): Promise<void> {
-        await AgentModel.deleteTeam(scope.domainId, scope.userId, teamId, scope.groupId);
-    }
-
-    async getWorkspace(scope: AgentScope, workspaceId: string): Promise<AgentWorkspaceDoc | null> {
-        return await AgentModel.getWorkspace(scope.domainId, scope.userId, workspaceId);
-    }
-
-    async getWorkspaceByPath(scope: AgentScope, path: string): Promise<AgentWorkspaceDoc | null> {
-        return await AgentModel.getWorkspaceByPath(scope.domainId, scope.userId, path);
+        await AgentSessionModel.deleteTeam(scope.domainId, scope.userId, teamId, scope.groupId);
     }
 
     async getDisplayPrefs(scope: AgentScope): Promise<AgentDisplayPrefs> {
-        return await AgentModel.getDisplayPrefs(scope.domainId, scope.userId);
+        return await AgentSessionModel.getDisplayPrefs(scope.domainId, scope.userId);
     }
 
     async saveDisplayPrefs(scope: AgentScope, raw: unknown): Promise<AgentDisplayPrefs> {
-        return await AgentModel.saveDisplayPrefs(scope.domainId, scope.userId, raw);
-    }
-
-    async createWorkspace(scope: AgentScope, path: string): Promise<{ workspace: AgentWorkspaceDoc; created: boolean }> {
-        const existing = await this.getWorkspaceByPath(scope, path);
-        if (existing) return { workspace: existing, created: false };
-        const items = await this.listWorkspaces(scope);
-        const pathParts = path.split(/[\\/]/).filter(Boolean);
-        const title = pathParts[pathParts.length - 1] || path;
-        const workspace = await AgentModel.upsertWorkspace(scope.domainId, scope.userId, {
-            domainId: scope.domainId,
-            userId: scope.userId,
-            workspaceId: `workspace-${randomUUID()}`,
-            path,
-            title,
-            sessionIds: [],
-            order: items.length,
-        });
-        return { workspace, created: true };
+        return await AgentSessionModel.saveDisplayPrefs(scope.domainId, scope.userId, raw);
     }
 
     async deleteSession(scope: AgentScope, sessionId: string): Promise<void> {
-        await AgentModel.deleteSession(scope.domainId, scope.userId, sessionId, scope.groupId);
+        await AgentSessionModel.deleteSession(scope.domainId, scope.userId, sessionId, scope.groupId);
     }
 
     async deleteSessions(scope: AgentScope, sessionIds: readonly string[]): Promise<void> {
-        await AgentModel.deleteSessions(scope.domainId, scope.userId, sessionIds, scope.groupId);
-    }
-
-    async updateWorkspace(scope: AgentScope, workspaceId: string, patch: Partial<AgentWorkspaceDoc>): Promise<AgentWorkspaceDoc | null> {
-        return await AgentModel.updateWorkspace(scope.domainId, scope.userId, workspaceId, patch);
-    }
-
-    async deleteWorkspace(scope: AgentScope, workspaceId: string): Promise<void> {
-        await AgentModel.deleteWorkspace(scope.domainId, scope.userId, workspaceId);
-    }
-
-    async reorderWorkspaces(scope: AgentScope, workspaceIds: string[]): Promise<void> {
-        await AgentModel.reorderWorkspaces(scope.domainId, scope.userId, workspaceIds);
-    }
-
-    async reorderWorkspaceSessions(scope: AgentScope, workspaceId: string, sessionIds: string[]): Promise<AgentWorkspaceDoc | null> {
-        return await AgentModel.reorderWorkspaceSessions(scope.domainId, scope.userId, workspaceId, sessionIds);
+        await AgentSessionModel.deleteSessions(scope.domainId, scope.userId, sessionIds, scope.groupId);
     }
 
     async archivedSessionIds(scope: AgentScope): Promise<string[]> {
-        return await AgentModel.archivedSessionIds(scope.domainId, scope.userId, scope.groupId);
+        return await AgentSessionModel.archivedSessionIds(scope.domainId, scope.userId, scope.groupId);
     }
 
     async getDomainSettings(domainId: string) {
-        return await AgentModel.getDomainSettings(domainId);
+        return await AgentSessionModel.getDomainSettings(domainId);
     }
 
     async updateDomainSettings(domainId: string, sections: Record<string, Record<string, unknown>>, expectedRevision?: number) {
-        return await AgentModel.updateDomainSettings(domainId, sections, expectedRevision);
+        return await AgentSessionModel.updateDomainSettings(domainId, sections, expectedRevision);
     }
 
     async resolveCredential(domainId: string, ref: string) {
-        return await AgentModel.resolveCredential(domainId, ref);
+        return await AgentSessionModel.resolveCredential(domainId, ref);
     }
 
     async describeCredential(domainId: string, ref: string) {
-        return await AgentModel.describeCredential(domainId, ref);
+        return await AgentSessionModel.describeCredential(domainId, ref);
     }
 
     async setCredential(domainId: string, ref: string, value: string) {
-        return await AgentModel.setCredential(domainId, ref, value);
+        return await AgentSessionModel.setCredential(domainId, ref, value);
     }
 
     async unsetCredential(domainId: string, ref: string) {
-        return await AgentModel.unsetCredential(domainId, ref);
+        return await AgentSessionModel.unsetCredential(domainId, ref);
     }
 
     async domainRuntime(sessionId: string) {
-        return await AgentModel.domainRuntime(sessionId);
+        return await AgentSessionModel.domainRuntime(sessionId);
     }
 
     async deleteDomain(domainId: string): Promise<void> {
-        await AgentModel.deleteDomain(domainId);
+        await AgentSessionModel.deleteDomain(domainId);
     }
 
     async cacheHistory(scope: AgentScope, sessionId: string, value: any): Promise<void> {
@@ -3427,10 +3391,6 @@ export class MongoAgentDataAdapter implements AgentDataAdapter {
             hasMore: page.hasMore,
             ...(session?.projections ? { projections: { asOfSeq: typeof last?.seq === 'number' ? last.seq : -1, values: session.projections.values ?? {} } } : {}),
         };
-    }
-
-    viewWorkspace(workspace: AgentWorkspaceDoc) {
-        return adapterWorkspaceView(workspace);
     }
 
     async listRuntimes(): Promise<AgentRuntimeSummary[]> {
@@ -3466,10 +3426,10 @@ export const agentRuntimeHandlerContext = {
     modelReady: () => modelReady,
     requireBridgeToken, baseSessionScope, toolRegistry,
     scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, upstreamValue,
-    teamRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled,
+    teamRpc, agentRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled,
     agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, syncSessionAddonsForTeam, syncSessionTeamContextForTeam, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,
     baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems,
-    runtimeRelabel, runtimeRemove, sessionAgentCreate, sessionAgentUpdate, sessionCreate, sessionHistory, sessionMessageCount,
+    runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount,
     sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink,
     agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider,
     logger, WebSocket, randomUUID, parseRuntimeFrame, createSocketLink, addLink, rememberRuntime,

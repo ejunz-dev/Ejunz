@@ -14,7 +14,6 @@ export function filterSessions(sessions: readonly SessionSummary[], current: str
         const sessionTitle = typeof title === 'string' && title.trim() ? title : session.blank ? '新会话' : `会话 ${session.sessionId.slice(8, 16)}`;
         return sessionTitle.toLowerCase().includes(normalized)
             || session.sessionId.toLowerCase().includes(normalized)
-            || session.cwd?.toLowerCase().includes(normalized) === true
             || searchMatches?.has(session.sessionId) === true;
     });
 }

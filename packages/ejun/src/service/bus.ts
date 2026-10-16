@@ -48,6 +48,13 @@ export interface AgentTeamContextChange {
     teamId: string;
 }
 
+export interface AgentContextChange {
+    domainId: string;
+    userId: number;
+    groupId?: number | null;
+    agentId: string;
+}
+
 export interface EventMap {
     'app/listen': () => void;
     'app/started': () => void;
@@ -72,6 +79,7 @@ export interface EventMap {
     'system/setting-loaded': () => VoidReturn;
     'agent/addon-state': (change: AgentAddonStateChange) => VoidReturn;
     'agent/team-context': (change: AgentTeamContextChange) => VoidReturn;
+    'agent/agent-context': (change: AgentContextChange) => VoidReturn;
     'bus/broadcast': (event: keyof EventMap, payload: any, trace?: string) => VoidReturn;
     'monitor/update': (type: 'server' | 'worker', $set: any) => VoidReturn;
     'monitor/collect': (info: any) => VoidReturn;

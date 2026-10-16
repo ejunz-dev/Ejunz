@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { DraftAttachment } from '../../runtime/uploads';
-import type { AgentTeam, BaseView } from '../../runtime/session';
+import type { AgentSummary, AgentTeam, BaseView } from '../../runtime/session';
 import { defineSlot } from '../../../../registry';
 import type { HostOption } from '../structure/HostPicker';
 import type { SessionModels } from '../types';
@@ -15,6 +15,9 @@ interface InputConfigDialogProps {
     selectedBaseId?: number;
     onPickBase: (baseId: number | undefined) => void;
     teams: readonly AgentTeam[];
+    agents: readonly AgentSummary[];
+    selectedAgentId?: string;
+    onPickAgent: (agentId: string | undefined) => void;
     selectedTeamId?: string;
     onPickTeam: (teamId: string | undefined) => void;
     models: SessionModels | null;
@@ -47,7 +50,7 @@ interface NewSessionContextSlotProps {
 }
 
 const NewSessionContextSlot = defineSlot<NewSessionContextSlotProps>(
-    'component:agent-new-session-context',
+    'component:agent-settings-context',
     () => null,
 );
 
@@ -57,12 +60,14 @@ function buttonClass(selected: boolean): string {
 
 export function InputConfigDialog({
     hosts, selectedHostId, onPickHost,
-    bases, selectedBaseId, onPickBase, teams, selectedTeamId, onPickTeam, models, selectModel, agentPresetOptions, agentPresetChoice, onSelectAgentPreset, agentPresetError,
+    bases, selectedBaseId, onPickBase, teams, agents, selectedAgentId, onPickAgent, selectedTeamId, onPickTeam, models, selectModel, agentPresetOptions, agentPresetChoice, onSelectAgentPreset, agentPresetError,
     input, setInput, attachments, onAddFiles, onRemoveAttachment, modelMenuOpen, setModelMenuOpen,
     notice, onCancel, sending, loading, onConfirm, onCreateOnly, onClose,
 }: InputConfigDialogProps) {
-    const [sessionName, setSessionName] = useState('新会话');
+    const [sessionName, setSessionName] = useState(selectedAgentId ? '新会话' : '新 Agent');
     const [nameEditing, setNameEditing] = useState(false);
+    const nameLabel = selectedAgentId ? 'Session 名称' : 'Agent 名称';
+    useEffect(() => setSessionName(selectedAgentId ? '新会话' : '新 Agent'), [selectedAgentId]);
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape' && !sending) onClose(); };
         window.addEventListener('keydown', onKeyDown);
@@ -73,7 +78,7 @@ export function InputConfigDialog({
             <header className="bd-edit-dialog__header">
                 <div className="eza-inputConfigTitle">
                     {nameEditing ? <input className="eza-titleEditor" autoFocus value={sessionName} disabled={sending} onChange={(event) => setSessionName(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === 'Enter') setNameEditing(false); }} /> : <h2 id="eza-input-config-title">{sessionName}</h2>}
-                    <button type="button" className="eza-inputConfigTitleEdit" disabled={sending} onClick={() => setNameEditing((value) => !value)} aria-label={nameEditing ? '完成编辑会话名称' : '编辑会话名称'}>{nameEditing ? '✓' : '✎'}</button>
+                    <button type="button" className="eza-inputConfigTitleEdit" disabled={sending} onClick={() => setNameEditing((value) => !value)} aria-label={nameEditing ? `完成编辑${nameLabel}` : `编辑${nameLabel}`}>{nameEditing ? '✓' : '✎'}</button>
                 </div>
                 <button type="button" className="bd-drawer__close" onClick={onClose} disabled={sending} aria-label="关闭">×</button>
             </header>
@@ -91,8 +96,8 @@ export function InputConfigDialog({
                 <div className="bd-edit-field">
                     <h3>模型</h3>
                     {models ? models.groups.map((group) => (
-                        <div className="eza-sessionSettingsGroup" key={group.id}>
-                            <span className="eza-sessionSettingsGroupName">{group.name}</span>
+                        <div className="eza-agentSettingsGroup" key={group.id}>
+                            <span className="eza-agentSettingsGroupName">{group.name}</span>
                             <div className="bd-edit-tags">
                                 {group.models.map((item) => <button type="button" className={buttonClass(models.current.provider === group.id && models.current.model === item.id)} disabled={sending} key={`${group.id}:${item.id}`} title={item.description || item.name} onClick={() => selectModel(group.id, item.id)}>{item.name}</button>)}
                             </div>
@@ -113,6 +118,14 @@ export function InputConfigDialog({
                     </div>
                 </div>
                 <div className="bd-edit-field">
+                    <h3>Agent</h3>
+                    <div className="bd-edit-tags">
+                        <button type="button" className={buttonClass(selectedAgentId === undefined)} disabled={sending} onClick={() => onPickAgent(undefined)}>新建 Agent</button>
+                        {agents.filter((agent) => agent.teamId === selectedTeamId).map((agent) => <button type="button" className={buttonClass(selectedAgentId === agent.agentId)} disabled={sending} key={agent.agentId} onClick={() => onPickAgent(agent.agentId)}>{agent.title}</button>)}
+                    </div>
+                    <span className="bd-muted">{selectedAgentId ? '以下设置会更新所选 Agent，其 Sessions 共用这些设置。' : '以下设置将保存到新建的 Agent。'}</span>
+                </div>
+                <div className="bd-edit-field">
                     <h3>Agent 预设</h3>
                     <div className="bd-edit-tags">
                         {agentPresetOptions.map((option) => <button type="button" className={buttonClass(agentPresetChoice === option.id)} disabled={sending} key={option.id} title={option.description} onClick={() => onSelectAgentPreset(option.id)}>{option.name || option.id}{option.trust === 'user' ? ' · 自定义' : ''}</button>)}
@@ -122,8 +135,8 @@ export function InputConfigDialog({
             </div>
             <div className="eza-inputConfigHero">
                 <div className="eza-inputConfigCreateRow">
-                    <button type="button" className="eza-inputConfigCreate" disabled={sending} onClick={() => onCreateOnly(sessionName.trim() || '新会话')}>只创建会话</button>
-                    <span>参数会保存在这个 Agent 上，可以稍后再开始对话。</span>
+                    <button type="button" className="eza-inputConfigCreate" disabled={sending} onClick={() => onCreateOnly(sessionName.trim() || (selectedAgentId ? '新会话' : '新 Agent'))}>{selectedAgentId ? '只创建 Session' : '只创建 Agent'}</button>
+                    <span>{selectedAgentId ? '所选 Agent 的设置会应用到这个 Session。' : '参数保存在 Agent 上；创建后可以再添加多个 Session。'}</span>
                 </div>
                 <InputBar
                     hero
@@ -142,7 +155,7 @@ export function InputConfigDialog({
                     setModelMenuOpen={setModelMenuOpen}
                     selectModel={selectModel}
                     notice={notice}
-                    placeholder="输入第一条消息，或只创建会话"
+                    placeholder={selectedAgentId ? '输入第一条消息，或只创建 Session' : '输入第一条消息，或只创建 Agent'}
                 />
             </div>
             </>}

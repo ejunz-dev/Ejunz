@@ -17,7 +17,7 @@ import RecordModel, { type SessionRecordDoc, type RecordProblemState } from '../
 import { problemKind, matchingColumnsNormalized, superFlipNormalized, flattenAiEvalRubricForScoring, aiEvalRubricSumMax } from '../model/problem';
 import SessionModel, { type SessionDoc } from '../model/session';
 import user from '../model/user';
-import Agent from '../model/agent';
+import GroupDefinitionModel from '../model/agent';
 import { buildDevelopRecordDetailAugment } from '../model/record';
 import {
     deriveSessionRecordType,
@@ -659,7 +659,7 @@ class RecordDetailHandler extends Handler {
         let adoc: any = null;
         if (this.rdoc.recordKind === 'agent' && this.rdoc.agentId) {
             try {
-                adoc = await Agent.get(domainId, this.rdoc.agentId);
+                adoc = await GroupDefinitionModel.get(domainId, this.rdoc.agentId);
             } catch {
                 adoc = null;
             }

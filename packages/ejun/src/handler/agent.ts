@@ -1,8 +1,8 @@
 import type { Context } from '../context';
 import { ConnectionHandler, Handler } from '@ejunz/framework';
 import { PERM, PRIV } from '../model/builtin';
-import GroupDefinitionModel, { AgentSessionModel } from '../model/agent';
-import type { AgentTeamConfig, AgentTeamDoc } from '../model/agent';
+import GroupDefinitionModel, { AgentModel, AgentSessionModel } from '../model/agent';
+import type { AgentConfig, AgentTeamConfig, AgentTeamDoc } from '../model/agent';
 import type { AgentScope, RuntimeLink } from '../service/runtime';
 import type { AgentStorageDescriptor } from '../model/agent';
 import type { RuntimeHelloFrame, RuntimeInboundFrame, RuntimeLinkPollFrame, RuntimeStream } from '../service/runtime';
@@ -17,7 +17,7 @@ interface RpcEnvelope {
     domainId?: string;
     groupId?: number | null;
 }
-const { requireBridgeToken, baseSessionScope, toolRegistry, scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, teamRpc, workspaceRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled, agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, baseTutorEnsure, baseTutorList, baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems, runtimeRelabel, runtimeRemove, sessionAgentCreate, sessionAgentUpdate, sessionCreate, sessionHistory, sessionMessageCount, sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink, logger, RUNTIME_HELLO_TIMEOUT_MS, addLink, rememberRuntime, reportRuntime, agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider, SystemModel, randomUUID, WebSocket, parseRuntimeFrame, createSocketLink, followLinks, runtimeLinks, runtimeFacts, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels, cloneSettingsSections } = service;
+const { requireBridgeToken, baseSessionScope, toolRegistry, scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, teamRpc, agentRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled, agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, baseTutorEnsure, baseTutorList, baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems, runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount, sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink, logger, RUNTIME_HELLO_TIMEOUT_MS, addLink, rememberRuntime, reportRuntime, agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider, SystemModel, randomUUID, WebSocket, parseRuntimeFrame, createSocketLink, followLinks, runtimeLinks, runtimeFacts, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels } = service;
 const dataOk = (value: unknown): Record<string, unknown> => ({ ok: true, value });
 const dataError = (message: string): Record<string, unknown> => ({ ok: false, error: { message } });
 
@@ -107,6 +107,33 @@ async function saveTeamConfig(envelope: RpcEnvelope, scope: AgentScope, ctx: Con
         }
     }
     return rpcOk(envelope.rpcId, { team: teamView(updated), syncScheduled: true });
+}
+
+async function saveAgentConfig(envelope: RpcEnvelope, scope: AgentScope, ctx: Context) {
+    const agentId = typeof envelope.payload?.agentId === 'string' ? envelope.payload.agentId.trim() : '';
+    const rawPatch = envelope.payload?.patch && typeof envelope.payload.patch === 'object' && !Array.isArray(envelope.payload.patch)
+        ? envelope.payload.patch as Record<string, unknown>
+        : {};
+    if (!agentId) return rpcError(envelope.rpcId, 'agentId is required');
+    if (!Object.prototype.hasOwnProperty.call(rawPatch, 'context')) return rpcError(envelope.rpcId, 'Agent context patch is empty');
+    if (typeof rawPatch.context !== 'string') return rpcError(envelope.rpcId, 'context must be a string');
+    if (rawPatch.context.length > 20_000) return rpcError(envelope.rpcId, 'context must not exceed 20000 characters');
+    const agent = await AgentModel.getAgent(scope.domainId, scope.userId, agentId, scope.groupId);
+    if (!agent) return rpcError(envelope.rpcId, 'Agent not found');
+    const config: AgentConfig = { ...(agent.config ?? {}), context: rawPatch.context };
+    const updated = await AgentModel.updateAgent(scope.domainId, scope.userId, agentId, { config }, scope.groupId);
+    if (!updated) return rpcError(envelope.rpcId, 'Agent not found');
+    try {
+        await ctx.broadcast('agent/agent-context', {
+            domainId: scope.domainId,
+            userId: scope.userId,
+            ...(scope.groupId === undefined ? {} : { groupId: scope.groupId }),
+            agentId,
+        });
+    } catch (error) {
+        logger.warn('[agent] Cordis context event failed agent=%s error=%s', agentId, error instanceof Error ? error.message : String(error));
+    }
+    return rpcOk(envelope.rpcId, { agentId, config: updated.config ?? config, syncScheduled: true });
 }
 
 async function mountedAddonsForSession(session: { domainId: string; userId: number; sessionId: string; groupId?: number; teamId?: string }): Promise<Set<string>> {
@@ -577,14 +604,19 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             this.response.body = JSON.stringify(await saveTeamConfig(envelope, scope, this.ctx));
             return;
         }
+        if (method === 'agent.config.save') {
+            this.response.type = 'application/json';
+            this.response.body = JSON.stringify(await saveAgentConfig(envelope, scope, this.ctx));
+            return;
+        }
+        if (method.startsWith('agent.')) {
+            this.response.type = 'application/json';
+            this.response.body = JSON.stringify(await agentRpc(envelope, scope));
+            return;
+        }
         if (method.startsWith('team.')) {
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await teamRpc(envelope, scope));
-            return;
-        }
-        if (method.startsWith('workspace.')) {
-            this.response.type = 'application/json';
-            this.response.body = JSON.stringify(await workspaceRpc(envelope, scope));
             return;
         }
         if (method === 'base.list') {
@@ -658,16 +690,6 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
         if (method === 'host.remove') {
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await runtimeRemove(envelope));
-            return;
-        }
-        if (method === 'agent.create') {
-            this.response.type = 'application/json';
-            this.response.body = JSON.stringify(await sessionAgentCreate(envelope, scope));
-            return;
-        }
-        if (method === 'agent.update') {
-            this.response.type = 'application/json';
-            this.response.body = JSON.stringify(await sessionAgentUpdate(envelope, scope));
             return;
         }
         if (method === 'session.list') {
@@ -761,20 +783,14 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
                 : mergeDomainModels(upstream.body, domainSettings.sections);
         }
         if (method === 'session.selectModel' && upstream.body.result?.ok && sessionId) {
-            const provider = typeof payload.provider === 'string' ? payload.provider : '';
-            const model = typeof payload.model === 'string' ? payload.model : '';
-            if (provider && model) {
-                await agentDataAdapter.updateSession(scope, sessionId, { model: { provider, model } });
-                const domainSettings = await agentDataAdapter.getDomainSettings(scope.domainId);
-                const nextSections = cloneSettingsSections(domainSettings.sections);
-                nextSections['agent-default-model'] = {
-                    provider,
-                    model,
-                    ...(typeof payload.reasoningEffort === 'string' ? { reasoningEffort: payload.reasoningEffort } : {}),
-                };
-                if (!await agentDataAdapter.updateDomainSettings(scope.domainId, nextSections, domainSettings.revision)) {
-                    logger.warn('agent model default update lost a concurrent domain settings change domain=%s', scope.domainId);
-                }
+            const provider = typeof payload.provider === 'string' ? payload.provider.trim() : '';
+            const model = typeof payload.model === 'string' ? payload.model.trim() : '';
+            const session = await agentDataAdapter.getSession(scope, sessionId);
+            const agent = session?.agentId ? await agentDataAdapter.getAgent(scope, session.agentId) : null;
+            if (provider && model && agent) {
+                await agentDataAdapter.updateAgent(scope, agent.agentId, {
+                    settings: { ...agent.settings, model: { provider, model } },
+                });
             }
         }
         if (method === 'session.rename' && upstream.body.result?.ok && sessionId) {
@@ -798,10 +814,9 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
                     creatorUserId: scope.userId,
                     type: parent.type ?? 'generic',
                     ...(parent.groupId === undefined ? {} : { groupId: parent.groupId }),
-                    ...(parent.baseDocId === undefined ? {} : { baseDocId: parent.baseDocId }),
-                    ...(parent.cwd === undefined ? {} : { cwd: parent.cwd }),
-                    ...(parent.agentPreset === undefined ? {} : { agentPreset: parent.agentPreset }),
-                    ...(parent.model === undefined ? {} : { model: parent.model }),
+                    ...(parent.teamId === undefined ? {} : { teamId: parent.teamId }),
+                    ...(parent.agentId === undefined ? {} : { agentId: parent.agentId }),
+                    ...(parent.activeRuntimeId === undefined ? {} : { activeRuntimeId: parent.activeRuntimeId }),
                 });
             }
         }

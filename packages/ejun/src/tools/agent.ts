@@ -1,13 +1,13 @@
 import Schema from 'schemastery';
 import type { Context } from 'ejun/src/context';
 import { PRIV, PERM } from 'ejun/src/model/builtin';
-import GroupDefinitionModel, { AgentSessionModel } from 'ejun/src/model/agent';
+import GroupDefinitionModel, { AgentModel, AgentSessionModel } from 'ejun/src/model/agent';
 import UserModel from 'ejun/src/model/user';
 import { MAX_AGENTS_PER_CALL, MAX_FILE_CONTENT_CHARS, MAX_FILE_CONTENT_CHARS_LIMIT, MAX_TEAMS_PER_CALL } from '../lib/tool-limits';
 import { asText, idList } from '../lib/tool-shared';
 import { agentRuntimeHandlerContext } from '../service/runtime';
 import { listAgentAddons, registerAgentAddon } from '../service/addons';
-import type { AgentTeamConfig, AgentTeamDoc, AgentSessionSummary } from 'ejun/src/model/agent';
+import type { AgentConfig, AgentSettings, AgentTeamConfig, AgentTeamDoc, AgentSessionSummary, AgentSessionView } from 'ejun/src/model/agent';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import type {} from '../service/registry';
 
@@ -70,97 +70,33 @@ export const TeamRemove = Schema.object({
     teamId: Schema.string().required().description('Team id.'),
 }).description('Delete a workspace team belonging to an Agent. Its child teams and session agents move to its parent. The root team cannot be deleted.');
 
-export const AgentList = Schema.object({
-    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
-    teamId: Schema.string().description('Optional team id to filter sessions by their workspace team.'),
-}).description('List this Group’s session agents. Omit teamId to list agents from every workspace team.');
-
 const conversationRead = {
-    beforeSeq: Schema.number().step(1).min(0).description('Return turns before this event seq. Omit it to read the latest turns.'),
+    beforeSeq: Schema.number().step(1).min(0).description('Return turns before this event seq.'),
     maxMessages: Schema.number().step(1).min(1).max(500).description('Maximum turns to read (default 50).'),
-    maxChars: Schema.number().step(1).min(1).max(MAX_FILE_CONTENT_CHARS_LIMIT).description(`Cap on the returned text (default ${MAX_FILE_CONTENT_CHARS}).`),
+    maxChars: Schema.number().step(1).min(1).max(MAX_FILE_CONTENT_CHARS_LIMIT).description(`Cap on returned text (default ${MAX_FILE_CONTENT_CHARS}).`),
 };
-
-export const AgentGet = Schema.object({
-    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
-    agentId: Schema.string().required().description('Session id shown as the agent id in the Agent workspace.'),
-    ...conversationRead,
-}).description('Read one session agent by agentId and return its title and conversation as `content`, the same way `agent_agent_get` returns an agent content. '
-    + 'Turns are the stored user and assistant messages, in order. The text stops at `maxChars` and `truncated` reports that. '
-    + '`hasMore` means older turns remain. Pass the returned `beforeSeq` to read the previous page.');
-
-export const AgentCreate = Schema.object({
-    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
-    teamId: Schema.string().description('Optional existing workspace team id (defaults to the Group root).'),
-    title: Schema.string().description('Optional session agent title.'),
-    message: Schema.string().description('Optional first message. Omit it to create the agent with its settings ready and start no conversation.'),
-    provider: Schema.string().description('Optional model provider. Pass it together with model.'),
-    model: Schema.string().description('Optional model id. Pass it together with provider.'),
-    baseDocId: Schema.number().step(1).min(1).description('Optional Base to attach as this session\'s context.'),
-    runtimeId: Schema.string().description('Optional host id. Omit it to use the default host.'),
-    agentPreset: Schema.string().description('Optional Agent preset id.'),
-}).description('Create a session agent with its team, title, model, Base, host, and preset already set. The selected team’s context is injected when the conversation starts. '
-    + 'Pass message to start the conversation after the agent exists. Omit message to leave the agent ready and silent. Requires an available Agent runtime.');
-
-export const AgentUpdate = Schema.object({
-    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
-    agentId: Schema.string().required().description('Session id shown as the agent id in the Agent workspace.'),
-    title: Schema.string().description('New session agent title (optional).'),
-    teamId: Schema.string().description('Move the session agent to an existing workspace team (optional).'),
-}).description('Rename or move a session agent belonging to an Agent. Moving it to another team applies that team’s Addon configuration to the existing session.');
-
-export const AgentRemove = Schema.object({
-    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
-    agentId: Schema.string().required().description('Session id shown as the agent id in the Agent workspace.'),
-}).description('Delete a session agent and its conversation history.');
-
-const AgentCreateFields = Schema.object({
-    teamId: Schema.string().description('Optional existing workspace team id (defaults to the Group root).'),
-    title: Schema.string().description('Optional session agent title.'),
-    message: Schema.string().description('Optional first message. Omit it to leave the agent ready and silent.'),
-    provider: Schema.string().description('Optional model provider. Pass it together with model.'),
-    model: Schema.string().description('Optional model id. Pass it together with provider.'),
-    baseDocId: Schema.number().step(1).min(1).description('Optional Base to attach as this session\'s context.'),
-    runtimeId: Schema.string().description('Optional host id.'),
-    agentPreset: Schema.string().description('Optional Agent preset id.'),
-});
-
-export const AgentCreateMany = Schema.object({
-    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
-    agents: Schema.array(AgentCreateFields).min(1).max(MAX_AGENTS_PER_CALL).required().description('Session agents to create, in order.'),
-}).description('Create several session agents for one Group. Each entry uses the same fields as `agent_agent_create`. '
-    + 'An agent is stored before its optional message is sent, so a refused first message still leaves the agent. '
-    + `One call creates at most ${MAX_AGENTS_PER_CALL} workspace agents.`);
-
-export const AgentGetMany = Schema.object({
-    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
-    agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required().description('Session agent ids to read, in order.'),
-    ...conversationRead,
-}).description('Read several workspace agents of one Group in a single call, each reported as `agent_agent_get` reports one, including its conversation as `content`. '
-    + 'A missing id is listed in `missingAgentIds` and `ok` is false. '
-    + `One call reads at most ${MAX_AGENTS_PER_CALL} workspace agents.`);
-
-export const AgentUpdateMany = Schema.object({
-    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
-    entries: Schema.array(Schema.object({
-        agentId: Schema.string().required().description('Session agent id (required).'),
-        title: Schema.string().description('New session agent title (optional).'),
-        teamId: Schema.string().description('Existing workspace team to move the agent to (optional).'),
-    })).min(1).max(MAX_AGENTS_PER_CALL).required().description('One entry per session agent.'),
-}).description('Rename and/or move several workspace agents of one Group. Each entry is `{ agentId, title?, teamId? }` and must name at least one change. Moving an agent applies the destination team’s Addon configuration to its existing session. '
-    + `One call updates at most ${MAX_AGENTS_PER_CALL} workspace agents.`);
-
-export const AgentRemoveMany = Schema.object({
-    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
-    agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required().description('Session agents to remove.'),
-}).description('Delete several workspace agents of one Group and their conversation history. '
-    + `One call removes at most ${MAX_AGENTS_PER_CALL} agents.`);
+export const AgentList = Schema.object({ groupId: Schema.number().step(1).min(1).required(), teamId: Schema.string().description('Optional team filter.') }).description('List persisted Agent records, including agentId, teamId, title, and settings.');
+export const AgentGet = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required().description('Persisted Agent id.') }).description('Read one persisted Agent record by agentId.');
+export const AgentCreate = Schema.object({ groupId: Schema.number().step(1).min(1).required(), teamId: Schema.string(), title: Schema.string().required(), provider: Schema.string(), model: Schema.string(), baseDocId: Schema.number().step(1).min(1), runtimeId: Schema.string(), agentPreset: Schema.string(), context: Schema.string() }).description('Create a persistent Agent record with teamId, title, settings, and optional context; does not create a session.');
+export const AgentUpdate = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required(), title: Schema.string(), teamId: Schema.string(), provider: Schema.string(), model: Schema.string(), baseDocId: Schema.number().step(1).min(1), runtimeId: Schema.string(), agentPreset: Schema.string(), context: Schema.string() }).description('Update an Agent record, its settings, or its persistent context by agentId.');
+export const AgentRemove = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required() }).description('Delete an Agent record by agentId.');
+const AgentCreateFields = Schema.object({ teamId: Schema.string(), title: Schema.string().required(), provider: Schema.string(), model: Schema.string(), baseDocId: Schema.number().step(1).min(1), runtimeId: Schema.string(), agentPreset: Schema.string(), context: Schema.string() });
+export const AgentCreateMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agents: Schema.array(AgentCreateFields).min(1).max(MAX_AGENTS_PER_CALL).required() }).description('Create persisted Agent records.');
+export const AgentGetMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required() }).description('Read Agent records by agentIds.');
+export const AgentUpdateMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), entries: Schema.array(Schema.object({ agentId: Schema.string().required(), title: Schema.string(), teamId: Schema.string(), context: Schema.string() })).min(1).max(MAX_AGENTS_PER_CALL).required() }).description('Update Agent records by agentId.');
+export const AgentRemoveMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required() }).description('Delete Agent records by agentIds.');
+export const AgentSessionList = Schema.object({ groupId: Schema.number().step(1).min(1).required(), teamId: Schema.string(), agentId: Schema.string() }).description('List runtime sessions by sessionId, optionally filtered by owning Agent or team.');
+export const AgentSessionGet = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionId: Schema.string().required(), ...conversationRead }).description('Read a runtime session conversation by sessionId.');
+export const AgentSessionCreate = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required(), title: Schema.string(), message: Schema.string() }).description('Create a runtime session for an existing Agent record.');
+export const AgentSessionUpdate = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionId: Schema.string().required(), title: Schema.string().required() }).description('Rename a runtime session by sessionId.');
+export const AgentSessionDelete = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionId: Schema.string().required() }).description('Delete a runtime session by sessionId.');
+export const AgentSessionGetMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required(), ...conversationRead }).description('Read runtime sessions by sessionIds.');
+export const AgentSessionDeleteMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required() }).description('Delete runtime sessions by sessionIds.');
 
 const TeamAgentCreateFields = Schema.object({
     teamId: Schema.string().description('Existing Agent team id. Omit to use the Group root team.'),
     teamRef: Schema.string().description('ref of a team created in this same request.'),
-    title: Schema.string().description('Optional agent title.'),
-    message: Schema.string().description('Optional first message.'),
+    title: Schema.string().required().description('Agent record title.'),
     provider: Schema.string().description('Optional model provider. Pass together with model.'),
     model: Schema.string().description('Optional model id. Pass together with provider.'),
     baseDocId: Schema.number().step(1).min(1).description('Optional Base to attach as this agent’s context.'),
@@ -183,8 +119,7 @@ export const TeamCreateMany = Schema.object({
 export const TeamGetMany = Schema.object({
     groupId: Schema.number().step(1).min(1).required().description('Group id.'),
     teamIds: Schema.array(Schema.string()).max(MAX_TEAMS_PER_CALL).description('Team ids to read.'),
-    agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).description('Agent ids to read.'),
-    ...conversationRead,
+    agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).description('Persisted Agent ids to read.'),
 }).description('Read multiple teams and agents for one Group in one tool call. At least one of teamIds or agentIds is required; each array can contain up to 500 ids.');
 
 export const TeamUpdateMany = Schema.object({
@@ -206,7 +141,7 @@ export const TeamUpdateMany = Schema.object({
 export const TeamDeleteMany = Schema.object({
     groupId: Schema.number().step(1).min(1).required().description('Group id.'),
     teamIds: Schema.array(Schema.string()).max(MAX_TEAMS_PER_CALL).description('Teams to delete; agents and child teams move to the deleted team’s parent.'),
-    agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).description('Agents to delete.'),
+    agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).description('Persisted Agent ids to delete.'),
 }).description('Delete multiple teams and agents for one Group in one tool call. Agents are deleted before teams; the root team cannot be deleted.');
 
 function groupIdOf(args: ToolArgs): number {
@@ -238,9 +173,9 @@ function teamView(team: AgentTeamDoc) {
     };
 }
 
-type SessionAgentData = Omit<AgentSessionSummary, 'createdAt'> & { createdAt?: number | Date };
+type SessionAgentData = AgentSessionView;
 
-function sessionTitleOf(session: SessionAgentData): string {
+function sessionTitleOf(session: Pick<AgentSessionSummary, 'sessionId' | 'blank' | 'projections'>): string {
     const title = session.projections?.values?.title;
     return typeof title === 'string' && title.trim()
         ? title
@@ -249,19 +184,16 @@ function sessionTitleOf(session: SessionAgentData): string {
 
 function sessionAgentView(session: SessionAgentData) {
     return {
-        agentId: session.sessionId,
         sessionId: session.sessionId,
+        ...(session.agentId === undefined ? {} : { agentId: session.agentId }),
         ...(session.groupId === undefined ? {} : { groupId: session.groupId }),
         ...(session.teamId === undefined ? {} : { teamId: session.teamId }),
         title: sessionTitleOf(session),
-        ...(session.cwd ? { cwd: session.cwd } : {}),
         agentType: 'session',
         createdAt: session.createdAt instanceof Date ? session.createdAt.getTime() : session.createdAt ?? null,
         updatedAt: session.updatedAt,
         running: session.running,
         blank: session.blank,
-        ...(session.model === undefined ? {} : { model: session.model }),
-        ...(session.baseDocId === undefined ? {} : { baseDocId: session.baseDocId }),
     };
 }
 
@@ -292,7 +224,7 @@ interface OutlineEntry {
     children?: OutlineEntry[];
 }
 
-function buildOutline(teams: AgentTeamDoc[], sessions: AgentSessionSummary[]): OutlineEntry[] {
+function buildOutline(teams: AgentTeamDoc[], sessions: AgentSessionView[]): OutlineEntry[] {
     const ids = new Set(teams.map((team) => team.teamId));
     const childrenByParent = new Map<string, AgentTeamDoc[]>();
     for (const team of teams) {
@@ -301,8 +233,8 @@ function buildOutline(teams: AgentTeamDoc[], sessions: AgentSessionSummary[]): O
         if (children) children.push(team);
         else childrenByParent.set(team.parentTeamId, [team]);
     }
-    const agentsByTeam = new Map<string, AgentSessionSummary[]>();
-    const loose: AgentSessionSummary[] = [];
+    const agentsByTeam = new Map<string, AgentSessionView[]>();
+    const loose: AgentSessionView[] = [];
     for (const session of sessions) {
         if (session.teamId && ids.has(session.teamId)) {
             const attachedAgents = agentsByTeam.get(session.teamId);
@@ -325,7 +257,7 @@ function buildOutline(teams: AgentTeamDoc[], sessions: AgentSessionSummary[]): O
     ];
 }
 
-function teamDetail(team: AgentTeamDoc, teams: AgentTeamDoc[], sessions: AgentSessionSummary[]) {
+function teamDetail(team: AgentTeamDoc, teams: AgentTeamDoc[], sessions: AgentSessionView[]) {
     return {
         team: teamView(team),
         childTeams: teams
@@ -338,7 +270,7 @@ function teamDetail(team: AgentTeamDoc, teams: AgentTeamDoc[], sessions: AgentSe
 async function groupWorkspace(ctx: ToolContext, groupId: number) {
     const [teams, sessions] = await Promise.all([
         AgentSessionModel.listTeams(ctx.domainId, ctx.owner, groupId),
-        AgentSessionModel.listSessions(ctx.domainId, ctx.owner, groupId),
+        AgentSessionModel.listSessionViews(ctx.domainId, ctx.owner, groupId),
     ]);
     return { teams, sessions };
 }
@@ -547,13 +479,92 @@ async function renameSessionAgent(ctx: ToolContext, groupId: number, sessionId: 
     });
 }
 
-export async function listAgents(ctx: ToolContext, args: ToolArgs) {
+function agentRecordView(agent: any) { return { agentId: agent.agentId, teamId: agent.teamId, groupId: agent.groupId, title: agent.title, settings: agent.settings, ...(agent.config === undefined ? {} : { config: agent.config }), createdAt: agent.createdAt.toISOString(), updatedAt: agent.updatedAt.toISOString() }; }
+function settingsFromArgs(args: ToolArgs, old: AgentSettings = {}): AgentSettings {
+    const has = (key: string) => Object.prototype.hasOwnProperty.call(args, key);
+    const provider = has('provider') ? asText(args.provider) : old.model?.provider;
+    const model = has('model') ? asText(args.model) : old.model?.model;
+    if (Boolean(provider) !== Boolean(model)) throw new Error('provider and model must be passed together');
+    let baseDocId = old.baseDocId;
+    if (has('baseDocId')) { const n = Number(args.baseDocId); if (!Number.isSafeInteger(n) || n <= 0) throw new Error('baseDocId must be a positive integer'); baseDocId = String(n); }
+    return { ...(provider && model ? { model: { provider, model } } : {}), ...(baseDocId ? { baseDocId } : {}),
+        ...(has('runtimeId') ? (asText(args.runtimeId) ? { runtimeId: asText(args.runtimeId) } : {}) : old.runtimeId ? { runtimeId: old.runtimeId } : {}),
+        ...(has('agentPreset') ? (asText(args.agentPreset) ? { agentPreset: asText(args.agentPreset) } : {}) : old.agentPreset ? { agentPreset: old.agentPreset } : {}) };
+}
+function configFromArgs(args: ToolArgs, old: AgentConfig = {}): AgentConfig {
+    if (!Object.prototype.hasOwnProperty.call(args, 'context')) return old;
+    if (typeof args.context !== 'string') throw new Error('context must be a string');
+    if (args.context.length > 20_000) throw new Error('context must not exceed 20000 characters');
+    return { context: args.context };
+}
+
+export async function listAgents(ctx: ToolContext, args: ToolArgs) { const { groupId } = await requireGroup(ctx,args); const agents = await AgentModel.listAgents(ctx.domainId,ctx.owner,groupId,asText(args.teamId)||undefined); return { ok:true,groupId,count:agents.length,agents:agents.map(agentRecordView) }; }
+export async function getAgent(ctx: ToolContext,args:ToolArgs) { const {groupId}=await requireGroup(ctx,args); const agentId=asText(args.agentId); const a=agentId&&await AgentModel.getAgent(ctx.domainId,ctx.owner,agentId,groupId); if(!a) throw new Error(`Agent not found: ${agentId}`); return {ok:true,groupId,agent:agentRecordView(a)}; }
+export async function createAgent(ctx: ToolContext, args: ToolArgs) {
+    const { groupId, group } = await requireGroup(ctx, args, 'edit');
+    const root = await ensureGroupRoot(ctx, groupId, group.title);
+    const title = asText(args.title);
+    if (!title) throw new Error('title is required');
+    const teamId = asText(args.teamId) || root.teamId;
+    if (!await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId)) throw new Error(`Team not found: ${teamId}`);
+    const agent = await AgentModel.createAgent(ctx.domainId, ctx.owner, groupId, teamId, title, settingsFromArgs(args), configFromArgs(args));
+    if (Object.prototype.hasOwnProperty.call(args, 'context')) {
+        await ctx.broadcastAgentEvent?.('agent/agent-context', { domainId: ctx.domainId, userId: ctx.owner, groupId, agentId: agent.agentId });
+    }
+    return { ok: true, groupId, agent: agentRecordView(agent) };
+}
+export async function updateAgent(ctx: ToolContext, args: ToolArgs) {
+    const { groupId } = await requireGroup(ctx, args, 'edit');
+    const agentId = asText(args.agentId);
+    const old = agentId && await AgentModel.getAgent(ctx.domainId, ctx.owner, agentId, groupId);
+    if (!old) throw new Error(`Agent not found: ${agentId}`);
+    const patch: { title?: string; teamId?: string; settings?: AgentSettings; config?: AgentConfig } = {};
+    if (Object.prototype.hasOwnProperty.call(args, 'title')) {
+        const title = asText(args.title);
+        if (!title) throw new Error('title cannot be empty');
+        patch.title = title;
+    }
+    if (Object.prototype.hasOwnProperty.call(args, 'teamId')) {
+        const teamId = asText(args.teamId);
+        if (!teamId || !await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId)) throw new Error(`Team not found: ${teamId}`);
+        patch.teamId = teamId;
+    }
+    if (['provider', 'model', 'baseDocId', 'runtimeId', 'agentPreset'].some((key) => Object.prototype.hasOwnProperty.call(args, key))) {
+        patch.settings = settingsFromArgs(args, old.settings);
+    }
+    if (Object.prototype.hasOwnProperty.call(args, 'context')) patch.config = configFromArgs(args, old.config);
+    if (!Object.keys(patch).length) throw new Error('Nothing to update');
+    const agent = await AgentModel.updateAgent(ctx.domainId, ctx.owner, agentId, patch, groupId);
+    if (!agent) throw new Error(`Agent not found: ${agentId}`);
+    if (patch.config !== undefined) {
+        await ctx.broadcastAgentEvent?.('agent/agent-context', { domainId: ctx.domainId, userId: ctx.owner, groupId, agentId });
+    }
+    return { ok: true, groupId, agent: agentRecordView(agent) };
+}
+export async function removeAgent(ctx:ToolContext,args:ToolArgs) { const {groupId}=await requireGroup(ctx,args,'delete'); const agentId=asText(args.agentId);if(!agentId)throw new Error('agentId is required');await AgentModel.deleteAgent(ctx.domainId,ctx.owner,agentId,groupId);return {ok:true,groupId,agentId,deleted:true}; }
+
+export async function createAgents(ctx: ToolContext, args: ToolArgs) {
+ const {groupId}=await requireGroup(ctx,args,'edit'); const entries=objectEntries(args.agents,'agents'); const agents=[] as any[]; const refusedAgents=[] as any[];
+ for(const [index,e] of entries.entries()) try { const r=await createAgent(ctx,{...e,groupId}); agents.push({index,agent:r.agent}); } catch(err){refusedAgents.push({index,error:(err as Error).message});}
+ return {ok:!refusedAgents.length,groupId,agents,refusedAgents};
+}
+export async function getAgents(ctx: ToolContext,args: ToolArgs) {
+ const {groupId}=await requireGroup(ctx,args); const ids=idList(args.agentIds,'agentIds',MAX_AGENTS_PER_CALL); const docs=await AgentModel.listAgents(ctx.domainId,ctx.owner,groupId); const map=new Map(docs.map(x=>[x.agentId,x])); const agents=ids.flatMap((id,index)=>{const a=map.get(id);return a?[{index,...agentRecordView(a)}]:[]}); const missingAgentIds=ids.filter(id=>!map.has(id)); return {ok:!missingAgentIds.length,groupId,agents,missingAgentIds};
+}
+export async function updateAgents(ctx: ToolContext,args: ToolArgs) {
+ const {groupId}=await requireGroup(ctx,args,'edit'); const entries=objectEntries(args.entries,'entries'); const agents=[] as any[]; const refusedAgents=[] as any[];
+ for(const [index,e] of entries.entries()) try {const r=await updateAgent(ctx,{...e,groupId});agents.push({index,agent:r.agent});}catch(err){refusedAgents.push({index,agentId:asText(e.agentId),error:(err as Error).message});}
+ return {ok:!refusedAgents.length,groupId,agents,refusedAgents};
+}
+export async function removeAgents(ctx: ToolContext,args: ToolArgs) { const {groupId}=await requireGroup(ctx,args,'delete'); const agentIds=idList(args.agentIds,'agentIds',MAX_AGENTS_PER_CALL); for(const id of agentIds) await AgentModel.deleteAgent(ctx.domainId,ctx.owner,id,groupId); return {ok:true,groupId,removedAgentIds:agentIds}; }
+
+export async function listAgentSessions(ctx: ToolContext, args: ToolArgs) {
     const { groupId } = await requireGroup(ctx, args);
     const teamId = typeof args.teamId === 'string' && args.teamId.trim() ? args.teamId.trim() : undefined;
     if (teamId && !await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId)) {
         throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
     }
-    const sessions = await AgentSessionModel.listSessions(ctx.domainId, ctx.owner, groupId);
+    const sessions = await AgentSessionModel.listSessionViews(ctx.domainId, ctx.owner, groupId);
     const agents = teamId ? sessions.filter((session) => session.teamId === teamId) : sessions;
     return { ok: true, groupId, ...(teamId ? { teamId } : {}), count: agents.length, agents: agents.map(sessionAgentView) };
 }
@@ -623,10 +634,10 @@ async function sessionConversation(ctx: ToolContext, groupId: number, sessionId:
     };
 }
 
-export async function getAgent(ctx: ToolContext, args: ToolArgs) {
+export async function getAgentSession(ctx: ToolContext, args: ToolArgs) {
     const { groupId } = await requireGroup(ctx, args);
-    const sessionId = String(args.agentId || '').trim();
-    if (!sessionId) throw new Error('agentId is required');
+    const sessionId = String(args.sessionId || '').trim();
+    if (!sessionId) throw new Error('sessionId is required');
     const agent = await sessionConversation(ctx, groupId, sessionId, args);
     return { ok: true, groupId, ...agent };
 }
@@ -672,39 +683,45 @@ async function createSessionAgent(ctx: ToolContext, groupId: number, agentTitle:
     if (!await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId)) {
         throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
     }
-    const scope = sessionScope(ctx, groupId);
-    const payload: Record<string, unknown> = {
-        teamId,
-        ...(input.provider && input.model ? { provider: input.provider, model: input.model } : {}),
-        ...(input.baseDocId === undefined ? {} : { baseDocId: input.baseDocId }),
+    const settings: AgentSettings = {
+        ...(input.provider && input.model ? { model: { provider: input.provider, model: input.model } } : {}),
+        ...(input.baseDocId === undefined ? {} : { baseDocId: String(input.baseDocId) }),
         ...(input.runtimeId ? { runtimeId: input.runtimeId } : {}),
         ...(input.agentPreset ? { agentPreset: input.agentPreset } : {}),
     };
-    const created = await agentRuntimeHandlerContext.sessionCreate({ payload }, scope);
-    if (!created.result?.ok) throw new Error(created.error?.message || 'Failed to create Agent session');
-    const value = created.result.value as { sessionId?: string } | undefined;
-    const sessionId = value?.sessionId;
-    if (!sessionId) throw new Error('Session creation returned no sessionId');
-    if (input.title) await renameSessionAgent(ctx, groupId, sessionId, input.title);
-    let started = false;
-    let error: string | undefined;
-    if (input.message) {
-        try {
-            const link = await agentRuntimeHandlerContext.linkForSession(scope, sessionId);
-            const upstream = await agentRuntimeHandlerContext.callUpstream('session.prompt', {
-                sessionId,
-                mode: 'queue',
-                content: [{ type: 'text', text: input.message }],
-            }, link);
-            if (!upstream.body.result?.ok) throw new Error(upstream.body.error?.message || 'Failed to start the conversation');
-            started = true;
-        } catch (caught) {
-            error = (caught as Error).message;
+    const agent = await AgentModel.createAgent(ctx.domainId, ctx.owner, groupId, teamId, input.title || '新 Agent', settings);
+    let sessionId: string | undefined;
+    try {
+        const scope = sessionScope(ctx, groupId);
+        const created = await agentRuntimeHandlerContext.sessionCreate({ payload: { agentId: agent.agentId } }, scope);
+        if (!created.result?.ok) throw new Error(created.error?.message || 'Failed to create Agent session');
+        const value = created.result.value as { sessionId?: string } | undefined;
+        sessionId = value?.sessionId;
+        if (!sessionId) throw new Error('Session creation returned no sessionId');
+        if (input.title) await renameSessionAgent(ctx, groupId, sessionId, input.title);
+        let started = false;
+        let error: string | undefined;
+        if (input.message) {
+            try {
+                const link = await agentRuntimeHandlerContext.linkForSession(scope, sessionId);
+                const upstream = await agentRuntimeHandlerContext.callUpstream('session.prompt', {
+                    sessionId,
+                    mode: 'queue',
+                    content: [{ type: 'text', text: input.message }],
+                }, link);
+                if (!upstream.body.result?.ok) throw new Error(upstream.body.error?.message || 'Failed to start the conversation');
+                started = true;
+            } catch (caught) {
+                error = (caught as Error).message;
+            }
         }
+        const session = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, groupId);
+        if (!session) throw new Error(`Created session not found: ${sessionId}`);
+        return { agent: sessionAgentView(session), started, ...(error ? { error } : {}) };
+    } catch (error) {
+        if (!sessionId) await AgentModel.deleteAgent(ctx.domainId, ctx.owner, agent.agentId, groupId);
+        throw error;
     }
-    const session = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, groupId);
-    if (!session) throw new Error(`Created session not found: ${sessionId}`);
-    return { agent: sessionAgentView(session), started, ...(error ? { error } : {}) };
 }
 
 function objectEntries(raw: unknown, label: string): Record<string, unknown>[] {
@@ -725,192 +742,20 @@ function optionalIds(raw: unknown, label: string, limit: number): string[] {
     return idList(raw, label, limit);
 }
 
-export async function createAgent(ctx: ToolContext, args: ToolArgs) {
-    const { groupId, group } = await requireGroup(ctx, args, 'edit');
-    const created = await createSessionAgent(ctx, groupId, group.title, sessionAgentInput(args));
-    return {
-        ok: created.error === undefined,
-        groupId,
-        started: created.started,
-        agent: created.agent,
-        ...(created.error ? { error: created.error } : {}),
-    };
+export async function createAgentSession(ctx: ToolContext, args: ToolArgs) {
+ const {groupId}=await requireGroup(ctx,args,'edit'); const agentId=asText(args.agentId);
+ if(!agentId||!await AgentModel.getAgent(ctx.domainId,ctx.owner,agentId,groupId)) throw new Error(`Agent not found: ${agentId}`);
+ const response=await agentRuntimeHandlerContext.sessionCreate({payload:{agentId}},sessionScope(ctx,groupId));
+ if(!response.result?.ok)throw new Error(response.error?.message||'Failed to create session');
+ const sessionId=(response.result.value as {sessionId?:string}|undefined)?.sessionId; if(!sessionId)throw new Error('Session creation returned no sessionId');
+ const title=asText(args.title); if(title)await renameSessionAgent(ctx,groupId,sessionId,title);
+ const message=asText(args.message); if(message){const link=await agentRuntimeHandlerContext.linkForSession(sessionScope(ctx,groupId),sessionId);const sent=await agentRuntimeHandlerContext.callUpstream('session.prompt',{sessionId,mode:'queue',content:[{type:'text',text:message}]},link);if(!sent.body.result?.ok)throw new Error(sent.body.error?.message||'Failed to start session');}
+ return {ok:true,groupId,sessionId};
 }
 
-export async function updateAgent(ctx: ToolContext, args: ToolArgs) {
-    const { groupId } = await requireGroup(ctx, args, 'edit');
-    const sessionId = String(args.agentId || '').trim();
-    if (!sessionId) throw new Error('agentId is required');
-    const session = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, groupId);
-    if (!session) throw new Error(`Session agent not found in Group ${groupId}: ${sessionId}`);
-    const title = typeof args.title === 'string' ? args.title.trim() : undefined;
-    if (title === '') throw new Error('title cannot be empty');
-    const teamId = typeof args.teamId === 'string' ? args.teamId.trim() : undefined;
-    if (teamId !== undefined) {
-        if (!teamId) throw new Error('teamId cannot be empty');
-        if (!await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId)) {
-            throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
-        }
-    }
-    if (title === undefined && teamId === undefined) throw new Error('Nothing to update (title or teamId required)');
-    if (title !== undefined) await renameSessionAgent(ctx, groupId, sessionId, title);
-    let failedAddonIds: string[] = [];
-    let failedContextSync = false;
-    if (teamId !== undefined && teamId !== session.teamId) {
-        const scope = sessionScope(ctx, groupId);
-        await agentRuntimeHandlerContext.agentDataAdapter.updateSession(scope, sessionId, { teamId });
-        failedAddonIds = await agentRuntimeHandlerContext.syncSessionAddonsForTeam(scope, sessionId, teamId);
-        failedContextSync = await agentRuntimeHandlerContext.syncSessionTeamContextForTeam(scope, sessionId, teamId);
-    }
-    const updated = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, groupId);
-    if (!updated) throw new Error(`Session agent not found in Group ${groupId}: ${sessionId}`);
-    return {
-        ok: true,
-        groupId,
-        agent: sessionAgentView(updated),
-        ...(failedAddonIds.length ? { failedAddonIds } : {}),
-        ...(failedContextSync ? { failedContextSync: true } : {}),
-    };
-}
+export async function updateAgentSession(ctx: ToolContext,args:ToolArgs) { const {groupId}=await requireGroup(ctx,args,'edit');const sessionId=asText(args.sessionId),title=asText(args.title);if(!sessionId||!title)throw new Error('sessionId and title are required');await renameSessionAgent(ctx,groupId,sessionId,title);return {ok:true,groupId,sessionId,title}; }
 
-export async function createTeams(ctx: ToolContext, args: ToolArgs) {
-    const { groupId, group } = await requireGroup(ctx, args, 'edit');
-    const root = await ensureGroupRoot(ctx, groupId, group.title);
-    const raw = objectEntries(args.teams, 'teams');
-    if (raw.length > MAX_TEAMS_PER_CALL) throw new Error(`teams holds ${raw.length} entries and one call creates ${MAX_TEAMS_PER_CALL}; split the work across calls`);
-    const existing = await AgentSessionModel.listTeams(ctx.domainId, ctx.owner, groupId);
-    const known = new Set(existing.map((team) => team.teamId));
-    const defaultParent = asText(args.parentTeamId) || root.teamId;
-    if (!known.has(defaultParent)) throw new Error(`Parent team not found in Group ${groupId}: ${defaultParent}`);
-    const refIndex = new Map<string, number>();
-    const planned: { index: number; text: string; ref: string; parentRef: string; parentTeamId: string }[] = [];
-    for (const [index, fields] of raw.entries()) {
-        const text = asText(fields.text);
-        if (!text) throw new Error(`teams[${index}].text is required`);
-        const ref = asText(fields.ref);
-        if (ref && refIndex.has(ref)) throw new Error(`teams[${index}].ref ${ref} is already the ref of teams[${refIndex.get(ref)}]`);
-        const parentRef = asText(fields.parentRef);
-        const ownParent = asText(fields.parentTeamId);
-        if (parentRef && ownParent) throw new Error(`teams[${index}] names both parentRef and parentTeamId; keep one`);
-        if (parentRef && !refIndex.has(parentRef)) throw new Error(`teams[${index}].parentRef ${parentRef} does not name an earlier entry`);
-        if (ownParent && !known.has(ownParent)) throw new Error(`teams[${index}].parentTeamId ${ownParent} is not a team of this Group`);
-        if (ref) refIndex.set(ref, index);
-        planned.push({ index, text, ref, parentRef, parentTeamId: ownParent });
-    }
-    const createdIds = new Map<number, string>();
-    const created: { index: number; ref?: string; teamId: string; parentTeamId?: string; text: string }[] = [];
-    const refused: { index: number; error: string }[] = [];
-    for (const entry of planned) {
-        const parentFromRef = entry.parentRef ? createdIds.get(refIndex.get(entry.parentRef) as number) : undefined;
-        if (entry.parentRef && !parentFromRef) {
-            refused.push({ index: entry.index, error: `Parent ref ${entry.parentRef} was not created` });
-            continue;
-        }
-        const parentTeamId = parentFromRef || entry.parentTeamId || defaultParent;
-        try {
-            const team = await AgentSessionModel.createTeam(ctx.domainId, ctx.owner, entry.text, groupId, parentTeamId);
-            createdIds.set(entry.index, team.teamId);
-            known.add(team.teamId);
-            created.push({ index: entry.index, ...(entry.ref ? { ref: entry.ref } : {}), teamId: team.teamId, parentTeamId: team.parentTeamId, text: team.text });
-        } catch (error) {
-            refused.push({ index: entry.index, error: (error as Error).message });
-        }
-    }
-    return { ok: refused.length === 0, groupId, teamCount: created.length, teams: created, refusedTeams: refused };
-}
-
-export async function getTeams(ctx: ToolContext, args: ToolArgs) {
-    const { groupId, group } = await requireGroup(ctx, args);
-    await ensureGroupRoot(ctx, groupId, group.title);
-    const teamIds = idList(args.teamIds, 'teamIds', MAX_TEAMS_PER_CALL);
-    const workspace = await groupWorkspace(ctx, groupId);
-    const byId = new Map(workspace.teams.map((team) => [team.teamId, team]));
-    const found: { index: number; team: ReturnType<typeof teamView>; childTeams: { teamId: string; title: string }[]; agents: ReturnType<typeof sessionAgentView>[] }[] = [];
-    const missing: string[] = [];
-    for (const [index, teamId] of teamIds.entries()) {
-        const team = byId.get(teamId);
-        if (!team) {
-            missing.push(teamId);
-            continue;
-        }
-        found.push({ index, ...teamDetail(team, workspace.teams, workspace.sessions) });
-    }
-    return { ok: missing.length === 0, groupId, teamCount: found.length, teams: found, missingTeamIds: missing };
-}
-
-export async function updateTeams(ctx: ToolContext, args: ToolArgs) {
-    const { groupId, group } = await requireGroup(ctx, args, 'edit');
-    await ensureGroupRoot(ctx, groupId, group.title);
-    const raw = objectEntries(args.entries, 'entries');
-    if (raw.length > MAX_TEAMS_PER_CALL) throw new Error(`entries holds ${raw.length} entries and one call updates ${MAX_TEAMS_PER_CALL}; split the work across calls`);
-    const planned: { index: number; teamId: string; text?: string; parentTeamId?: string }[] = [];
-    const seen = new Set<string>();
-    for (const [index, fields] of raw.entries()) {
-        const teamId = asText(fields.teamId);
-        if (!teamId) throw new Error(`entries[${index}].teamId is required`);
-        if (seen.has(teamId)) throw new Error(`entries[${index}].teamId ${teamId} appears twice; send one entry per team`);
-        seen.add(teamId);
-        const hasText = Object.prototype.hasOwnProperty.call(fields, 'text');
-        const hasParent = Object.prototype.hasOwnProperty.call(fields, 'parentTeamId');
-        if (!hasText && !hasParent) throw new Error(`entries[${index}] names nothing to change; give text, parentTeamId, or both`);
-        const text = hasText ? asText(fields.text) : undefined;
-        if (hasText && !text) throw new Error(`entries[${index}].text cannot be empty`);
-        const parentTeamId = hasParent ? asText(fields.parentTeamId) : undefined;
-        if (hasParent && !parentTeamId) throw new Error(`entries[${index}].parentTeamId cannot be empty`);
-        planned.push({ index, teamId, ...(text ? { text } : {}), ...(parentTeamId ? { parentTeamId } : {}) });
-    }
-    const currentTeams = await AgentSessionModel.listTeams(ctx.domainId, ctx.owner, groupId);
-    const byId = new Map(currentTeams.map((team) => [team.teamId, team]));
-    for (const entry of planned) {
-        const team = byId.get(entry.teamId);
-        if (!team) throw new Error(`Team not found in Group ${groupId}: ${entry.teamId}`);
-        if (team.isRootTeam) throw new Error('Group root team cannot be renamed or moved');
-    }
-    const updated: { index: number; team: ReturnType<typeof teamView> }[] = [];
-    const refused: { index: number; teamId: string; error: string }[] = [];
-    for (const entry of planned) {
-        const current = await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, entry.teamId, groupId);
-        if (!current) {
-            refused.push({ index: entry.index, teamId: entry.teamId, error: `Team not found in Group ${groupId}: ${entry.teamId}` });
-            continue;
-        }
-        try {
-            const team = await AgentSessionModel.updateTeam(ctx.domainId, ctx.owner, entry.teamId, entry.text ?? current.text, groupId, entry.parentTeamId);
-            if (!team) throw new Error(`Team not found in Group ${groupId}: ${entry.teamId}`);
-            updated.push({ index: entry.index, team: teamView(team) });
-        } catch (error) {
-            refused.push({ index: entry.index, teamId: entry.teamId, error: (error as Error).message });
-        }
-    }
-    return { ok: refused.length === 0, groupId, teamCount: updated.length, teams: updated, refusedTeams: refused };
-}
-
-export async function removeTeams(ctx: ToolContext, args: ToolArgs) {
-    const { groupId, group } = await requireGroup(ctx, args, 'edit');
-    await ensureGroupRoot(ctx, groupId, group.title);
-    const teamIds = idList(args.teamIds, 'teamIds', MAX_TEAMS_PER_CALL);
-    const currentTeams = await AgentSessionModel.listTeams(ctx.domainId, ctx.owner, groupId);
-    const byId = new Map(currentTeams.map((team) => [team.teamId, team]));
-    for (const teamId of teamIds) {
-        const team = byId.get(teamId);
-        if (!team) throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
-        if (team.isRootTeam) throw new Error('Group root team cannot be deleted');
-    }
-    const failedSessionIds = new Set<string>();
-    for (const teamId of teamIds) {
-        const response = await agentRuntimeHandlerContext.teamRpc({
-            rpcId: 'agent_team_delete_many',
-            method: 'team.delete',
-            payload: { teamId },
-        }, sessionScope(ctx, groupId));
-        if (!response.result?.ok) throw new Error(response.error?.message || `Failed to delete Agent team ${teamId}`);
-        const value = response.result.value as { failedSessionIds?: string[] } | undefined;
-        value?.failedSessionIds?.forEach((sessionId) => failedSessionIds.add(sessionId));
-    }
-    return { ok: true, groupId, removedTeamIds: teamIds, removedCount: teamIds.length, failedSessionIds: [...failedSessionIds] };
-}
-
-export async function createAgents(ctx: ToolContext, args: ToolArgs) {
+export async function createAgentSessions(ctx: ToolContext, args: ToolArgs) {
     const { groupId, group } = await requireGroup(ctx, args, 'edit');
     const raw = objectEntries(args.agents, 'agents');
     if (raw.length > MAX_AGENTS_PER_CALL) throw new Error(`agents holds ${raw.length} entries and one call creates ${MAX_AGENTS_PER_CALL}; split the work across calls`);
@@ -929,43 +774,43 @@ export async function createAgents(ctx: ToolContext, args: ToolArgs) {
     return { ok: refused.length === 0, groupId, agentCount: created.length, agents: created, refusedAgents: refused };
 }
 
-export async function getAgents(ctx: ToolContext, args: ToolArgs) {
+export async function getAgentSessions(ctx: ToolContext, args: ToolArgs) {
     const { groupId } = await requireGroup(ctx, args);
-    const agentIds = idList(args.agentIds, 'agentIds', MAX_AGENTS_PER_CALL);
+    const sessionIds = idList(args.sessionIds, 'sessionIds', MAX_AGENTS_PER_CALL);
     const sessions = await AgentSessionModel.listSessions(ctx.domainId, ctx.owner, groupId);
     const byId = new Map(sessions.map((session) => [session.sessionId, session]));
-    const found: { index: number; agentId: string; title: string; content: string; hasMore?: boolean; beforeSeq?: number; truncated?: boolean }[] = [];
+    const found: { index: number; sessionId: string; title: string; content: string; hasMore?: boolean; beforeSeq?: number; truncated?: boolean }[] = [];
     const missing: string[] = [];
-    for (const [index, agentId] of agentIds.entries()) {
-        const session = byId.get(agentId);
+    for (const [index, sessionId] of sessionIds.entries()) {
+        const session = byId.get(sessionId);
         if (!session) {
-            missing.push(agentId);
+            missing.push(sessionId);
             continue;
         }
-        const agent = await sessionConversation(ctx, groupId, agentId, args);
+        const agent = await sessionConversation(ctx, groupId, sessionId, args);
         found.push({
             index,
-            agentId: agent.agentId,
+            sessionId: agent.sessionId,
             title: agent.title,
             content: agent.content,
             ...(agent.hasMore ? { hasMore: true, beforeSeq: agent.beforeSeq } : {}),
             ...(agent.truncated ? { truncated: true } : {}),
         });
     }
-    return { ok: missing.length === 0, groupId, agentCount: found.length, agents: found, missingAgentIds: missing };
+    return { ok: missing.length === 0, groupId, sessionCount: found.length, sessions: found, missingSessionIds: missing };
 }
 
-export async function updateAgents(ctx: ToolContext, args: ToolArgs) {
+export async function updateAgentSessions(ctx: ToolContext, args: ToolArgs) {
     const { groupId } = await requireGroup(ctx, args, 'edit');
     const raw = objectEntries(args.entries, 'entries');
     if (raw.length > MAX_AGENTS_PER_CALL) throw new Error(`entries holds ${raw.length} entries and one call updates ${MAX_AGENTS_PER_CALL}; split the work across calls`);
-    const planned: { index: number; agentId: string; title?: string; teamId?: string }[] = [];
+    const planned: { index: number; sessionId: string; title?: string; teamId?: string }[] = [];
     const seen = new Set<string>();
     for (const [index, fields] of raw.entries()) {
-        const agentId = asText(fields.agentId);
-        if (!agentId) throw new Error(`entries[${index}].agentId is required`);
-        if (seen.has(agentId)) throw new Error(`entries[${index}].agentId ${agentId} appears twice; send one entry per agent`);
-        seen.add(agentId);
+        const sessionId = asText(fields.sessionId);
+        if (!sessionId) throw new Error(`entries[${index}].sessionId is required`);
+        if (seen.has(sessionId)) throw new Error(`entries[${index}].sessionId ${sessionId} appears twice; send one entry per agent`);
+        seen.add(sessionId);
         const hasTitle = Object.prototype.hasOwnProperty.call(fields, 'title');
         const hasTeam = Object.prototype.hasOwnProperty.call(fields, 'teamId');
         if (!hasTitle && !hasTeam) throw new Error(`entries[${index}] names nothing to change; give title, teamId, or both`);
@@ -973,32 +818,49 @@ export async function updateAgents(ctx: ToolContext, args: ToolArgs) {
         if (hasTitle && !title) throw new Error(`entries[${index}].title cannot be empty`);
         const teamId = hasTeam ? asText(fields.teamId) : undefined;
         if (hasTeam && !teamId) throw new Error(`entries[${index}].teamId cannot be empty`);
-        planned.push({ index, agentId, ...(title ? { title } : {}), ...(teamId ? { teamId } : {}) });
+        planned.push({ index, sessionId, ...(title ? { title } : {}), ...(teamId ? { teamId } : {}) });
     }
     const sessions = await AgentSessionModel.listSessions(ctx.domainId, ctx.owner, groupId);
     const byId = new Map(sessions.map((session) => [session.sessionId, session]));
     for (const entry of planned) {
-        if (!byId.has(entry.agentId)) throw new Error(`Session agent not found in Group ${groupId}: ${entry.agentId}`);
+        if (!byId.has(entry.sessionId)) throw new Error(`Session agent not found in Group ${groupId}: ${entry.sessionId}`);
         if (entry.teamId && !await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, entry.teamId, groupId)) {
             throw new Error(`Team not found in Group ${groupId}: ${entry.teamId}`);
         }
     }
     const updated: { index: number; agent: ReturnType<typeof sessionAgentView>; failedAddonIds?: string[]; failedContextSync?: boolean }[] = [];
-    const refused: { index: number; agentId: string; error: string }[] = [];
+    const refused: { index: number; sessionId: string; error: string }[] = [];
     for (const entry of planned) {
         try {
-            if (entry.title) await renameSessionAgent(ctx, groupId, entry.agentId, entry.title);
-            const current = byId.get(entry.agentId)!;
+            const current = byId.get(entry.sessionId)!;
             let failedAddonIds: string[] = [];
             let failedContextSync = false;
-            if (entry.teamId && entry.teamId !== current.teamId) {
-                const scope = sessionScope(ctx, groupId);
-                await agentRuntimeHandlerContext.agentDataAdapter.updateSession(scope, entry.agentId, { teamId: entry.teamId });
-                failedAddonIds = await agentRuntimeHandlerContext.syncSessionAddonsForTeam(scope, entry.agentId, entry.teamId);
-                failedContextSync = await agentRuntimeHandlerContext.syncSessionTeamContextForTeam(scope, entry.agentId, entry.teamId);
+            if (current.sessionId) {
+                await AgentModel.updateAgent(ctx.domainId, ctx.owner, current.sessionId, {
+                    ...(entry.title ? { title: entry.title } : {}),
+                    ...(entry.teamId && entry.teamId !== current.teamId ? { teamId: entry.teamId } : {}),
+                }, groupId);
+                if (entry.teamId && entry.teamId !== current.teamId) {
+                    const scope = sessionScope(ctx, groupId);
+                    const linkedSessions = sessions.filter((item) => item.sessionId === current.sessionId);
+                    const results = await Promise.all(linkedSessions.map(async (item) => ({
+                        failedAddonIds: await agentRuntimeHandlerContext.syncSessionAddonsForTeam(scope, item.sessionId, entry.teamId!),
+                        failedContextSync: await agentRuntimeHandlerContext.syncSessionTeamContextForTeam(scope, item.sessionId, entry.teamId!),
+                    })));
+                    failedAddonIds = [...new Set(results.flatMap((result) => result.failedAddonIds))];
+                    failedContextSync = results.some((result) => result.failedContextSync);
+                }
+            } else {
+                if (entry.title) await renameSessionAgent(ctx, groupId, entry.sessionId, entry.title);
+                if (entry.teamId && entry.teamId !== current.teamId) {
+                    const scope = sessionScope(ctx, groupId);
+                    await agentRuntimeHandlerContext.agentDataAdapter.updateSession(scope, entry.sessionId, { teamId: entry.teamId });
+                    failedAddonIds = await agentRuntimeHandlerContext.syncSessionAddonsForTeam(scope, entry.sessionId, entry.teamId);
+                    failedContextSync = await agentRuntimeHandlerContext.syncSessionTeamContextForTeam(scope, entry.sessionId, entry.teamId);
+                }
             }
-            const session = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, entry.agentId, groupId);
-            if (!session) throw new Error(`Session agent not found in Group ${groupId}: ${entry.agentId}`);
+            const session = await AgentSessionModel.getSession(ctx.domainId, ctx.owner, entry.sessionId, groupId);
+            if (!session) throw new Error(`Session agent not found in Group ${groupId}: ${entry.sessionId}`);
             updated.push({
                 index: entry.index,
                 agent: sessionAgentView(session),
@@ -1006,33 +868,40 @@ export async function updateAgents(ctx: ToolContext, args: ToolArgs) {
                 ...(failedContextSync ? { failedContextSync: true } : {}),
             });
         } catch (error) {
-            refused.push({ index: entry.index, agentId: entry.agentId, error: (error as Error).message });
+            refused.push({ index: entry.index, sessionId: entry.sessionId, error: (error as Error).message });
         }
     }
     return { ok: refused.length === 0, groupId, agentCount: updated.length, agents: updated, refusedAgents: refused };
 }
 
-export async function removeAgents(ctx: ToolContext, args: ToolArgs) {
-    const { groupId } = await requireGroup(ctx, args, 'delete');
-    const agentIds = idList(args.agentIds, 'agentIds', MAX_AGENTS_PER_CALL);
-    const sessions = await AgentSessionModel.listSessions(ctx.domainId, ctx.owner, groupId);
-    const known = new Set(sessions.map((session) => session.sessionId));
-    for (const agentId of agentIds) {
-        if (!known.has(agentId)) throw new Error(`Session agent not found in Group ${groupId}: ${agentId}`);
-    }
-    await AgentSessionModel.deleteSessions(ctx.domainId, ctx.owner, agentIds, groupId);
-    return { ok: true, groupId, removedAgentIds: agentIds, removedCount: agentIds.length };
-}
+export async function removeAgentSessions(ctx:ToolContext,args:ToolArgs) {const {groupId}=await requireGroup(ctx,args,'delete');const sessionIds=idList(args.sessionIds,'sessionIds',MAX_AGENTS_PER_CALL);await AgentSessionModel.deleteSessions(ctx.domainId,ctx.owner,sessionIds,groupId);return {ok:true,groupId,removedSessionIds:sessionIds,removedCount:sessionIds.length};}
 
-export async function removeAgent(ctx: ToolContext, args: ToolArgs) {
-    const { groupId } = await requireGroup(ctx, args, 'delete');
-    const sessionId = String(args.agentId || '').trim();
-    if (!sessionId) throw new Error('agentId is required');
-    if (!await AgentSessionModel.getSession(ctx.domainId, ctx.owner, sessionId, groupId)) {
-        throw new Error(`Session agent not found in Group ${groupId}: ${sessionId}`);
+export async function removeAgentSession(ctx:ToolContext,args:ToolArgs) {const {groupId}=await requireGroup(ctx,args,'delete');const sessionId=asText(args.sessionId);if(!sessionId)throw new Error('sessionId is required');await AgentSessionModel.deleteSession(ctx.domainId,ctx.owner,sessionId,groupId);return {ok:true,groupId,sessionId,deleted:true};}
+
+async function createTeams(ctx: ToolContext, args: ToolArgs) {
+    const { groupId } = await requireGroup(ctx, args, 'edit');
+    const teams: any[] = [], refusedTeams: any[] = [], refs = new Set<string>();
+    for (const [index, fields] of objectEntries(args.teams, 'teams').entries()) {
+        const text = asText(fields.text), ref = asText(fields.ref), parentRef = asText(fields.parentRef);
+        if (!text) throw new Error(`teams[${index}].text is required`);
+        if (ref && refs.has(ref)) throw new Error(`Duplicate team ref: ${ref}`);
+        let parentTeamId = asText(fields.parentTeamId) || asText(args.parentTeamId);
+        if (parentRef) { const parent = teams.find((item) => item.ref === parentRef); if (!parent) { refusedTeams.push({ index, error: `Unknown parentRef ${parentRef}` }); continue; } parentTeamId = parent.teamId; }
+        try { const result = await createTeam(ctx, { groupId, text, ...(parentTeamId ? { parentTeamId } : {}) }); teams.push({ index, ...(ref ? { ref } : {}), ...result.team }); if (ref) refs.add(ref); }
+        catch (error) { refusedTeams.push({ index, error: (error as Error).message }); }
     }
-    await AgentSessionModel.deleteSession(ctx.domainId, ctx.owner, sessionId, groupId);
-    return { ok: true, groupId, agentId: sessionId, deleted: true };
+    return { teams, refusedTeams };
+}
+async function getTeams(ctx: ToolContext, args: ToolArgs) {
+    const { groupId } = await requireGroup(ctx, args); const teamIds = idList(args.teamIds, 'teamIds', MAX_TEAMS_PER_CALL);
+    const workspace = await groupWorkspace(ctx, groupId); const byId = new Map(workspace.teams.map((team) => [team.teamId, team]));
+    const teams = teamIds.flatMap((teamId, index) => { const team = byId.get(teamId); return team ? [{ index, ...teamDetail(team, workspace.teams, workspace.sessions) }] : []; });
+    const missingTeamIds = teamIds.filter((id) => !byId.has(id)); return { ok: !missingTeamIds.length, groupId, teams, missingTeamIds };
+}
+async function removeTeams(ctx: ToolContext, args: ToolArgs) {
+    const { groupId } = await requireGroup(ctx, args, 'edit'); const teamIds = idList(args.teamIds, 'teamIds', MAX_TEAMS_PER_CALL);
+    for (const teamId of teamIds) await removeTeam(ctx, { groupId, teamId });
+    return { ok: true, groupId, removedTeamIds: teamIds, failedSessionIds: [] as string[] };
 }
 
 export async function createTeamMany(ctx: ToolContext, args: ToolArgs) {
@@ -1051,7 +920,7 @@ export async function createTeamMany(ctx: ToolContext, args: ToolArgs) {
         if (team.ref) teamIdsByRef.set(team.ref, team.teamId);
     }
 
-    const agents: { index: number; started: boolean; agent: ReturnType<typeof sessionAgentView>; error?: string }[] = [];
+    const agents: { index: number; agent?: unknown; error?: string }[] = [];
     const refusedAgents: { index: number; agentId?: string; error: string }[] = [];
     for (const [index, rawAgent] of rawAgents.entries()) {
         const fields = { ...rawAgent };
@@ -1071,9 +940,8 @@ export async function createTeamMany(ctx: ToolContext, args: ToolArgs) {
         }
         delete fields.teamRef;
         try {
-            const result = await createSessionAgent(ctx, groupId, group.title, sessionAgentInput(fields, `agents[${index}]`));
-            agents.push({ index, started: result.started, agent: result.agent, ...(result.error ? { error: result.error } : {}) });
-            if (result.error) refusedAgents.push({ index, agentId: result.agent.agentId, error: result.error });
+            const result = await createAgent(ctx, { ...fields, groupId });
+            agents.push({ index, agent: result.agent });
         } catch (error) {
             refusedAgents.push({ index, error: (error as Error).message });
         }
@@ -1096,7 +964,7 @@ export async function getTeamMany(ctx: ToolContext, args: ToolArgs) {
     if (!teamIds.length && !agentIds.length) throw new Error('Give teamIds, agentIds, or both');
     const [teamResult, agentResult] = await Promise.all([
         teamIds.length ? getTeams(ctx, { groupId, teamIds }) : Promise.resolve(undefined),
-        agentIds.length ? getAgents(ctx, { groupId, agentIds, maxMessages: args.maxMessages, maxChars: args.maxChars, beforeSeq: args.beforeSeq }) : Promise.resolve(undefined),
+        agentIds.length ? getAgents(ctx, { groupId, agentIds }) : Promise.resolve(undefined),
     ]);
     return {
         ok: (teamResult?.ok ?? true) && (agentResult?.ok ?? true),
@@ -1186,6 +1054,17 @@ export function apply(ctx: Context) {
     ctx.Tool('agent', 'agent_agent_create', createAgent, AgentCreate, write, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_agent_update', updateAgent, AgentUpdate, write, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_agent_delete', removeAgent, AgentRemove, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_create_many', createAgents, AgentCreateMany, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_get_many', getAgents, AgentGetMany, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_update_many', updateAgents, AgentUpdateMany, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_delete_many', removeAgents, AgentRemoveMany, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_session_list', listAgentSessions, AgentSessionList, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_session_get', getAgentSession, AgentSessionGet, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_session_create', createAgentSession, AgentSessionCreate, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_session_update', updateAgentSession, AgentSessionUpdate, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_session_delete', removeAgentSession, AgentSessionDelete, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_session_get_many', getAgentSessions, AgentSessionGetMany, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_session_delete_many', removeAgentSessions, AgentSessionDeleteMany, write, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_team_create_many', createTeamMany, TeamCreateMany, write, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_team_get_many', getTeamMany, TeamGetMany, read, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_team_update_many', updateTeamMany, TeamUpdateMany, write, PRIV.PRIV_USER_PROFILE);

@@ -17,6 +17,18 @@ export interface AgentTeam {
     updatedAt: string;
 }
 
+export interface AgentSummary {
+    agentId: string;
+    groupId?: number;
+    teamId: string;
+    title: string;
+    order: number;
+    settings: { runtimeId?: string; model?: { provider: string; model: string }; baseDocId?: string; agentPreset?: string };
+    config?: { context?: string };
+    createdAt: string;
+    updatedAt: string;
+}
+
 export interface SessionSummary {
     sessionId: string;
     createdAt?: number;
@@ -27,13 +39,11 @@ export interface SessionSummary {
     creatorUserId?: number;
     type?: 'generic' | 'base_detail';
     groupId?: number;
-    baseDocId?: string;
+    agentId?: string;
+    activeRuntimeId?: string;
     teamId?: string;
-    cwd?: string;
-    agentPreset?: string;
-    /** The host that serves this session, as the session's record names it. */
-    runtimeId?: string;
-    model?: { provider: string; model: string };
+    /** Joined from the owning Agent; session configuration is persisted on the Agent. */
+    agentSettings?: AgentSummary['settings'];
     projections?: { values?: Record<string, unknown> };
 }
 

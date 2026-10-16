@@ -6,7 +6,7 @@ import {
 import { Context } from '../context';
 import {
     Content, ContestClarificationDoc, DiscussionDoc,
-    DiscussionReplyDoc, AgentDoc, BaseDoc, RepoDoc, DocDoc, BlockDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc,
+    DiscussionReplyDoc, GroupDefinitionDoc, BaseDoc, RepoDoc, DocDoc, BlockDoc, NodeDoc, ClientDoc, ClientChatDoc, EdgeDoc, ToolDoc,
     DomainMarketToolDoc, WorkflowDoc, WorkflowNodeDoc, TrainingDoc, CardDoc, PluginDoc, SceneDoc, SceneEventDoc,
     McpDoc,
 } from '../interface';
@@ -42,7 +42,7 @@ export const TYPE_DISCUSSION: 91 = 91;
 export const TYPE_DISCUSSION_REPLY: 92 = 92;
 
 export interface DocType {
-    [TYPE_AGENT]: AgentDoc;
+    [TYPE_AGENT]: GroupDefinitionDoc;
     [TYPE_DISCUSSION]: DiscussionDoc;
     [TYPE_DISCUSSION_REPLY]: DiscussionReplyDoc;
     [TYPE_NODE]: NodeDoc;

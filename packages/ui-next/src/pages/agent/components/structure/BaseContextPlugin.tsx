@@ -22,7 +22,7 @@ interface BaseDisplaySettingProps {
 }
 
 function baseLabel(session: SessionSummary, bases: readonly BaseView[]): string {
-    const rawId = session.baseDocId;
+    const rawId = session.agentSettings?.baseDocId;
     const baseId = rawId === undefined || rawId === null || rawId === '' ? NaN : Number(rawId);
     const base = Number.isSafeInteger(baseId) ? bases.find((item) => item.docId === baseId) : undefined;
     return base?.title || (Number.isSafeInteger(baseId) ? `Base #${baseId}` : '未选择');
@@ -60,8 +60,7 @@ const baseContextPlugin: AgentPluginUiRegistration = {
     apply(ctx: Context) {
         ctx.effect(() => {
             const disposers = [
-                after<ContextChoicesProps>('component:agent-new-session-context', BaseChoices, { id: 'agent-base-new-session-context' }),
-                after<ContextChoicesProps>('component:agent-session-context', BaseChoices, { id: 'agent-base-session-context' }),
+                after<ContextChoicesProps>('component:agent-settings-context', BaseChoices, { id: 'agent-base-settings-context' }),
                 after<ContextTabProps>('component:agent-context-tab', BaseContextTab, { id: 'agent-base-context-tab' }),
                 after<BaseDisplaySettingProps>('component:agent-display-setting-base', BaseDisplaySetting, { id: 'agent-base-display-setting' }),
             ];

@@ -5,7 +5,7 @@ import type { Dictionary, NumericDictionary } from 'lodash';
 import type { Binary, FindCursor, ObjectId } from 'mongodb';
 import type { Context } from './context';
 import type { DocStatusType } from './model/document';
-import type { AgentDoc } from './model/agent';
+import type { GroupDefinitionDoc } from './model/agent';
 import type { Handler } from './service/server';
 
 export * from '@ejunz/common/types';
@@ -194,7 +194,7 @@ export interface Document {
 
 
 declare module './model/agent'{
-    interface AgentDoc {
+    interface GroupDefinitionDoc {
         docType: document['TYPE_AGENT'];
         docId: number;
         aid: string;
@@ -211,13 +211,14 @@ declare module './model/agent'{
         apiKey?: string;
         memory?: string;
         repoIds?: number[];
+        files?: Array<{ filename: string; version?: string; path: string; size: number; lastModified: Date; etag: string; tag: string[] }>;
         /** Optional single knowledge-base mount (TYPE_BASE doc). */
         baseLibraryBindings?: Array<{ docId: number }>;
         /** Web plugin mounts (TYPE_PLUGIN docs) enabled for slash commands and plugin-provided tools. */
         pluginBindings?: Array<{ docId: number; enabledNodeIds?: string[] }>;
     }
 }
-export type { AgentDoc } from './model/agent';
+export type { AgentDoc, GroupDefinitionDoc } from './model/agent';
 
 // Repo/Base/Doc/Block documents
 export interface BaseDoc {
@@ -1224,7 +1225,8 @@ export interface Model {
     document: Omit<typeof import('./model/document'), 'apply'>,
     domain: typeof import('./model/domain').default,
     develop: typeof import('./model/develop').default,
-    agent: typeof import('./model/agent').default,
+    groupDefinition: typeof import('./model/agent').default,
+    agent: typeof import('./model/agent').AgentModel,
     agentSession: typeof import('./model/agent').AgentSessionModel,
     message: typeof import('./model/message').default,
     opcount: typeof import('./model/opcount'),
