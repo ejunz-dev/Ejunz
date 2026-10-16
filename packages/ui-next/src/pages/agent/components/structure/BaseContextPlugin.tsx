@@ -1,4 +1,5 @@
 import type { Context } from 'cordis';
+import { i18n } from '@/i18n';
 import { after } from '../../../../registry';
 import type { BaseView, SessionSummary } from '../../runtime/session';
 import type { AgentPluginUiRegistration } from '../../runtime/agent-plugin-slots';
@@ -25,7 +26,7 @@ function baseLabel(session: SessionSummary, bases: readonly BaseView[]): string 
     const rawId = session.agentSettings?.baseDocId;
     const baseId = rawId === undefined || rawId === null || rawId === '' ? NaN : Number(rawId);
     const base = Number.isSafeInteger(baseId) ? bases.find((item) => item.docId === baseId) : undefined;
-    return base?.title || (Number.isSafeInteger(baseId) ? `Base #${baseId}` : '未选择');
+    return base?.title || (Number.isSafeInteger(baseId) ? `Base #${baseId}` : i18n('Not selected'));
 }
 
 function selectedClass(selected: boolean): string {
@@ -34,23 +35,23 @@ function selectedClass(selected: boolean): string {
 
 function BaseChoices({ bases, selectedBaseId, disabled, onSelectBase }: ContextChoicesProps) {
     return <div className="bd-edit-field">
-        <h3>知识库</h3>
+        <h3>{i18n('Knowledge base')}</h3>
         <div className="bd-edit-tags">
-            <button type="button" className={selectedClass(selectedBaseId === undefined)} disabled={disabled} onClick={() => onSelectBase(undefined)}>不使用</button>
+            <button type="button" className={selectedClass(selectedBaseId === undefined)} disabled={disabled} onClick={() => onSelectBase(undefined)}>{i18n('Do not use')}</button>
             {bases.map((base) => <button type="button" className={selectedClass(selectedBaseId === base.docId)} disabled={disabled} key={base.docId} onClick={() => onSelectBase(base.docId)}>{base.title}</button>)}
         </div>
     </div>;
 }
 
 function BaseContextTab({ view, onViewChange }: ContextTabProps) {
-    return <button type="button" role="tab" className={view === 'context' ? 'is-active' : ''} aria-selected={view === 'context'} onClick={() => onViewChange('context')}>插件</button>;
+    return <button type="button" role="tab" className={view === 'context' ? 'is-active' : ''} aria-selected={view === 'context'} onClick={() => onViewChange('context')}>{i18n('Plug-ins')}</button>;
 }
 
 function BaseDisplaySetting({ value, disabled, onChange }: BaseDisplaySettingProps) {
     return <label className="bd-settings-dialog__row">
         <span className="bd-settings-dialog__row-text">
-            <span className="bd-settings-dialog__row-label">显示知识库</span>
-            <span className="bd-settings-dialog__row-description">在 Agent 的标签区域显示使用的知识库。</span>
+            <span className="bd-settings-dialog__row-label">{i18n('Show knowledge base')}</span>
+            <span className="bd-settings-dialog__row-description">{i18n('Show the knowledge base used in the Agent tags.')}</span>
         </span>
         <input type="checkbox" checked={value} disabled={disabled} onChange={(event) => onChange(event.currentTarget.checked)} />
     </label>;
@@ -73,7 +74,7 @@ const baseContextPlugin: AgentPluginUiRegistration = {
         void clearCurrentContext();
     },
     sessionAgentTags(session, bases, showBase) {
-        return showBase ? [`知识库: ${baseLabel(session, bases)}`] : [];
+        return showBase ? [i18n('Knowledge base: {0}', baseLabel(session, bases))] : [];
     },
 };
 

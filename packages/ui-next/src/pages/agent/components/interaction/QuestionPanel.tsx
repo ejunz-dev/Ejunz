@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { i18n } from '@/i18n';
 import type { PendingQuestion } from '../types';
 
 interface QuestionPanelProps {
@@ -18,7 +19,7 @@ export function QuestionPanel({ question, onAnswer }: QuestionPanelProps) {
         }
     };
     return <div className="eza-questionPanel">
-        <div className="eza-questionTitle">需要你的回答</div>
+        <div className="eza-questionTitle">{i18n('Your answer is needed')}</div>
         {question.questions.map((item) => <fieldset key={item.id} className="eza-questionItem">
             <legend>{item.header || item.question || item.id}</legend>
             {(item.options ?? []).map((option) => {
@@ -27,6 +28,6 @@ export function QuestionPanel({ question, onAnswer }: QuestionPanelProps) {
                 return <label key={label} className="eza-questionOption"><input type={item.multiSelect ? 'checkbox' : 'radio'} name={item.id} checked={checked} onChange={() => setSelected((value) => ({ ...value, [item.id]: item.multiSelect ? checked ? (value[item.id] ?? []).filter((entry) => entry !== label) : [...value[item.id] ?? [], label] : [label] }))} /><span>{label}</span>{option.description && <small>{option.description}</small>}</label>;
             })}
         </fieldset>)}
-        <button type="button" className="eza-questionSubmit" disabled={busy} onClick={() => void answer()}>提交回答</button>
+        <button type="button" className="eza-questionSubmit" disabled={busy} onClick={() => void answer()}>{i18n('Submit answer')}</button>
     </div>;
 }

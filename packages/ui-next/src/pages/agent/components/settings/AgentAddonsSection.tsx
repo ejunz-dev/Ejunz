@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { i18n } from '@/i18n';
 import type { SettingsRpc } from './cardForm';
 import css from './AgentAddonsSection.module.css';
 
@@ -30,7 +31,7 @@ export function AgentAddonsSection({ rpc, marketHref, onAddonChange }: AgentAddo
             const value = await rpc<{ addons?: AgentAddon[] }>('agent.addons.list', {});
             setAddons(Array.isArray(value.addons) ? value.addons : []);
         } catch (cause) {
-            setError(cause instanceof Error ? cause.message : 'Agent Addon读取失败');
+            setError(cause instanceof Error ? cause.message : i18n('Failed to load Agent add-ons'));
         } finally {
             setLoading(false);
         }
@@ -48,7 +49,7 @@ export function AgentAddonsSection({ rpc, marketHref, onAddonChange }: AgentAddo
             setAddons((items) => items.map((item) => item.addonId === addon.addonId ? { ...item, enabled } : item));
             onAddonChange?.(addon.addonId, enabled, addon.installed);
         } catch (cause) {
-            setError(cause instanceof Error ? cause.message : 'Agent Addon设置失败');
+            setError(cause instanceof Error ? cause.message : i18n('Failed to update Agent add-ons'));
         } finally {
             setBusy(null);
         }
@@ -57,25 +58,25 @@ export function AgentAddonsSection({ rpc, marketHref, onAddonChange }: AgentAddo
     const installedAddons = addons.filter((addon) => addon.installed);
 
     return <section className={css.section} aria-busy={loading || busy !== null}>
-        <h2 className={css.heading}>Agent Addons</h2>
-        <p className={css.intro}>这里设置当前 Agent 可用的 Addon。安装与卸载由 domain 级 <a className={css.marketLink} href={marketHref}>Addon 市场</a>管理。</p>
+        <h2 className={css.heading}>{i18n('Agent add-ons')}</h2>
+        <p className={css.intro}>{i18n('Choose the add-ons available to this Agent. Install and uninstall them in the domain')} <a className={css.marketLink} href={marketHref}>{i18n('Add-on market')}</a>.</p>
         {error && <p className={css.error} role="alert">{error}</p>}
-        {loading ? <p className={css.status}>正在读取 Agent Addon…</p> : null}
-        {!loading && installedAddons.length === 0 ? <p className={css.status}>当前 domain 尚未安装 Addon，可前往 <a className={css.marketLink} href={marketHref}>Addon 市场</a>安装。</p> : null}
+        {loading ? <p className={css.status}>{i18n('Loading Agent add-ons...')}</p> : null}
+        {!loading && installedAddons.length === 0 ? <p className={css.status}>{i18n('No add-ons are installed in this domain. Install them from the')} <a className={css.marketLink} href={marketHref}>{i18n('Add-on market')}</a>.</p> : null}
         {!loading && installedAddons.length > 0 ? <ul className={css.list}>
             {installedAddons.map((addon) => (
                 <li className={css.row} key={addon.addonId}>
                     <div className={css.copy}>
                         <div className={css.name}>{addon.displayName}</div>
                         <p className={css.description}>{addon.description}</p>
-                        {addon.tools?.length ? <p className={css.tools}>工具：{addon.tools.map((tool) => tool.name).join('、')}</p> : null}
+                        {addon.tools?.length ? <p className={css.tools}>{i18n('Tools')}: {addon.tools.map((tool) => tool.name).join(', ')}</p> : null}
                     </div>
                     <button
                         type="button"
                         className={css.toggle}
                         role="switch"
                         aria-checked={addon.enabled}
-                        aria-label={`${addon.displayName} Addon`}
+                        aria-label={i18n('{0} add-on', addon.displayName)}
                         disabled={busy !== null}
                         onClick={() => { void toggle(addon); }}
                     >

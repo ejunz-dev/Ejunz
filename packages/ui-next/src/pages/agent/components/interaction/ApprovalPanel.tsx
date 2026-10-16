@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { i18n } from '@/i18n';
 import type { PendingApproval } from '../types';
 import css from './ApprovalPanel.module.css';
 
@@ -19,14 +20,14 @@ export function ApprovalPanel({ approval, onAnswer }: ApprovalPanelProps) {
     };
     return <div className={css.root} data-approval-key={approval.approvalId}>
         <div className={css.card}>
-            <div className={css.strip}><span className={css.dot} />等待操作确认</div>
-            <div className={css.body} tabIndex={0} role="group" aria-label="审批详情">
-                <div className={css.headline}>{approval.reason || `Agent 请求执行 ${approval.toolName}`}</div>
+            <div className={css.strip}><span className={css.dot} />{i18n('Waiting for approval')}</div>
+            <div className={css.body} tabIndex={0} role="group" aria-label={i18n('Approval details')}>
+                <div className={css.headline}>{approval.reason || i18n('Agent requested to run {0}', approval.toolName)}</div>
                 <div className={css.command}>{approval.toolName}</div>
             </div>
             <div className={css.actionRow}>
-                <button type="button" className={css.reject} disabled={busy} onClick={() => void answer('rejected')}>拒绝</button>
-                <button type="button" disabled={busy} onClick={() => void answer('allowed-once')}>允许一次</button>
+                <button type="button" className={css.reject} disabled={busy} onClick={() => void answer('rejected')}>{i18n('Reject')}</button>
+                <button type="button" disabled={busy} onClick={() => void answer('allowed-once')}>{i18n('Allow once')}</button>
             </div>
         </div>
     </div>;

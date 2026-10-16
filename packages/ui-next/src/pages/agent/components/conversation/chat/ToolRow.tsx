@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { i18n } from '@/i18n';
 import { IconApiOutline14, IconBrowseOutline16, IconCodeOutline16, IconEditOutline16, IconGlobeOutline14, IconSearchOutline16 } from '../../../icons';
 import type { AgentAddonView, ChatMessage } from '../../types';
 import { DisclosureRow } from '../../primitives/DisclosureRow';
@@ -33,7 +34,7 @@ export function ToolRow({ message, addons, onOpenFile, onOpenDetails }: { messag
                         : model.variant === 'code' ? <IconCodeOutline16 size={14} /> : '◈';
     const expandable = Boolean(model.input || model.output);
     return <div className={css.root} data-variant={model.variant} data-state={model.state}>
-        {model.state !== 'ok' && <span className={css.visuallyHidden}>{model.state === 'error' ? '失败' : '运行中'}</span>}
+        {model.state !== 'ok' && <span className={css.visuallyHidden}>{model.state === 'error' ? i18n('Failure') : i18n('Running')}</span>}
         <DisclosureRow
             rowClassName={css.row}
             leadingClassName={css.leading}
@@ -47,7 +48,7 @@ export function ToolRow({ message, addons, onOpenFile, onOpenDetails }: { messag
             onToggle={() => setExpanded((value) => !value)}
             collapsedContent={<><span className={css.sep} aria-hidden />{model.filePath && onOpenFile && model.errorSummary === undefined ? <button type="button" className={css.fileLink} onClick={(event) => { event.stopPropagation(); onOpenFile(model.filePath!); }}>{summary}</button> : <span className={`${css.summary}${model.errorSummary !== undefined ? ` ${css.errorSummary}` : ''}`}>{summary}</span>}</>}
         >
-            <div className={css.bodyWrap}><ToolViewCard variant={model.variant} input={model.input} output={model.output} meta={model.meta} error={model.state === 'error'} /><button type="button" className={css.inspectButton} onClick={(event) => { event.stopPropagation(); onOpenDetails?.(message); }}>查看详情</button>{message.children?.length ? <div className="eza-toolChildren">{message.children.map((child) => <ToolRow key={child.key} message={child} addons={addons} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} />)}</div> : null}</div>
+            <div className={css.bodyWrap}><ToolViewCard variant={model.variant} input={model.input} output={model.output} meta={model.meta} error={model.state === 'error'} /><button type="button" className={css.inspectButton} onClick={(event) => { event.stopPropagation(); onOpenDetails?.(message); }}>{i18n('View details')}</button>{message.children?.length ? <div className="eza-toolChildren">{message.children.map((child) => <ToolRow key={child.key} message={child} addons={addons} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} />)}</div> : null}</div>
         </DisclosureRow>
     </div>;
 }

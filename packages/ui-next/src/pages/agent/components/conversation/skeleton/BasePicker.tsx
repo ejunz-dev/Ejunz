@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { i18n } from '@/i18n';
 import { IconChevronDownOutline14 } from '../../../icons';
 import type { BaseView } from '../../../runtime/session';
 import { Menu } from '../../primitives/Menu';
@@ -27,7 +28,7 @@ export function BasePicker({ bases, selectedId, onPick }: BasePickerProps) {
         portal
         anchor={<button type="button" className={css.trigger} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
             <span className={css.mark} aria-hidden>◇</span>
-            <span className={css.label}>{current?.title ?? '选择知识库'}</span>
+            <span className={css.label}>{current?.title ?? i18n('Choose a knowledge base')}</span>
             <IconChevronDownOutline14 size={14} className={open ? css.open : undefined} />
         </button>}
     />;

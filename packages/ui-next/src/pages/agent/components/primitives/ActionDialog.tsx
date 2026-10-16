@@ -1,4 +1,6 @@
 import { useEffect } from 'react';
+import { i18n } from '@/i18n';
+import { HierarchySelect, type HierarchySelectOption } from './HierarchySelect';
 import css from './ActionDialog.module.css';
 
 export interface ActionDialogProps {
@@ -8,17 +10,22 @@ export interface ActionDialogProps {
     inputLabel?: string;
     inputValue?: string;
     inputPlaceholder?: string;
+    selectLabel?: string;
+    selectValue?: string;
+    selectPlaceholder?: string;
+    selectTreeOptions?: readonly HierarchySelectOption[];
     confirmLabel: string;
     cancelLabel?: string;
     danger?: boolean;
     busy?: boolean;
     error?: string | null;
     onInputChange?: (value: string) => void;
+    onSelectChange?: (value: string) => void;
     onClose: () => void;
     onConfirm: () => void;
 }
 
-export function ActionDialog({ open, title, description, inputLabel, inputValue = '', inputPlaceholder, confirmLabel, cancelLabel = '取消', danger = false, busy = false, error, onInputChange, onClose, onConfirm }: ActionDialogProps) {
+export function ActionDialog({ open, title, description, inputLabel, inputValue = '', inputPlaceholder, selectLabel, selectValue = '', selectPlaceholder = i18n('Select'), selectTreeOptions = [], confirmLabel, cancelLabel = i18n('Cancel'), danger = false, busy = false, error, onInputChange, onSelectChange, onClose, onConfirm }: ActionDialogProps) {
     useEffect(() => {
         if (!open) return undefined;
         const onKeyDown = (event: KeyboardEvent) => {
@@ -35,11 +42,19 @@ export function ActionDialog({ open, title, description, inputLabel, inputValue 
         <div className={css.dialog} role="dialog" aria-modal="true" aria-labelledby="eza-action-dialog-title">
             <h3 id="eza-action-dialog-title">{title}</h3>
             {description ? <p className={css.description}>{description}</p> : null}
-            {inputLabel ? <label className={css.field}><span>{inputLabel}</span><input autoFocus value={inputValue} placeholder={inputPlaceholder} disabled={busy} onChange={(event) => onInputChange?.(event.target.value)} /></label> : null}
+            {selectLabel ? <label className={css.field}><span>{selectLabel}</span><HierarchySelect
+                value={selectValue}
+                options={selectTreeOptions}
+                placeholder={selectPlaceholder}
+                ariaLabel={selectLabel}
+                disabled={busy}
+                onChange={(value) => onSelectChange?.(value)}
+            /></label> : null}
+            {inputLabel ? <label className={css.field}><span>{inputLabel}</span><input autoFocus={selectLabel === undefined} value={inputValue} placeholder={inputPlaceholder} disabled={busy} onChange={(event) => onInputChange?.(event.target.value)} /></label> : null}
             {error ? <p className={css.error} role="alert">{error}</p> : null}
             <div className={css.footer}>
                 <button type="button" className={css.cancel} disabled={busy} onClick={onClose}>{cancelLabel}</button>
-                <button type="button" className={danger ? css.danger : css.confirm} disabled={busy || (inputLabel !== undefined && !inputValue.trim())} onClick={onConfirm}>{busy ? '处理中…' : confirmLabel}</button>
+                <button type="button" className={danger ? css.danger : css.confirm} disabled={busy || (inputLabel !== undefined && !inputValue.trim()) || (selectLabel !== undefined && !selectValue)} onClick={onConfirm}>{busy ? i18n('Working...') : confirmLabel}</button>
             </div>
         </div>
     </div>;

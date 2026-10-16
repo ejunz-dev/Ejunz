@@ -1,3 +1,5 @@
+import { i18n } from '@/i18n';
+
 export const FILE_INJECTION_PLUGIN = 'ejunz-file-injection';
 export const FILE_INJECTION_SECTION = 'file-injection';
 
@@ -89,11 +91,11 @@ export function uploadFileToStore(options: {
         });
         xhr.addEventListener('load', () => {
             if ((xhr.responseURL || '').includes('/login')) {
-                reject(new Error('登录已过期，请刷新页面后重试'));
+                reject(new Error(i18n('Your sign-in expired. Refresh the page and try again.')));
                 return;
             }
             if (xhr.status < 200 || xhr.status >= 300) {
-                reject(new Error(responseMessage(xhr.responseText) || `上传失败（HTTP ${xhr.status}）`));
+                reject(new Error(responseMessage(xhr.responseText) || i18n('Upload failed (HTTP {0})', xhr.status)));
                 return;
             }
             onProgress?.(100);
@@ -106,8 +108,8 @@ export function uploadFileToStore(options: {
                 uploadedAt: new Date().toISOString(),
             });
         });
-        xhr.addEventListener('error', () => reject(new Error('网络错误，上传失败')));
-        xhr.addEventListener('abort', () => reject(new Error('上传已取消')));
+        xhr.addEventListener('error', () => reject(new Error(i18n('Network error. Upload failed.'))));
+        xhr.addEventListener('abort', () => reject(new Error(i18n('Upload cancelled'))));
         xhr.send(form);
     });
 }

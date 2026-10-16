@@ -2,6 +2,7 @@ import katex from 'katex';
 import MarkdownIt from 'markdown-it';
 import { createHighlighter } from 'shiki';
 import { useEffect, useMemo, useRef } from 'react';
+import { i18n } from '@/i18n';
 import 'katex/dist/katex.min.css';
 import css from './MarkdownText.module.css';
 
@@ -92,13 +93,13 @@ function installCopyButtons(root: HTMLDivElement): HTMLButtonElement[] {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'eza-codeCopy';
-        button.textContent = '复制';
+        button.textContent = i18n('Copy');
         button.addEventListener('click', () => {
             const value = pre.querySelector('code')?.textContent ?? pre.textContent ?? '';
             if (!navigator.clipboard) return;
             void navigator.clipboard.writeText(value).then(() => {
-                button.textContent = '已复制';
-                window.setTimeout(() => { button.textContent = '复制'; }, 1200);
+                button.textContent = i18n('Copied');
+                window.setTimeout(() => { button.textContent = i18n('Copy'); }, 1200);
             }).catch(() => {});
         });
         banner.appendChild(button);

@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { i18n } from '@/i18n';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { StateDot, type StateDotState } from '../primitives/StateDot';
 import { MarkdownText } from '../primitives/markdown/MarkdownText';
@@ -34,6 +35,7 @@ interface TeamTreeProps {
     onToggleAgentSelection: (agentId: string) => void;
     onToggleSessionSelection: (sessionId: string) => void;
     onToggleTeamSelection: (teamIds: readonly string[], agentIds: readonly string[], sessionIds: readonly string[], ancestorIds: readonly string[]) => void;
+    onCreateAgent: () => void;
     onCreateTeam: () => void;
     onRenameTeam: (teamId: string) => void;
     onSessionTitleChange: (sessionId: string, title: string) => void;
@@ -82,12 +84,12 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
 function sessionTitle(session: SessionSummary): string {
     const title = session.projections?.values?.title;
     if (typeof title === 'string' && title.trim()) return title;
-    return session.blank ? '新会话' : `会话 ${session.sessionId.slice(8, 16)}`;
+    return session.blank ? i18n('New session') : i18n('Session {0}', session.sessionId.slice(8, 16));
 }
 
 function agentModelLabel(agent: AgentSummary, modelGroups?: SessionModels['groups']): string {
     const selectedModel = agent.settings.model;
-    if (!selectedModel?.provider || !selectedModel.model) return '未选择';
+    if (!selectedModel?.provider || !selectedModel.model) return i18n('Not selected');
     const group = modelGroups?.find((item) => item.id === selectedModel.provider);
     const selected = group?.models.find((item) => item.id === selectedModel.model);
     return `${group?.name || selectedModel.provider} / ${selected?.name || selectedModel.model}`;
@@ -98,12 +100,12 @@ function relativeTimeLabel(raw?: string | number): string {
     const date = new Date(raw);
     if (Number.isNaN(date.getTime())) return '';
     const minutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60_000));
-    if (minutes < 1) return '刚刚';
-    if (minutes < 60) return `${minutes} 分钟前`;
+    if (minutes < 1) return i18n('Just now');
+    if (minutes < 60) return i18n('{0} minutes ago', minutes);
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours} 小时前`;
+    if (hours < 24) return i18n('{0} hours ago', hours);
     const days = Math.floor(hours / 24);
-    if (days < 30) return `${days} 天前`;
+    if (days < 30) return i18n('{0} days ago', days);
     return date.toLocaleDateString();
 }
 
@@ -128,7 +130,7 @@ const SessionActivityRow = memo(function SessionActivityRow({ activity, index, e
             : title === 'Tool' ? 'eza-sessionCardActivityTitle--tool'
                 : title === 'Error' ? 'eza-sessionCardActivityTitle--error'
                     : isUserActivity ? 'eza-sessionCardActivityTitle--user' : 'eza-sessionCardActivityTitle--agent';
-    const statusLabel = sendStatus === 'sending' ? '发送中' : sendStatus === 'sent' ? '发送成功' : '发送失败';
+    const statusLabel = sendStatus === 'sending' ? i18n('Sending') : sendStatus === 'sent' ? i18n('Sent') : i18n('Send failed');
     const statusIcon = sendStatus && <span className={`eza-sessionCardActivitySendState eza-sessionCardActivitySendState--${sendStatus}`} role="status" aria-label={statusLabel} title={statusLabel}>{sendStatus === 'sending' ? <span className="eza-sessionCardActivitySendSpinner" /> : sendStatus === 'sent' ? '✓' : '!'}</span>;
     return <div className="eza-sessionCardActivity" data-active={active || undefined} title={activity}>
         <span className="eza-sessionCardActivityIndex">{isUserActivity ? statusIcon : `#${index}`}</span>
@@ -153,7 +155,7 @@ const SessionAgentTitle = memo(function SessionAgentTitle({ session, error, wait
 }) {
     const title = sessionTitle(session);
     const state = sessionState(session, waitingForAnswer, error);
-    const stateLabel = error ? '运行失败' : waitingForAnswer ? '等待回答' : session.running ? '运行中' : '已完成';
+    const stateLabel = error ? i18n('Failed') : waitingForAnswer ? i18n('Waiting for answer') : session.running ? i18n('Running') : i18n('Completed');
     const activity = error ? `Error · ${flatLine(error)}` : activityPreview;
     if (editMode) {
         return <>
@@ -161,7 +163,7 @@ const SessionAgentTitle = memo(function SessionAgentTitle({ session, error, wait
             <span className="eza-sessionCardTitleText">
                 <input
                     className="eza-sessionTitleEditor"
-                    aria-label="会话名称"
+                    aria-label={i18n('Session name')}
                     value={draftTitle ?? title}
                     onChange={(event) => onTitleChange(session.sessionId, event.target.value)}
                     onClick={(event) => event.stopPropagation()}
@@ -188,7 +190,7 @@ const SessionAgentTitle = memo(function SessionAgentTitle({ session, error, wait
 
 export function TeamTree({
     sessions, agents, teams: teams, treeOpen, activeTeamId, onSelectTeam, onCloseTree, bases, current, pendingQuestionSessionIds, sessionErrors, sessionActivityPreviews, modelGroups, displaySettings, query, searchMatches, searchSnippets, searchHasMore,
-    editMode, selectedAgentIds, selectedSessionIds, selectedTeamIds, sessionTitleDrafts, onToggleAgentSelection, onToggleSessionSelection, onToggleTeamSelection, onCreateTeam, onRenameTeam, onSessionTitleChange, onSaveSessionTitles, sessionTitleSaving,
+    editMode, selectedAgentIds, selectedSessionIds, selectedTeamIds, sessionTitleDrafts, onToggleAgentSelection, onToggleSessionSelection, onToggleTeamSelection, onCreateAgent, onCreateTeam, onRenameTeam, onSessionTitleChange, onSaveSessionTitles, sessionTitleSaving,
     onQuery, onSelect, onSelectAgent, onStartSession, onDeleteSelected, onExitEdit,
 }: TeamTreeProps) {
     const toolsRef = useRef<HTMLDivElement>(null);
@@ -278,7 +280,7 @@ export function TeamTree({
     }, [onSelectTeam, pendingTeamId]);
     const cancelTeamSwitch = useCallback(() => setPendingTeamId(null), []);
     const pendingTeamLabel = pendingTeamId === SESSION_GROUP_ID
-        ? '未分组'
+        ? i18n('Ungrouped')
         : teams.find((team) => team.teamId === pendingTeamId)?.text || '';
     const topSelectedTeamIds = teams
         .filter((team) => !team.isRootTeam && selectedTeamIds.has(team.teamId)
@@ -336,7 +338,7 @@ export function TeamTree({
         if (visited.has(teamId)) return false;
         visited.add(teamId);
         const team = teamById.get(teamId);
-        const label = team ? team.text : '未分组';
+        const label = team ? team.text : i18n('Ungrouped');
         if (label.toLocaleLowerCase().includes(needle)) return true;
         if ((sessionsByTeam.get(teamId) || []).some((session) => sessionTitle(session).toLocaleLowerCase().includes(needle)
             || (searchSnippets.get(session.sessionId) || '').toLocaleLowerCase().includes(needle))) return true;
@@ -359,7 +361,7 @@ export function TeamTree({
                 checked={selectedSessionIds.has(session.sessionId)}
                 onChange={() => onToggleSessionSelection(session.sessionId)}
                 onClick={(event) => event.stopPropagation()}
-                aria-label={`选择 ${sessionTitle(session)}`}
+                aria-label={i18n('Select {0}', sessionTitle(session))}
             />}
             <span className="eza-teamTreeSpacer" aria-hidden="true" />
             <span className="eza-teamTreeIcon eza-teamTreeIcon--session" aria-hidden="true"><SessionBubbleIcon /></span>
@@ -389,8 +391,8 @@ export function TeamTree({
         const visibleChildren = matchesAgent ? sessions.filter((session) => session.agentId === agent.agentId) : childSessions;
         if (inDrawer && needle && !matchesAgent && visibleChildren.length === 0) return null;
         const tags = [
-            ...(displaySettings.showModel && agent.settings.model ? [`模型: ${agentModelLabel(agent, modelGroups)}`] : []),
-            ...(displaySettings.showBase && agent.settings.baseDocId ? [`Base: ${bases.find((base) => String(base.docId) === agent.settings.baseDocId)?.title || `#${agent.settings.baseDocId}`}`] : []),
+            ...(displaySettings.showModel && agent.settings.model ? [i18n('Model: {0}', agentModelLabel(agent, modelGroups))] : []),
+            ...(displaySettings.showBase && agent.settings.baseDocId ? [i18n('Base: {0}', bases.find((base) => String(base.docId) === agent.settings.baseDocId)?.title || `#${agent.settings.baseDocId}`)] : []),
         ];
         return <div className="eza-teamTreeBranch" key={agent.agentId}>
             <div className="eza-teamTreeRow eza-teamTreeRow--agent" style={{ paddingLeft: `${level * 1.1}rem` }}>
@@ -400,16 +402,16 @@ export function TeamTree({
                     checked={selectedAgentIds.has(agent.agentId)}
                     onChange={() => onToggleAgentSelection(agent.agentId)}
                     onClick={(event) => event.stopPropagation()}
-                    aria-label={`选择 Agent ${agent.title}`}
+                    aria-label={i18n('Select agent {0}', agent.title)}
                 />}
                 {visibleChildren.length > 0
                     ? <button type="button" className="eza-teamTreeToggle" onClick={() => setCollapsedAgentIds((current) => {
                         const next = new Set(current);
                         if (next.has(agent.agentId)) next.delete(agent.agentId); else next.add(agent.agentId);
                         return next;
-                    })} aria-expanded={expanded} aria-label={expanded ? '收起 Session' : '展开 Session'}><ChevronIcon expanded={expanded} /></button>
+                    })} aria-expanded={expanded} aria-label={i18n(expanded ? 'Collapse sessions' : 'Expand sessions')}><ChevronIcon expanded={expanded} /></button>
                     : <span className="eza-teamTreeSpacer" aria-hidden="true" />}
-                <button type="button" className="eza-teamTreeMain" title={`设置 Agent：${agent.title}`} onClick={() => {
+                <button type="button" className="eza-teamTreeMain" title={i18n('Open settings for agent {0}', agent.title)} onClick={() => {
                     onSelectAgent(agent.agentId);
                     if (inDrawer) onCloseTree();
                 }}>
@@ -417,7 +419,7 @@ export function TeamTree({
                     <span className="eza-teamTreeLabel">{agent.title}</span>
                     {displaySettings.showTimestamps && <time className="eza-teamTreeMeta" title={new Date(agent.updatedAt).toLocaleString()}>{relativeTimeLabel(agent.updatedAt)}</time>}
                 </button>
-                <button type="button" className="eza-teamTreeAddSession" title={`在 ${agent.title} 下新建 Session`} aria-label={`在 ${agent.title} 下新建 Session`} onClick={() => onStartSession(agent.agentId)}>＋</button>
+                <button type="button" className="eza-teamTreeAddSession" title={i18n('Create a session under {0}', agent.title)} aria-label={i18n('Create a session under {0}', agent.title)} onClick={() => onStartSession(agent.agentId)}>＋</button>
             </div>
             {tags.length > 0 && <div className="eza-teamTreeTags" style={{ marginLeft: `${(level + 1) * 1.1 + 2.1}rem` }}>{tags.map((tag) => <span key={tag}>{tag}</span>)}</div>}
             {expanded && visibleChildren.length > 0 && <div className="eza-teamTreeChildren">
@@ -430,7 +432,7 @@ export function TeamTree({
         const ungrouped = teamId === SESSION_GROUP_ID;
         if (!team && !ungrouped) return null;
         if (inDrawer && needle && !teamSearchMatches(teamId, needle)) return null;
-        const label = team?.text || '未分组';
+        const label = team?.text || i18n('Ungrouped');
         const childTeams = childTeamsByParent.get(teamId) || [];
         const childAgents = agentsByTeam.get(teamId) || [];
         const childSessions = sessionsByTeam.get(teamId) || [];
@@ -451,10 +453,10 @@ export function TeamTree({
                     disabled={team?.isRootTeam === true}
                     onChange={() => toggleTeamSelection(teamId)}
                     onClick={(event) => event.stopPropagation()}
-                    aria-label={`选择团队 ${label}`}
+                    aria-label={i18n('Select team {0}', label)}
                 />}
                 {hasChildren
-                    ? <button type="button" className="eza-teamTreeToggle" onClick={() => toggleTeamExpansion(teamId)} aria-expanded={expanded} aria-label={expanded ? '收起' : '展开'}><ChevronIcon expanded={expanded} /></button>
+                    ? <button type="button" className="eza-teamTreeToggle" onClick={() => toggleTeamExpansion(teamId)} aria-expanded={expanded} aria-label={i18n(expanded ? 'Collapse' : 'Expand')}><ChevronIcon expanded={expanded} /></button>
                     : <span className="eza-teamTreeSpacer" aria-hidden="true" />}
                 <button
                     type="button"
@@ -482,7 +484,7 @@ export function TeamTree({
     const renderTree = (rootIds: string[], inDrawer = false): ReactNode => {
         const needle = inDrawer ? query.trim().toLocaleLowerCase() : '';
         const roots = rootIds.map((teamId) => renderTeamNode(teamId, 0, inDrawer, needle)).filter(Boolean);
-        return roots.length > 0 ? roots : <p className="eza-teamTreeEmpty">暂无会话</p>;
+        return roots.length > 0 ? roots : <p className="eza-teamTreeEmpty">{i18n('No sessions')}</p>;
     };
     useEffect(() => {
         if (!treeOpen && !pendingTeamId) return undefined;
@@ -507,27 +509,27 @@ export function TeamTree({
     const endDrawerResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
         if (drawerResizeRef.current?.pointerId === event.pointerId) drawerResizeRef.current = null;
     }, []);
-    return <section className="eza-agentStructure" aria-label="团队、Agent 与 Session">
+    return <section className="eza-agentStructure" aria-label={i18n('Team, Agent, and Session tree')}>
         <div ref={toolsRef} className="eza-agentStructure__tools">
-            <input value={query} placeholder="搜索团队、Agent 或 Session" aria-label="搜索团队、Agent 或 Session" onChange={(event) => onQuery(event.target.value)} />
-            <button type="button" onClick={() => onStartSession()}>新会话</button>
-            <button type="button" onClick={onCreateTeam}>新团队</button>
+            <input value={query} placeholder={i18n('Search teams, agents, or sessions')} aria-label={i18n('Search teams, agents, or sessions')} onChange={(event) => onQuery(event.target.value)} />
+            <button type="button" onClick={onCreateAgent}>{i18n('New smart agent')}</button>
+            <button type="button" onClick={onCreateTeam}>{i18n('New team')}</button>
         </div>
-        {editMode && <div className="eza-selectionToolbar" style={toolbarTop === null ? undefined : { top: `${toolbarTop}px` }} role="toolbar" aria-label="编辑操作">
-            <span>Agent {selectedAgentIds.size} · Session {selectedSessionIds.size} · 团队 {selectedTeamIds.size}</span>
-            <button type="button" disabled={sessionTitleSaving || !canEditTeam} onClick={() => { if (selectedTeamId) onRenameTeam(selectedTeamId); }}>重命名团队</button>
-            <button type="button" className="eza-selectionToolbarSave" disabled={sessionTitleSaving} onClick={() => { void onSaveSessionTitles(); }}>{sessionTitleSaving ? '保存中…' : '保存会话名'}</button>
-            <button type="button" className="eza-selectionToolbarDelete" disabled={sessionTitleSaving || (selectedAgentIds.size === 0 && selectedSessionIds.size === 0 && selectedTeamIds.size === 0)} onClick={onDeleteSelected}>删除</button>
-            <button type="button" className="eza-selectionToolbarExit" disabled={sessionTitleSaving} onClick={onExitEdit}>退出编辑</button>
+        {editMode && <div className="eza-selectionToolbar" style={toolbarTop === null ? undefined : { top: `${toolbarTop}px` }} role="toolbar" aria-label={i18n('Editing actions')}>
+            <span>{i18n('{0} agents · {1} sessions · {2} teams', selectedAgentIds.size, selectedSessionIds.size, selectedTeamIds.size)}</span>
+            <button type="button" disabled={sessionTitleSaving || !canEditTeam} onClick={() => { if (selectedTeamId) onRenameTeam(selectedTeamId); }}>{i18n('Rename team')}</button>
+            <button type="button" className="eza-selectionToolbarSave" disabled={sessionTitleSaving} onClick={() => { void onSaveSessionTitles(); }}>{sessionTitleSaving ? i18n('Saving...') : i18n('Save session names')}</button>
+            <button type="button" className="eza-selectionToolbarDelete" disabled={sessionTitleSaving || (selectedAgentIds.size === 0 && selectedSessionIds.size === 0 && selectedTeamIds.size === 0)} onClick={onDeleteSelected}>{i18n('Delete')}</button>
+            <button type="button" className="eza-selectionToolbarExit" disabled={sessionTitleSaving} onClick={onExitEdit}>{i18n('Exit edit mode')}</button>
         </div>}
         <div className="eza-agentStructure__tree eza-teamTree">{renderTree(renderedRootTeamIds)}</div>
         {treeOpen && createPortal(<>
-            <button type="button" className="eza-teamTreeBackdrop" aria-label="关闭团队结构" onClick={onCloseTree} />
-            <aside className="eza-teamTreeDrawer" style={{ width: `min(${drawerWidth}px, calc(100vw - 1rem))` }} role="dialog" aria-modal="true" aria-label="团队结构">
+            <button type="button" className="eza-teamTreeBackdrop" aria-label={i18n('Close team structure')} onClick={onCloseTree} />
+            <aside className="eza-teamTreeDrawer" style={{ width: `min(${drawerWidth}px, calc(100vw - 1rem))` }} role="dialog" aria-modal="true" aria-label={i18n('Team structure')}>
                 <header className="eza-teamTreeDrawerHeader">
-                    <strong>团队结构</strong>
+                    <strong>{i18n('Team structure')}</strong>
                     <span>{teams.length + agents.length + sessions.length}</span>
-                    <button type="button" onClick={onCloseTree} aria-label="关闭">×</button>
+                    <button type="button" onClick={onCloseTree} aria-label={i18n('Close')}>×</button>
                 </header>
                 <div className="eza-teamTreeDrawerBody eza-teamTree">{renderTree(rootTeamIds, true)}</div>
             </aside>
@@ -536,7 +538,7 @@ export function TeamTree({
                 style={{ left: `min(${drawerWidth}px, calc(100vw - 1rem))` }}
                 role="separator"
                 aria-orientation="vertical"
-                aria-label="调整团队面板宽度"
+                aria-label={i18n('Resize team panel')}
                 onPointerDown={startDrawerResize}
                 onPointerMove={moveDrawerResize}
                 onPointerUp={endDrawerResize}
@@ -546,14 +548,14 @@ export function TeamTree({
         </>, document.body)}
         {pendingTeamId && createPortal(<div className="eza-teamSwitchConfirmBackdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) cancelTeamSwitch(); }}>
             <section className="eza-teamSwitchConfirm" role="alertdialog" aria-modal="true" aria-labelledby="eza-teamSwitchConfirm-title">
-                <h2 id="eza-teamSwitchConfirm-title">切换团队？</h2>
-                <p>{pendingTeamLabel ? `切换到“${pendingTeamLabel}”？` : '切换当前团队？'}</p>
+                <h2 id="eza-teamSwitchConfirm-title">{i18n('Switch team?')}</h2>
+                <p>{pendingTeamLabel ? i18n('Switch to "{0}"?', pendingTeamLabel) : i18n('Switch the current team?')}</p>
                 <div className="eza-teamSwitchConfirmActions">
-                    <button type="button" onClick={cancelTeamSwitch}>取消</button>
-                    <button type="button" className="is-primary" onClick={confirmTeamSwitch}>切换</button>
+                    <button type="button" onClick={cancelTeamSwitch}>{i18n('Cancel')}</button>
+                    <button type="button" className="is-primary" onClick={confirmTeamSwitch}>{i18n('Switch')}</button>
                 </div>
             </section>
         </div>, document.body)}
-        {searchHasMore && <p className="eza-teamTreeHint">仅显示部分搜索结果，请缩小搜索范围。</p>}
+        {searchHasMore && <p className="eza-teamTreeHint">{i18n('Only part of the search results are shown. Narrow your search.')}</p>}
     </section>;
 }

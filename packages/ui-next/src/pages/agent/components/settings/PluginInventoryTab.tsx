@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react';
+import { i18n } from '@/i18n';
 import { IconChevronDownOutline14, IconSearchOutline16 } from '../../icons';
 import type { SettingsRpc } from './cardForm';
 import css from './PluginInventoryTab.module.css';
@@ -22,15 +23,15 @@ type ViewState =
     | { readonly status: 'ready'; readonly snapshot: PluginInventorySnapshot };
 
 const PHASE_LABELS: Record<Exclude<PluginFiberPhase, null>, string> = {
-    pending: '等待依赖',
-    loading: '加载中',
-    active: '已挂载',
-    failed: '挂载失败',
-    unloading: '卸载中',
+    pending: 'Waiting for dependencies',
+    loading: 'Loading',
+    active: 'Mounted',
+    failed: 'Mount failed',
+    unloading: 'Uninstalling',
 };
 
 function phaseLabel(phase: PluginFiberPhase): string {
-    return phase === null ? '未挂载' : PHASE_LABELS[phase];
+    return phase === null ? i18n('Not mounted') : i18n(PHASE_LABELS[phase]);
 }
 
 function moduleShortName(moduleName: string): string {
@@ -82,40 +83,40 @@ export function PluginInventoryTab({ rpc }: { rpc: SettingsRpc }) {
 
     return (
         <div className={css.section} aria-busy={state.status === 'loading'}>
-            {state.status === 'loading' ? <p className={css.status}>正在读取插件…</p> : null}
+            {state.status === 'loading' ? <p className={css.status}>{i18n('Loading plugins...')}</p> : null}
             {state.status === 'error' ? (
                 <div className={css.failure}>
-                    <p role="alert">暂时无法读取插件。</p>
-                    <button type="button" onClick={retry}>重试</button>
+                    <p role="alert">{i18n('Unable to load plugins right now.')}</p>
+                    <button type="button" onClick={retry}>{i18n('Retry')}</button>
                 </div>
             ) : null}
             {state.status === 'ready' ? (
                 <div className={css.catalog}>
                     <label className={css.search}>
                         <IconSearchOutline16 aria-hidden="true" />
-                        <span className={css.visuallyHidden}>搜索插件</span>
+                        <span className={css.visuallyHidden}>{i18n('Search plugins')}</span>
                         <input
                             type="search"
                             value={query}
-                            placeholder="搜索插件"
-                            aria-label="搜索插件"
+                            placeholder={i18n('Search plugins')}
+                            aria-label={i18n('Search plugins')}
                             onChange={(event) => { setQuery(event.currentTarget.value); }}
                         />
                     </label>
                     <div className={css.catalogHeading}>
-                        <h3>插件列表</h3>
+                        <h3>{i18n('Plugin list')}</h3>
                         <span data-plugin-count={filteredEntries.length}>{filteredEntries.length}</span>
                     </div>
-                    {state.snapshot.entries.length === 0 ? <p className={css.status}>暂无插件。</p> : null}
+                    {state.snapshot.entries.length === 0 ? <p className={css.status}>{i18n('No plugins available.')}</p> : null}
                     {state.snapshot.entries.length > 0 && filteredEntries.length === 0
-                        ? <p className={css.status}>没有匹配的插件。</p>
+                        ? <p className={css.status}>{i18n('No plugins match your search.')}</p>
                         : null}
                     {filteredEntries.length > 0 ? (
                         <ul className={css.cards}>
                             {filteredEntries.map((entry) => {
                                 const status = phaseLabel(entry.fiberPhase);
                                 const title = moduleShortName(entry.moduleName);
-                                const configuration = entry.enabled ? '已启用' : '已停用';
+                                const configuration = entry.enabled ? i18n('Enabled') : i18n('Disabled');
                                 const open = expanded === entry.entryId;
                                 const detailId = `${catalogId}-details-${encodeURIComponent(entry.entryId)}`;
                                 return (
@@ -157,12 +158,12 @@ export function PluginInventoryTab({ rpc }: { rpc: SettingsRpc }) {
                                                 <code className={css.entryValue} data-loader-entry>{entry.entryId}</code>
                                                 <dl className={css.details}>
                                                     <div>
-                                                        <dt>配置状态</dt>
+                                                        <dt>{i18n('Configuration status')}</dt>
                                                         <dd>{configuration}</dd>
                                                     </div>
                                                     {entry.enabled ? (
                                                         <div>
-                                                            <dt>Cordis 状态</dt>
+                                                            <dt>{i18n('Cordis status')}</dt>
                                                             <dd>{status}</dd>
                                                         </div>
                                                     ) : null}

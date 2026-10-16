@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n';
 import type { ChatMessage, ChatSegment, QueueItem } from '../components/types';
 import { FILE_INJECTION_PLUGIN, FILE_INJECTION_SECTION, parseFileInjection, type UploadedFileMeta } from './uploads';
 
@@ -82,7 +83,7 @@ function failureMessage(failure: unknown): string {
 
 export function eventFailureMessage(event: SessionEvent): string | null {
     const data = asObject(event.data);
-    if (event.type === 'turn/error') return typeof data.message === 'string' ? data.message : '回合执行失败';
+    if (event.type === 'turn/error') return typeof data.message === 'string' ? data.message : i18n('Turn failed');
     if (event.type !== 'turn/end') return null;
     const reason = asObject(data.reason);
     return reason.kind === 'error' ? failureMessage(reason.error) : null;
@@ -106,8 +107,8 @@ export function messageContent(data: unknown): unknown {
 
 export function contextProvenance(source: JsonObject): { role: 'inject' | 'recall'; label?: string } {
     const kind = typeof source.kind === 'string' ? source.kind : 'context';
-    if (kind === 'plugin' && source.plugin === FILE_INJECTION_PLUGIN) return { role: 'inject', label: '文件注入' };
-    if (kind === 'plugin' && source.plugin === 'ejunz-agent-plugin-lifecycle') return { role: 'inject', label: 'Agent 插件状态' };
+    if (kind === 'plugin' && source.plugin === FILE_INJECTION_PLUGIN) return { role: 'inject', label: i18n('File injection') };
+    if (kind === 'plugin' && source.plugin === 'ejunz-agent-plugin-lifecycle') return { role: 'inject', label: i18n('Agent plugin status') };
     if (kind === 'plugin' && typeof source.plugin === 'string') return { role: 'inject', label: source.plugin };
     if (kind === 'skill-invocation' && typeof source.name === 'string') return { role: 'inject', label: source.name };
     if (kind === 'session-reference' && Array.isArray(source.references)) {
@@ -215,7 +216,7 @@ export function eventMessage(event: SessionEvent): ChatMessage | null {
         const name = typeof data.name === 'string' ? data.name : 'tool';
         const input = typeof data.arguments === 'string' ? data.arguments : JSON.stringify(data.arguments ?? {}, null, 2);
         const content = Array.isArray(data.content) ? contentText(data.content) || JSON.stringify(data.content, null, 2) : typeof data.output === 'string' ? data.output : '';
-        return { key: `tool-${subCallId ?? event.seq}`, role: 'tool', text: `${event.type === 'tool/code-dispatch' ? '结果' : '调用'} ${name}\n${event.type === 'tool/code-dispatch' ? content : input}`, toolName: name, toolInput: input, toolOutput: event.type === 'tool/code-dispatch' ? content : undefined, ...(data.meta === undefined ? {} : { toolMeta: data.meta }), parentCallId, rootCallId, subCallId, eventType: event.type, time: event.time, running: event.type === 'tool/code-dispatch-start', toolError: data.isError === true };
+        return { key: `tool-${subCallId ?? event.seq}`, role: 'tool', text: `${event.type === 'tool/code-dispatch' ? i18n('Result') : i18n('Call')} ${name}\n${event.type === 'tool/code-dispatch' ? content : input}`, toolName: name, toolInput: input, toolOutput: event.type === 'tool/code-dispatch' ? content : undefined, ...(data.meta === undefined ? {} : { toolMeta: data.meta }), parentCallId, rootCallId, subCallId, eventType: event.type, time: event.time, running: event.type === 'tool/code-dispatch-start', toolError: data.isError === true };
     }
     if (event.type === 'tool/call') {
         const callId = typeof data.callId === 'string' ? data.callId : typeof data.id === 'string' ? data.id : undefined;
@@ -224,7 +225,7 @@ export function eventMessage(event: SessionEvent): ChatMessage | null {
         return {
             key: `tool-${callId ?? event.seq}`,
             role: 'tool',
-            text: `调用 ${name}\n${args}`,
+            text: `${i18n('Call')} ${name}\n${args}`,
             toolName: name,
             toolInput: args,
             eventType: event.type,
@@ -245,7 +246,7 @@ export function eventMessage(event: SessionEvent): ChatMessage | null {
         return {
             key: `tool-${callId ?? event.seq}`,
             role: 'tool',
-            text: `结果${toolError ? '（错误）' : ''}\n${result}`,
+            text: `${toolError ? i18n('Result (error)') : i18n('Result')}\n${result}`,
             toolOutput: result,
             ...(data.meta === undefined ? {} : { toolMeta: data.meta }),
             toolError,
@@ -265,7 +266,7 @@ export function eventMessage(event: SessionEvent): ChatMessage | null {
         return { key: `retry-${retryId}`, role: 'retry', text: typeof data.failure === 'string' ? data.failure : '', eventType: event.type, time: event.time, retry, retryDelayMs: typeof data.delayMs === 'number' ? data.delayMs : undefined, retryState: event.type === 'llm/retry-started' ? 'started' : 'scheduled' };
     }
     if (event.type === 'turn/error' || event.type === 'turn/max-tokens') {
-        const message = typeof data.message === 'string' ? data.message : event.type === 'turn/max-tokens' ? '已达到输出上限' : '回合执行失败';
+        const message = typeof data.message === 'string' ? data.message : event.type === 'turn/max-tokens' ? i18n('Output limit reached') : i18n('Turn failed');
         return { key: `system-${event.seq}`, role: 'system', text: message, eventType: event.type, time: event.time };
     }
     const turnError = eventFailureMessage(event);
@@ -454,6 +455,6 @@ export function queueItems(value: unknown[]): QueueItem[] {
         const row = asObject(item);
         const message = asObject(row.message);
         const text = contentText(message.content);
-        return { id: String(row.id ?? ''), preview: text || '待发送消息', ...(text ? { text } : {}) };
+        return { id: String(row.id ?? ''), preview: text || i18n('Message waiting to send'), ...(text ? { text } : {}) };
     }).filter((item) => item.id !== '');
 }

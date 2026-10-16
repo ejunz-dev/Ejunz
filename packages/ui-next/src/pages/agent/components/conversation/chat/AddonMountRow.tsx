@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { i18n } from '@/i18n';
 import { DisclosureRow } from '../../primitives/DisclosureRow';
 import css from './AddonMountRow.module.css';
 
@@ -26,16 +27,16 @@ export function AddonMountRow({ label, description, enabled, tools }: AddonMount
         expandable
         expandOnRowClick
         onToggle={() => setOpen((value) => !value)}
-        collapsedContent={<><span className={css.separator} aria-hidden /><span className={css.count}>{enabled ? `${tools.length} 个工具` : '已卸载'}</span></>}
+        collapsedContent={<><span className={css.separator} aria-hidden /><span className={css.count}>{enabled ? i18n('{0} tools', tools.length) : i18n('Uninstalled')}</span></>}
     >
         <div className={css.body}>
             {description && <p className={css.description}>{description}</p>}
-            {!enabled ? <p className={css.empty}>该 Addon 已从当前会话卸载。</p> : tools.length > 0 ? <ul className={css.tools}>
+            {!enabled ? <p className={css.empty}>{i18n('This add-on has been uninstalled from the current session.')}</p> : tools.length > 0 ? <ul className={css.tools}>
                 {tools.map((tool) => <li className={css.tool} key={tool.name}>
                     <code className={css.name}>{tool.name}</code>
                     <p className={css.toolDescription}>{tool.description}</p>
                 </li>)}
-            </ul> : <p className={css.empty}>该 Addon 当前没有可用工具。</p>}
+            </ul> : <p className={css.empty}>{i18n('This add-on has no tools available.')}</p>}
         </div>
     </DisclosureRow>;
 }

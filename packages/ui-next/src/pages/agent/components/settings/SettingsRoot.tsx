@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { i18n } from '@/i18n';
 import {
     IconAgentPresetOutline16, IconCloseOutline16, IconCodeOutline16, IconDataOutline16,
     IconPersonalizationOutline16, IconSettingsOutline16,
@@ -62,7 +63,7 @@ function SettingsPanel({ sections, activeId, onSelect, onClose, headerAction }: 
             <div className={css.mask} aria-hidden="true" onClick={onClose} />
             <div className={css.panel} role="dialog" aria-modal="true" aria-labelledby={titleId}>
                 <nav className={css.nav}>
-                    <div className={css.navTitle} id={titleId}>设置</div>
+                    <div className={css.navTitle} id={titleId}>{i18n('Settings')}</div>
                     <div className={css.navList}>
                         {sections.map((section) => (
                             <button
@@ -83,7 +84,7 @@ function SettingsPanel({ sections, activeId, onSelect, onClose, headerAction }: 
                         <div className={css.actions}>{headerAction}</div>
                         <button ref={closeButton} type="button" className={css.close} onClick={onClose}>
                             <IconCloseOutline16 size={14} />
-                            <span className={css.hiddenLabel}>关闭</span>
+                            <span className={css.hiddenLabel}>{i18n('Close')}</span>
                         </button>
                     </div>
                     <div className={css.options}>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { i18n } from '@/i18n';
 import css from './AgentPresetSection.module.css';
 
 export interface AgentPresetSectionProps {
@@ -38,20 +39,20 @@ const PRESET_ID = /^[a-z0-9][a-z0-9-]*$/;
 
 const BUILT_IN_TEXT: Record<string, { name: string; description: string }> = {
     standard: {
-        name: '标准模式',
-        description: '功能完整的编码 Agent，支持文件编辑、Shell、文件与网页检索、Skills、计划、目标、子代理和工作流。',
+        name: i18n('Standard mode'),
+        description: i18n('A full-featured coding Agent with file editing, shell, file and web search, Skills, plans, goals, subagents, and workflows.'),
     },
     code: {
-        name: 'PTC 模式',
-        description: '具备标准模式的全部能力，并通过 Code Mode SDK 呈现工具，让模型用一个 TypeScript 程序组合多步操作。',
+        name: i18n('PTC mode'),
+        description: i18n('Includes all Standard mode capabilities and exposes tools through the Code Mode SDK, so the model can compose multi-step operations in one TypeScript program.'),
     },
     minimal: {
-        name: '极简模式',
-        description: '仅提供持久 bash 与 str_replace_editor 的双工具编码 Agent。',
+        name: i18n('Minimal mode'),
+        description: i18n('A two-tool coding Agent with persistent bash and str_replace_editor only.'),
     },
     cordis: {
-        name: '创造模式',
-        description: '用于创建自定义 Agent preset：具备标准模式的全部能力，并提供运行时检查、插件实验和 preset 创作指导。',
+        name: i18n('Creator mode'),
+        description: i18n('Create a custom Agent preset with Standard mode capabilities, runtime inspection, plugin experiments, and preset-authoring guidance.'),
     },
 };
 
@@ -62,9 +63,9 @@ function presetText(row: PresetRow): { name: string; description?: string } {
 }
 
 function copyError(draft: CopyDraft, rows: PresetRow[]): string | null {
-    if (!draft.id) return '请填写标识符。';
-    if (!PRESET_ID.test(draft.id)) return '只能使用小写字母、数字与连字符，且以字母或数字开头。';
-    if (rows.some((row) => row.id === draft.id)) return '该标识符已被占用。';
+    if (!draft.id) return i18n('Enter an identifier.');
+    if (!PRESET_ID.test(draft.id)) return i18n('Use lowercase letters, numbers, and hyphens; start with a letter or number.');
+    if (rows.some((row) => row.id === draft.id)) return i18n('This identifier is already in use.');
     return null;
 }
 
@@ -179,47 +180,47 @@ export function AgentPresetSection({ rpc, onCreatorDraft }: AgentPresetSectionPr
                 className={css.cardMain}
                 disabled={row.isDefault || Boolean(row.broken)}
                 aria-pressed={row.isDefault}
-                title={row.broken ?? (row.isDefault ? '当前使用' : '设为默认')}
+                title={row.broken ?? (row.isDefault ? i18n('Currently in use') : i18n('Set as default'))}
                 onClick={() => { void makeDefault(row.id); }}
             >
                 <span className={css.cardHead}>
                     <span className={css.cardName}>{text.name}</span>
-                    {row.broken ? <span className={css.brokenBadge}>加载失败</span> : null}
-                    <span className={css.badge}>{row.trust === 'user' ? '自定义' : '内置'}</span>
-                    {row.isDefault ? <span className={css.inUse}>当前使用</span> : null}
+                    {row.broken ? <span className={css.brokenBadge}>{i18n('Load failed')}</span> : null}
+                    <span className={css.badge}>{row.trust === 'user' ? i18n('Custom') : i18n('Built-in')}</span>
+                    {row.isDefault ? <span className={css.inUse}>{i18n('Currently in use')}</span> : null}
                 </span>
-                <span className={css.cardDesc}>{text.description ?? '暂无描述。'}</span>
+                <span className={css.cardDesc}>{text.description ?? i18n('No description available.')}</span>
                 {row.broken ? <span className={css.cardBrokenReason} role="alert">{row.broken}</span> : null}
                 <code className={css.cardId}>{row.id}</code>
             </button>
             <div className={css.cardFoot}>
-                {row.trust === 'system' && !row.broken ? <button type="button" className={css.textButton} onClick={() => { void openView(row.id); }}>查看</button> : null}
-                {row.trust === 'user' ? <button type="button" className={css.textButton} onClick={() => { void openLocation(row.id); }}>{hasDocument ? '打开目录' : '查看路径'}</button> : null}
-                <button type="button" className={css.textButton} disabled={!authorable || Boolean(row.broken)} onClick={() => { setCopy({ from: row.id, id: '', name: '', saving: false, error: null }); }}>复制</button>
-                {row.trust === 'user' ? <button type="button" className={`${css.textButton} ${css.dangerButton}`} onClick={() => { setPendingDelete(row.id); }}>删除</button> : null}
+                {row.trust === 'system' && !row.broken ? <button type="button" className={css.textButton} onClick={() => { void openView(row.id); }}>{i18n('View')}</button> : null}
+                {row.trust === 'user' ? <button type="button" className={css.textButton} onClick={() => { void openLocation(row.id); }}>{hasDocument ? i18n('Open folder') : i18n('View path')}</button> : null}
+                <button type="button" className={css.textButton} disabled={!authorable || Boolean(row.broken)} onClick={() => { setCopy({ from: row.id, id: '', name: '', saving: false, error: null }); }}>{i18n('Copy')}</button>
+                {row.trust === 'user' ? <button type="button" className={`${css.textButton} ${css.dangerButton}`} onClick={() => { setPendingDelete(row.id); }}>{i18n('Delete')}</button> : null}
             </div>
-            {revealedPaths[row.id] ? <p className={css.revealedPath}><span>预设文件：</span><code>{revealedPaths[row.id]}</code></p> : null}
+            {revealedPaths[row.id] ? <p className={css.revealedPath}><span>{i18n('Preset file:')}</span><code>{revealedPaths[row.id]}</code></p> : null}
         </li>;
     };
 
-    if (status === 'error') return <div className={css.section}><h2 className={css.title}>Agent 预设</h2><p className={css.error}>无法加载 Agent 预设：{error}</p><button type="button" className={css.secondaryButton} onClick={() => { void load(); }}>重试</button></div>;
-    if (status !== 'ready') return <div className={css.section}><h2 className={css.title}>Agent 预设</h2><p className={css.intro}>预设即一个会话的 Agent 所运行的插件组装。</p>{status === 'unavailable' ? <p className={css.advancedHint}>当前部署没有可用的 Agent 预设。</p> : <p className={css.advancedHint}>正在加载…</p>}</div>;
+    if (status === 'error') return <div className={css.section}><h2 className={css.title}>{i18n('Agent presets')}</h2><p className={css.error}>{i18n('Unable to load Agent presets: {0}', error)}</p><button type="button" className={css.secondaryButton} onClick={() => { void load(); }}>{i18n('Retry')}</button></div>;
+    if (status !== 'ready') return <div className={css.section}><h2 className={css.title}>{i18n('Agent presets')}</h2><p className={css.intro}>{i18n('A preset is the plugin assembly an Agent runs for a session.')}</p>{status === 'unavailable' ? <p className={css.advancedHint}>{i18n('This deployment has no Agent presets available.')}</p> : <p className={css.advancedHint}>{i18n('Loading...')}</p>}</div>;
 
     return <div className={css.section}>
-        <h2 className={css.title}>Agent 预设</h2>
-        <p className={css.intro}>预设即一个会话的 Agent 所运行的插件组装 —— 它的工具、提示词与能力。复制一份既有预设改成自己的。</p>
+        <h2 className={css.title}>{i18n('Agent presets')}</h2>
+        <p className={css.intro}>{i18n('A preset is the plugin assembly an Agent runs for a session: its tools, prompts, and capabilities. Copy an existing preset and make it your own.')}</p>
         {error ? <p className={css.error}>{error}</p> : null}
         {(['system', 'user'] as const).map((trust) => {
             const group = trust === 'system' ? systemRows : customRows;
             if (group.length === 0 && trust === 'system') return null;
             return <section key={trust} className={css.group}>
-                <h3 className={css.groupHead}>{trust === 'system' ? '内置' : '自定义'}</h3>
-                {group.length > 0 ? <ul className={css.cards}>{group.map(renderCard)}</ul> : <p className={css.emptyGroup}>暂无自定义预设。</p>}
-                {trust === 'user' && creatorAvailable ? <button type="button" className={css.creatorButton} onClick={onCreatorDraft}>用「创造模式」创作自定义 Agent preset</button> : null}
+                <h3 className={css.groupHead}>{trust === 'system' ? i18n('Built-in') : i18n('Custom')}</h3>
+                {group.length > 0 ? <ul className={css.cards}>{group.map(renderCard)}</ul> : <p className={css.emptyGroup}>{i18n('No custom presets yet.')}</p>}
+                {trust === 'user' && creatorAvailable ? <button type="button" className={css.creatorButton} onClick={onCreatorDraft}>{i18n('Create a custom Agent preset with Creator mode')}</button> : null}
             </section>;
         })}
-        {copy ? <div className={css.overlay} role="presentation"><div className={css.mask} aria-hidden="true" onClick={() => { if (!copy.saving) setCopy(null); }} /><div className={css.dialog} role="dialog" aria-modal="true"><h3>复制预设</h3><p className={css.dialogIntro}>整个预设会在本机复制一份。标识符将成为目录名，之后直接在预设自己的文件里编辑。</p><label className={css.field}><span>标识符</span><input className={css.input} autoFocus value={copy.id} onChange={(event) => { setCopy((previous) => previous ? { ...previous, id: event.target.value, error: null } : previous); }} placeholder="my-agent" /></label><label className={css.field}><span>名称</span><input className={css.input} value={copy.name} onChange={(event) => { setCopy((previous) => previous ? { ...previous, name: event.target.value, error: null } : previous); }} placeholder="选择器中显示的名字，缺省用标识符" /></label>{copy.error ? <p className={css.error} role="alert">{copy.error}</p> : null}<div className={css.footer}><button type="button" className={css.actionOutline} disabled={copy.saving} onClick={() => { setCopy(null); }}>取消</button><button type="button" className={css.actionPrimary} disabled={copy.saving} onClick={() => { void confirmCopy(); }}>{copy.saving ? '正在创建…' : '创建'}</button></div></div></div> : null}
-        {view ? <div className={css.overlay} role="presentation"><div className={css.mask} aria-hidden="true" onClick={() => { setView(null); }} /><div className={`${css.dialog} ${css.viewer}`} role="dialog" aria-modal="true"><h3>查看 · {view.title}</h3><p className={css.dialogIntro}>组装（agent.cordis.yml）</p><pre className={css.viewerCode}>{view.content}</pre><div className={css.footer}><button type="button" className={css.actionOutline} autoFocus onClick={() => { setView(null); }}>关闭</button></div></div></div> : null}
-        {pendingDelete ? <div className={css.overlay} role="presentation"><div className={css.mask} aria-hidden="true" onClick={() => { if (!deleting) setPendingDelete(null); }} /><div className={css.dialog} role="dialog" aria-modal="true"><h3>删除该预设？</h3><p className={css.dialogIntro}>预设目录将被删除。已在其上运行的会话不受影响；新会话将无法再选择它。</p><div className={css.footer}><button type="button" className={css.actionOutline} disabled={deleting} onClick={() => { setPendingDelete(null); }}>取消</button><button type="button" className={`${css.actionPrimary} ${css.deleteAction}`} disabled={deleting} onClick={() => { void remove(); }}>{deleting ? '正在删除…' : '删除'}</button></div></div></div> : null}
+        {copy ? <div className={css.overlay} role="presentation"><div className={css.mask} aria-hidden="true" onClick={() => { if (!copy.saving) setCopy(null); }} /><div className={css.dialog} role="dialog" aria-modal="true"><h3>{i18n('Copy preset')}</h3><p className={css.dialogIntro}>{i18n('The whole preset is copied on this machine. The identifier becomes the folder name, and you then edit the preset in its own files.')}</p><label className={css.field}><span>{i18n('Identifier')}</span><input className={css.input} autoFocus value={copy.id} onChange={(event) => { setCopy((previous) => previous ? { ...previous, id: event.target.value, error: null } : previous); }} placeholder="my-agent" /></label><label className={css.field}><span>{i18n('Name')}</span><input className={css.input} value={copy.name} onChange={(event) => { setCopy((previous) => previous ? { ...previous, name: event.target.value, error: null } : previous); }} placeholder={i18n('Name shown in the picker. Defaults to the identifier.')} /></label>{copy.error ? <p className={css.error} role="alert">{copy.error}</p> : null}<div className={css.footer}><button type="button" className={css.actionOutline} disabled={copy.saving} onClick={() => { setCopy(null); }}>{i18n('Cancel')}</button><button type="button" className={css.actionPrimary} disabled={copy.saving} onClick={() => { void confirmCopy(); }}>{copy.saving ? i18n('Creating...') : i18n('Create')}</button></div></div></div> : null}
+        {view ? <div className={css.overlay} role="presentation"><div className={css.mask} aria-hidden="true" onClick={() => { setView(null); }} /><div className={`${css.dialog} ${css.viewer}`} role="dialog" aria-modal="true"><h3>{i18n('View · {0}', view.title)}</h3><p className={css.dialogIntro}>{i18n('Assembly (agent.cordis.yml)')}</p><pre className={css.viewerCode}>{view.content}</pre><div className={css.footer}><button type="button" className={css.actionOutline} autoFocus onClick={() => { setView(null); }}>{i18n('Close')}</button></div></div></div> : null}
+        {pendingDelete ? <div className={css.overlay} role="presentation"><div className={css.mask} aria-hidden="true" onClick={() => { if (!deleting) setPendingDelete(null); }} /><div className={css.dialog} role="dialog" aria-modal="true"><h3>{i18n('Delete this preset?')}</h3><p className={css.dialogIntro}>{i18n('The preset folder will be deleted. Sessions already running on it are unaffected. New sessions will no longer be able to select it.')}</p><div className={css.footer}><button type="button" className={css.actionOutline} disabled={deleting} onClick={() => { setPendingDelete(null); }}>{i18n('Cancel')}</button><button type="button" className={`${css.actionPrimary} ${css.deleteAction}`} disabled={deleting} onClick={() => { void remove(); }}>{deleting ? i18n('Deleting...') : i18n('Delete')}</button></div></div></div> : null}
     </div>;
 }

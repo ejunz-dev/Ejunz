@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { i18n } from '@/i18n';
 import css from './ConversationRoot.module.css';
 
 interface ConversationRootProps {
@@ -37,8 +38,8 @@ export function ConversationRoot({ blank, title, renaming, titleEditor, actions,
                 <div className={css.headerActions}>{actions}</div>
             </div>
             {!blank && <div className={css.tabs} role="tablist">
-                <button type="button" role="tab" aria-selected={view === 'chat'} className={`${css.tab}${view === 'chat' ? ` ${css.tabActive}` : ''}`} onClick={() => onViewChange('chat')}>对话</button>
-                <button type="button" role="tab" aria-selected={view === 'trajectory'} className={`${css.tab}${view === 'trajectory' ? ` ${css.tabActive}` : ''}`} onClick={() => onViewChange('trajectory')}>轨迹</button>
+                <button type="button" role="tab" aria-selected={view === 'chat'} className={`${css.tab}${view === 'chat' ? ` ${css.tabActive}` : ''}`} onClick={() => onViewChange('chat')}>{i18n('Chat')}</button>
+                <button type="button" role="tab" aria-selected={view === 'trajectory'} className={`${css.tab}${view === 'trajectory' ? ` ${css.tabActive}` : ''}`} onClick={() => onViewChange('trajectory')}>{i18n('Trajectory')}</button>
             </div>}
         </header>
         <div className={css.scrollBody} data-conversation-scroll="">

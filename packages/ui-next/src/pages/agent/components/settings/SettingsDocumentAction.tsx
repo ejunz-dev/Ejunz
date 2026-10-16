@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { i18n } from '@/i18n';
 import css from './SettingsDocumentAction.module.css';
 
 export interface SettingsDocumentActionProps {
@@ -38,6 +39,6 @@ export function SettingsDocumentAction({ rpc }: SettingsDocumentActionProps) {
 
     return <div className={css.action}>
         {error ? <span className={css.error} role="alert">{error}</span> : null}
-        {available ? <button type="button" className={css.button} disabled={opening} onClick={() => { void open(); }}>{opening ? '正在打开…' : '打开设置文件'}</button> : null}
+        {available ? <button type="button" className={css.button} disabled={opening} onClick={() => { void open(); }}>{opening ? i18n('Opening...') : i18n('Open settings file')}</button> : null}
     </div>;
 }

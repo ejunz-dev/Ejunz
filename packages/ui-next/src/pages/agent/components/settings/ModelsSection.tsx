@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { CustomProviderCard } from './CustomProviderCard';
 import { ProviderEditor } from './ProviderEditor';
-import { zh } from './locales';
+import { i18n } from '@/i18n';
+import { en } from './locales';
 import type { LocaleKey } from './locales';
 import { protocolChoices, useModelsStore, type ProviderRow, type SettingsRpc } from './modelsStore';
 import css from './ModelsSection.module.css';
@@ -22,7 +23,7 @@ export function ModelsSection({ rpc }: ModelsSectionProps) {
     const [deleting, setDeleting] = useState<ProviderRow | null>(null);
     const [deleteBusy, setDeleteBusy] = useState(false);
     const [failure, setFailure] = useState<string | null>(null);
-    const localize = (key: LocaleKey) => zh[key];
+    const localize = (key: LocaleKey) => i18n(en[key]);
     const addable = state.rows.filter((row) => !row.configured && row.entry.settingsNs !== '' && state.namespaces.has(row.entry.settingsNs));
     const piNamespace = state.namespaces.get('llm-pi-ai');
     const protocols = piNamespace ? protocolChoices(piNamespace) : [];
@@ -59,7 +60,7 @@ export function ModelsSection({ rpc }: ModelsSectionProps) {
     };
 
     if (state.status === 'error') return <div className={css.section}><p className={css.error}>{localize('loadFailed')}: {state.error}</p><button type="button" className={css.secondaryButton} onClick={() => { void load(); }}>{localize('retry')}</button></div>;
-    if (state.status !== 'ready') return <div className={css.section}><h2 className={css.title}>{localize('title')}</h2><p className={css.intro}>{localize('intro')}</p><p className={css.advancedHint}>加载中…</p></div>;
+    if (state.status !== 'ready') return <div className={css.section}><h2 className={css.title}>{localize('title')}</h2><p className={css.intro}>{localize('intro')}</p><p className={css.advancedHint}>{i18n('Loading...')}</p></div>;
 
     return <div className={css.section}>
         <h2 className={css.title}>{localize('title')}</h2>
@@ -73,7 +74,7 @@ export function ModelsSection({ rpc }: ModelsSectionProps) {
                 const open = editing === row.entry.provider;
                 const missing = row.apiKeyEnv !== undefined && row.credential?.configured === false;
                 return <li key={row.entry.provider} className={css.rowCard}>
-                    <div className={css.rowHead}><span className={css.rowIdentity}><span className={css.rowName}>{row.entry.displayName}</span>{row.entry.declared && <span className={css.rowTag}>自定义</span>}{row.credential?.configured && <span className={`${css.credentialDot} ${css.credentialDotConfigured}`} title={localize('apiKey')} />}{missing && <span className={`${css.credentialDot} ${css.credentialDotMissing}`} title={localize('apiKeyMissing')} />}</span><span className={css.rowActions}><button type="button" className={css.secondaryButton} onClick={() => { setAdding(null); setCustom(false); setEditing(open ? null : row.entry.provider); }}>{localize('edit')}</button>{row.removable && <button type="button" className={css.dangerButton} disabled={!state.writable} onClick={() => setDeleting(row)}>{localize('remove')}</button>}</span></div>
+                    <div className={css.rowHead}><span className={css.rowIdentity}><span className={css.rowName}>{row.entry.displayName}</span>{row.entry.declared && <span className={css.rowTag}>{i18n('Custom')}</span>}{row.credential?.configured && <span className={`${css.credentialDot} ${css.credentialDotConfigured}`} title={localize('apiKey')} />}{missing && <span className={`${css.credentialDot} ${css.credentialDotMissing}`} title={localize('apiKeyMissing')} />}</span><span className={css.rowActions}><button type="button" className={css.secondaryButton} onClick={() => { setAdding(null); setCustom(false); setEditing(open ? null : row.entry.provider); }}>{localize('edit')}</button>{row.removable && <button type="button" className={css.dangerButton} disabled={!state.writable} onClick={() => setDeleting(row)}>{localize('remove')}</button>}</span></div>
                     {open && <ProviderEditor rpc={rpc} provider={row.entry.provider} displayName={row.entry.displayName} namespace={namespace} settingsPath={row.entry.settingsPath} declared={row.entry.declared} readOnly={!state.writable} t={localize} onClose={closeEditor} />}
                 </li>;
             })}

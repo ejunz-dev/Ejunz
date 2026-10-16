@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n';
 import type { AgentAddonView, ChatMessage } from '../../types';
 import { MarkdownText, PlainText } from '../../primitives/markdown/MarkdownText';
 import { ReasoningBlock } from './ReasoningBlock';
@@ -43,14 +44,14 @@ export function ChatMessageView({ message, addons, onOpenFile, onOpenDetails }: 
         const addon = addons.find((item) => item.addonId === addonId);
         const displayName = addon?.displayName ?? addonId;
         return <AddonMountRow
-            label={`插件${enabled ? '挂载' : '卸载'} · ${displayName}`}
+            label={i18n(enabled ? 'Add-on mounted · {0}' : 'Add-on unmounted · {0}', displayName)}
             description={addon?.description ?? message.text}
             enabled={enabled}
             tools={addon?.tools ?? []}
         />;
     }
     if (message.role === 'user') {
-        return <div className={`${css.userRow} eza-message-user`}><div className={`${css.userStack} eza-userStack`}><div className={css.userLine}><div className={`${css.bubble} eza-bubble`}><PlainText text={message.text} /></div>{message.sendStatus && <span className={`${css.sendStatus} ${message.sendStatus === 'sending' ? css.sendStatusSending : css.sendStatusSent}`} role="status" aria-label={message.sendStatus === 'sending' ? '发送中' : '已发送'} title={message.sendStatus === 'sending' ? '发送中' : '已发送'}>{message.sendStatus === 'sending' ? <span className={css.sendSpinner} /> : '✓'}</span>}</div></div><MessageActions text={message.text} time={message.time} clock="start" /></div>;
+        return <div className={`${css.userRow} eza-message-user`}><div className={`${css.userStack} eza-userStack`}><div className={css.userLine}><div className={`${css.bubble} eza-bubble`}><PlainText text={message.text} /></div>{message.sendStatus && <span className={`${css.sendStatus} ${message.sendStatus === 'sending' ? css.sendStatusSending : css.sendStatusSent}`} role="status" aria-label={message.sendStatus === 'sending' ? i18n('Sending') : i18n('Delivered')} title={message.sendStatus === 'sending' ? i18n('Sending') : i18n('Delivered')}>{message.sendStatus === 'sending' ? <span className={css.sendSpinner} /> : '✓'}</span>}</div></div><MessageActions text={message.text} time={message.time} clock="start" /></div>;
     }
     if (message.role === 'assistant') {
         const segments = message.segments ?? [{ kind: 'text' as const, text: message.text }];
@@ -70,10 +71,11 @@ export function ChatMessageView({ message, addons, onOpenFile, onOpenDetails }: 
     if (message.role === 'context') {
         if (message.contextFiles && message.contextFiles.length > 0) return <FileInjectionRow files={message.contextFiles} />;
         const addon = addonForContextMessage(message, addons);
-        const isAddonMount = message.contextLabel === '插件状态' || message.contextLabel === 'Agent 插件状态';
+        const source = message.contextSource && typeof message.contextSource === 'object' ? message.contextSource as Record<string, unknown> : undefined;
+        const isAddonMount = source?.kind === 'plugin' && source.plugin === 'ejunz-agent-plugin-lifecycle';
         const label = message.contextRole === 'recall'
-            ? '上下文召回'
-            : addon ? `${addon.displayName} · ${isAddonMount ? '插件挂载' : '上下文注入'}` : isAddonMount ? '插件挂载' : '上下文注入';
+            ? i18n('Context recall')
+            : addon ? `${addon.displayName} · ${isAddonMount ? i18n('Add-on mounted') : i18n('Context injection')}` : isAddonMount ? i18n('Add-on mounted') : i18n('Context injection');
         return <ContextInjectionRow label={label} source={isAddonMount ? undefined : message.contextLabel} summary={message.contextSummary} text={message.text} contextSource={message.contextSource} contextForm={message.contextForm} />;
     }
     if (message.eventType === 'turn/error' || message.eventType === 'turn/max-tokens') return <TurnStatusRow message={message} />;

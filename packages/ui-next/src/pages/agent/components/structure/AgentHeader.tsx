@@ -1,4 +1,5 @@
 import { BaseDetailHeader } from '@ejunz/ui-next';
+import { i18n } from '@/i18n';
 import { StateDot, type StateDotState } from '../primitives/StateDot';
 
 export type AgentWebSocketStatus = 'connecting' | 'connected' | 'disconnected';
@@ -23,9 +24,9 @@ function webSocketDotState(status: AgentWebSocketStatus): StateDotState {
 }
 
 function webSocketLabel(status: AgentWebSocketStatus): string {
-    if (status === 'connected') return 'WS 已连接';
-    if (status === 'disconnected') return 'WS 未连接';
-    return 'WS 连接中';
+    if (status === 'connected') return i18n('WS connected');
+    if (status === 'disconnected') return i18n('WS disconnected');
+    return i18n('WS connecting');
 }
 
 export function AgentHeader({ domainId, domainName, title = 'Ejunz agent', webSocketStatus, onOpenSettings, onOpenDisplaySettings, treeOpen, onToggleTree, onEditClick, editActive }: AgentHeaderProps) {

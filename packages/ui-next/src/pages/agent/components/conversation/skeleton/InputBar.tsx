@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { i18n } from '@/i18n';
 import type { ChangeEvent, ClipboardEvent, KeyboardEvent, MouseEvent, ReactNode, SyntheticEvent } from 'react';
 import { IconPlusOutline16, IconSendOutline14, IconStopFill16 } from '../../../icons';
 import { AttachmentRail } from '../../attachment/AttachmentRail';
@@ -185,17 +186,17 @@ export function InputBar({ input, setInput, send, cancel, running, sending, atta
         const oversized = picked.filter((file) => file.size > MAX_ATTACHMENT_BYTES);
         const accepted = picked.filter((file) => file.size <= MAX_ATTACHMENT_BYTES);
         if (accepted.length === 0) {
-            setFileNotice(`单个文件不能超过 ${formatBytes(MAX_ATTACHMENT_BYTES)}`);
+            setFileNotice(i18n('Each file must be under {0}', formatBytes(MAX_ATTACHMENT_BYTES)));
             return;
         }
         const room = Math.max(0, MAX_ATTACHMENTS - attachments.length);
         if (room === 0) {
-            setFileNotice(`最多添加 ${MAX_ATTACHMENTS} 个文件`);
+            setFileNotice(i18n('Add at most {0} files', MAX_ATTACHMENTS));
             return;
         }
         const queued = accepted.slice(0, room);
-        if (oversized.length > 0) setFileNotice(`单个文件不能超过 ${formatBytes(MAX_ATTACHMENT_BYTES)}`);
-        else if (queued.length < picked.length) setFileNotice(`最多添加 ${MAX_ATTACHMENTS} 个文件`);
+        if (oversized.length > 0) setFileNotice(i18n('Each file must be under {0}', formatBytes(MAX_ATTACHMENT_BYTES)));
+        else if (queued.length < picked.length) setFileNotice(i18n('Add at most {0} files', MAX_ATTACHMENTS));
         else setFileNotice(null);
         onAddFiles(queued);
     }, [attachments.length, onAddFiles]);
@@ -362,7 +363,7 @@ export function InputBar({ input, setInput, send, cancel, running, sending, atta
             <input ref={setFileInputRef} className="eza-fileInput" type="file" multiple onChange={(event) => { queueFiles(event.target.files ?? []); event.currentTarget.value = ''; }} />
             <div className={css.row}>
                 <div className={css.tools}>
-                    <button type="button" className={css.add} aria-label="命令" aria-haspopup="listbox" aria-expanded={commandVisible} disabled={sending} onMouseDown={keepFocus} onClick={() => setCommandOpen((value) => !value)}><IconPlusOutline16 size={14} /></button>
+                    <button type="button" className={css.add} aria-label={i18n('Commands')} aria-haspopup="listbox" aria-expanded={commandVisible} disabled={sending} onMouseDown={keepFocus} onClick={() => setCommandOpen((value) => !value)}><IconPlusOutline16 size={14} /></button>
                     <div className={css.modes}>
                         {modeAccessory}
                     </div>
@@ -384,7 +385,7 @@ export function InputBar({ input, setInput, send, cancel, running, sending, atta
                 />
                 <div className={css.trailing}>
                     {showModelPicker && models && <ModelPicker models={models} open={modelMenuOpen} onToggle={() => setModelMenuOpen(!modelMenuOpen)} onSelect={selectModel} />}
-                    <button type="button" className={css.primary} aria-label={running ? '停止' : '发送'} disabled={running ? false : empty || sending || uploading} onMouseDown={keepFocus} onClick={onPrimary}>{running ? <IconStopFill16 size={16} /> : <IconSendOutline14 size={16} />}</button>
+                    <button type="button" className={css.primary} aria-label={running ? i18n('Stop') : i18n('Send')} disabled={running ? false : empty || sending || uploading} onMouseDown={keepFocus} onClick={onPrimary}>{running ? <IconStopFill16 size={16} /> : <IconSendOutline14 size={16} />}</button>
                 </div>
             </div>
         </div>

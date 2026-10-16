@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { i18n } from '@/i18n';
 import { RowMenu, type RowMenuItem } from './RowMenu';
 import type { SettingsRpc } from './SettingsRows';
 import css from './SettingsRows.module.css';
@@ -55,8 +56,8 @@ export function AgentPresetRow({ rpc }: { rpc: SettingsRpc }) {
     }, [rpc]);
 
     if (status === 'unavailable' || status === 'idle') return null;
-    if (status === 'loading') return <div className={css.row}><div className={css.rowText}><div className={css.title}>Agent 预设</div><div className={css.desc}>正在加载预设…</div></div></div>;
-    if (status === 'error') return <div className={css.row}><div className={css.rowText}><div className={css.title}>Agent 预设</div><div className={css.desc} role="alert">{error}</div></div></div>;
+    if (status === 'loading') return <div className={css.row}><div className={css.rowText}><div className={css.title}>{i18n('Agent presets')}</div><div className={css.desc}>{i18n('Loading presets...')}</div></div></div>;
+    if (status === 'error') return <div className={css.row}><div className={css.rowText}><div className={css.title}>{i18n('Agent presets')}</div><div className={css.desc} role="alert">{error}</div></div></div>;
 
     const select = (id: string) => {
         if (id === selectedId || !writable) return;
@@ -68,8 +69,8 @@ export function AgentPresetRow({ rpc }: { rpc: SettingsRpc }) {
 
     return <div className={css.row}>
         <div className={css.rowText}>
-            <div className={css.title}>Agent 预设</div>
-            <div className={css.desc} role={error ? 'alert' : undefined}>{error ?? '选择新会话使用的默认 Agent 预设。运行中的会话不会改变。'}</div>
+            <div className={css.title}>{i18n('Agent presets')}</div>
+            <div className={css.desc} role={error ? 'alert' : undefined}>{error ?? i18n('Choose the default preset for new sessions. Running sessions are unaffected.')}</div>
         </div>
         <RowMenu items={options} selectedId={selectedId} disabled={!writable} onSelect={select} />
     </div>;

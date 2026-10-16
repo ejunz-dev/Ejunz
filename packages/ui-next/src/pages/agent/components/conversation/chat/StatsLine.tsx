@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n';
 import css from './StatsLine.module.css';
 
 type Stats = {
@@ -58,20 +59,20 @@ export function StatsLine({ projections }: { projections?: Record<string, unknow
     };
     const groups: string[] = [];
     if ((stats.steps ?? 0) > 0) {
-        groups.push(`${stats.turns ?? 0} 轮 · ${stats.steps} 步`);
+        groups.push(i18n('{0} turns · {1} steps', stats.turns ?? 0, stats.steps));
         const durations: string[] = [];
         if ((stats.llmMs ?? 0) > 0) durations.push(`LLM ${formatDuration(stats.llmMs!)}`);
-        if ((stats.toolMs ?? 0) > 0) durations.push(`工具 ${formatDuration(stats.toolMs!)}`);
+        if ((stats.toolMs ?? 0) > 0) durations.push(i18n('Tools {0}', formatDuration(stats.toolMs!)));
         if (durations.length) groups.push(durations.join(' · '));
         const speeds: string[] = [];
-        if ((stats.ttftSteps ?? 0) > 0 && (stats.ttftMs ?? 0) > 0) speeds.push(`首 token 平均 ${formatDuration(stats.ttftMs! / stats.ttftSteps!)}`);
+        if ((stats.ttftSteps ?? 0) > 0 && (stats.ttftMs ?? 0) > 0) speeds.push(i18n('Average time to first token {0}', formatDuration(stats.ttftMs! / stats.ttftSteps!)));
         if ((stats.decodeMs ?? 0) > 0 && (stats.decodeTokens ?? 0) > 0) speeds.push(`${(stats.decodeTokens! / (stats.decodeMs! / 1000)).toFixed(1)} tok/s`);
         if (speeds.length) groups.push(speeds.join(' · '));
     }
     const billedInput = (usage.uncachedInputTokens ?? 0) + (usage.cacheReadTokens ?? 0) + (usage.cacheWriteTokens ?? 0);
     if (billedInput > 0 || (usage.outputTokens ?? 0) > 0) {
-        if ((usage.cacheReadTokens ?? 0) > 0 && billedInput > 0) groups.push(`缓存命中 ${Math.round((usage.cacheReadTokens! / billedInput) * 100)}%`);
-        groups.push(`输入 ${formatTokens(billedInput)} tok · 输出 ${formatTokens(usage.outputTokens ?? 0)} tok`);
+        if ((usage.cacheReadTokens ?? 0) > 0 && billedInput > 0) groups.push(i18n('Cache hit {0}%', Math.round((usage.cacheReadTokens! / billedInput) * 100)));
+        groups.push(i18n('Input {0} tok · output {1} tok', formatTokens(billedInput), formatTokens(usage.outputTokens ?? 0)));
     }
     if (!groups.length) return null;
     return <div className={css.root} title={groups.join(' | ')}>{groups.map((group, index) => <span key={group}>{index > 0 && <><span className={css.sep}>|</span>{' '}</>}{group}</span>)}</div>;

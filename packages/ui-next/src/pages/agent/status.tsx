@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Callout, Card, Tag } from '@ejunz/ui-next';
+import { i18n } from '@/i18n';
 import { ActionDialog } from './components/primitives/ActionDialog';
 import { useAgentRpc } from './runtime/rpc';
 import { useAgentTheme } from './runtime/theme';
@@ -22,7 +23,6 @@ interface RuntimeStatus {
     host: string;
     pid: number;
     version: string;
-    cwd: string;
     attachedSessions: number;
     /** The runtime's own last report said it was live. */
     online: boolean;
@@ -36,19 +36,19 @@ interface RuntimeStatus {
 
 function formatDuration(ms: number): string {
     const seconds = Math.max(0, Math.floor(ms / 1000));
-    if (seconds < 60) return `${seconds} 秒`;
+    if (seconds < 60) return i18n('{0} seconds', seconds);
     const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes} 分钟`;
+    if (minutes < 60) return i18n('{0} minutes', minutes);
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours} 小时 ${minutes % 60} 分钟`;
-    return `${Math.floor(hours / 24)} 天 ${hours % 24} 小时`;
+    if (hours < 24) return i18n('{0} hours {1} minutes', hours, minutes % 60);
+    return i18n('{0} days {1} hours', Math.floor(hours / 24), hours % 24);
 }
 
 /** The state a viewer reads, which is the report plus whether it is still current. */
 function runtimeState(row: RuntimeStatus): { text: string; tone: 'ok' | 'warn' | 'off' } {
-    if (row.responded) return { text: '在线', tone: 'ok' };
-    if (row.online) return { text: '心跳超时', tone: 'warn' };
-    return { text: '已停止', tone: 'off' };
+    if (row.responded) return { text: i18n('Online'), tone: 'ok' };
+    if (row.online) return { text: i18n('Heartbeat timed out'), tone: 'warn' };
+    return { text: i18n('Stopped'), tone: 'off' };
 }
 
 export default function AgentStatusPage() {
@@ -133,21 +133,21 @@ export default function AgentStatusPage() {
             <div className="eza-status">
                 <header className="eza-status__head">
                     <div>
-                        <h1 className="eza-status__title">Agent 运行时</h1>
+                        <h1 className="eza-status__title">{i18n('Agent runtimes')}</h1>
                         <p className="eza-status__desc">
-                            处理本服务器的会话的 Ejunz-Agent 实例。内嵌实例运行在 Ejunz 进程内，因此每个进程一行。
+                            {i18n('Ejunz-Agent instances that handle this server’s sessions. The embedded instance runs inside the Ejunz process, so each process appears as one row.')}
                         </p>
                     </div>
-                    <Button variant="ghost" onClick={() => { void load(); }} disabled={busy}>刷新</Button>
+                    <Button variant="ghost" onClick={() => { void load(); }} disabled={busy}>{i18n('Refresh')}</Button>
                 </header>
 
-                {error ? <Callout type="error" title="读取运行时状态失败">{error}</Callout> : null}
+                {error ? <Callout type="error" title={i18n('Failed to load runtime status')}>{error}</Callout> : null}
 
-                <Card title={`运行时（${rows.length}）`}>
+                <Card title={i18n('Runtimes ({0})', rows.length)}>
                     {items === null ? (
-                        <p className="eza-status__muted">读取中…</p>
+                        <p className="eza-status__muted">{i18n('Loading...')}</p>
                     ) : rows.length === 0 ? (
-                        <p className="eza-status__muted">还没有运行时上报过。运行时在服务器开始监听后启动并注册自己。</p>
+                        <p className="eza-status__muted">{i18n('No runtime has reported yet. It starts and registers after the server begins listening.')}</p>
                     ) : (
                         <ul className="eza-status__list">
                             {rows.map((row) => {
@@ -162,26 +162,25 @@ export default function AgentStatusPage() {
                                             </div>
                                             <div className="eza-status__facts">
                                                 <span>{row.host}:{row.pid}</span>
-                                                <span>版本 {row.version}</span>
-                                                <span>会话 {row.attachedSessions}</span>
-                                                <span>已运行 {formatDuration(row.uptimeMs)}</span>
-                                                <span>上次上报 {formatDuration(row.sinceReportMs)}前</span>
+                                                <span>{i18n('Version {0}', row.version)}</span>
+                                                <span>{i18n('{0} sessions', row.attachedSessions)}</span>
+                                                <span>{i18n('Uptime: {0}', formatDuration(row.uptimeMs))}</span>
+                                                <span>{i18n('Last report: {0} ago', formatDuration(row.sinceReportMs))}</span>
                                             </div>
-                                            <div className="eza-status__path" title={row.cwd}>{row.cwd}</div>
                                         </div>
                                         <div className="eza-status__actions">
                                             <Button
                                                 variant="ghost"
                                                 onClick={() => { setDialogError(null); setLabelDraft(row.label); setRenaming(row); }}
                                             >
-                                                重命名
+                                                {i18n('Rename')}
                                             </Button>
                                             {row.responded ? null : (
                                                 <Button
                                                     variant="ghost"
                                                     onClick={() => { setDialogError(null); setRemoving(row); }}
                                                 >
-                                                    删除记录
+                                                    {i18n('Delete record')}
                                                 </Button>
                                             )}
                                         </div>
@@ -194,12 +193,12 @@ export default function AgentStatusPage() {
 
                 <ActionDialog
                     open={renaming !== null}
-                    title="重命名运行时"
+                    title={i18n('Rename runtime')}
                     description={renaming?.runtimeId}
-                    inputLabel="名称"
+                    inputLabel={i18n('Name')}
                     inputValue={labelDraft}
-                    inputPlaceholder="例如 builtin@devshell"
-                    confirmLabel="保存"
+                    inputPlaceholder={i18n('e.g. builtin@devshell')}
+                    confirmLabel={i18n('Save')}
                     busy={busy}
                     error={dialogError}
                     onInputChange={setLabelDraft}
@@ -209,9 +208,9 @@ export default function AgentStatusPage() {
 
                 <ActionDialog
                     open={removing !== null}
-                    title="删除运行时记录"
-                    description={removing === null ? undefined : `${removing.label}（${removing.runtimeId}）不再上报，其记录将被删除。正在运行的会话不受影响。`}
-                    confirmLabel="删除"
+                    title={i18n('Delete runtime record')}
+                    description={removing === null ? undefined : i18n('Runtime {0} ({1}) no longer reports and its record will be deleted. Running sessions are unaffected.', removing.label, removing.runtimeId)}
+                    confirmLabel={i18n('Delete')}
                     danger
                     busy={busy}
                     error={dialogError}

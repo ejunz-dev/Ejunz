@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Callout, Card } from '@ejunz/ui-next';
+import { i18n } from '@/i18n';
 import { useAgentRpc } from './runtime/rpc';
 import { useAgentTheme } from './runtime/theme';
 import './tokens.css';
@@ -29,7 +30,7 @@ function codeFromLocation(): string {
 /** When a request stops being approvable, in words. */
 function expiryText(expiresAt: number): string {
     const minutes = Math.max(0, Math.round((expiresAt - Date.now()) / 60000));
-    return minutes <= 0 ? '已过期' : `还有 ${minutes} 分钟过期`;
+    return minutes <= 0 ? i18n('Expired') : i18n('Expires in {0} minutes', minutes);
 }
 
 export default function AgentLinkPage() {
@@ -42,7 +43,7 @@ export default function AgentLinkPage() {
 
     const load = useCallback(async () => {
         if (!code) {
-            setError('这个地址里没有绑定码');
+            setError(i18n('This URL has no pairing code.'));
             return;
         }
         try {
@@ -75,14 +76,14 @@ export default function AgentLinkPage() {
             <div className="eza-status">
                 <header className="eza-status__head">
                     <div>
-                        <h1 className="eza-status__title">绑定 Agent 运行时</h1>
+                        <h1 className="eza-status__title">{i18n('Link an Agent runtime')}</h1>
                         <p className="eza-status__desc">
-                            一个 Agent 运行时请求在这台服务器上运行。授权后它会拿到凭据，并出现在运行状态列表里。
+                            {i18n('An Agent runtime is requesting permission to run on this server. After approval, it will receive credentials and appear in the runtime status list.')}
                         </p>
                     </div>
                 </header>
 
-                {error ? <Callout type="error" title="无法读取这个绑定请求">{error}</Callout> : null}
+                {error ? <Callout type="error" title={i18n('Could not read this pairing request')}>{error}</Callout> : null}
 
                 {link ? (
                     <Card title={link.label}>
@@ -90,16 +91,16 @@ export default function AgentLinkPage() {
                             <li className="eza-status__row">
                                 <div className="eza-status__main">
                                     <div className="eza-status__facts">
-                                        <span>来源 {link.host}:{link.pid}</span>
-                                        <span>绑定码 {link.code}</span>
-                                        <span>{approved ? '已授权' : link.expired ? '已过期' : expiryText(link.expiresAt)}</span>
+                                        <span>{i18n('Source: {0}:{1}', link.host, link.pid)}</span>
+                                        <span>{i18n('Pairing code: {0}', link.code)}</span>
+                                        <span>{approved ? i18n('Approved') : link.expired ? i18n('Expired') : expiryText(link.expiresAt)}</span>
                                     </div>
                                 </div>
                                 <div className="eza-status__actions">
                                     {approvable ? (
-                                        <Button variant="primary" onClick={() => { void approve(); }} disabled={busy}>授权</Button>
+                                        <Button variant="primary" onClick={() => { void approve(); }} disabled={busy}>{i18n('Approve')}</Button>
                                     ) : (
-                                        <Button variant="ghost" onClick={() => { void load(); }} disabled={busy}>刷新</Button>
+                                        <Button variant="ghost" onClick={() => { void load(); }} disabled={busy}>{i18n('Refresh')}</Button>
                                     )}
                                 </div>
                             </li>
@@ -108,8 +109,8 @@ export default function AgentLinkPage() {
                 ) : null}
 
                 {approved ? (
-                    <Callout type="info" title="已授权">
-                        运行时的日志里会显示它已绑定；这一页可以关掉了。
+                    <Callout type="info" title={i18n('Approved')}>
+                        {i18n('The runtime logs will show that it is linked. You can close this page.')}
                     </Callout>
                 ) : null}
             </div>

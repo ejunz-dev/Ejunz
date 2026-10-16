@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n';
 import { PluginCard } from './PluginCard';
 import { SecretField, ValueField } from './PluginFields';
 import { numberField, textField, useCardForm, type SettingsRpc } from './cardForm';
@@ -14,14 +15,14 @@ export function BashCard({ rpc }: { rpc: SettingsRpc }) {
     const timeoutMs = form.fieldState('timeoutMs');
     const maxOutputBytes = form.fieldState('maxOutputBytes');
     return (
-        <PluginCard title="终端" description="限制 agent 运行的每一条命令。" state={form.state} onSave={form.save} onDiscard={form.discard}>
+        <PluginCard title={i18n('Terminal')} description={i18n('Limit every command the agent runs.')} state={form.state} onSave={form.save} onDiscard={form.discard}>
             <ValueField
                 id="plugin-config-bash-timeout"
-                label="命令超时（毫秒）"
-                hint="单条命令允许运行多久，超时即终止。"
-                overriddenLabel="已覆盖"
-                resetLabel="恢复默认"
-                invalidLabel="请填数字；留空表示使用默认值。"
+                label={i18n('Command timeout (ms)')}
+                hint={i18n('How long a single command may run before it is stopped.')}
+                overriddenLabel={i18n('Overridden')}
+                resetLabel={i18n('Restore default')}
+                invalidLabel={i18n('Enter a number, or leave blank to use the default.')}
                 numeric
                 disabled={disabled}
                 text={timeoutMs.text}
@@ -32,11 +33,11 @@ export function BashCard({ rpc }: { rpc: SettingsRpc }) {
             />
             <ValueField
                 id="plugin-config-bash-output"
-                label="单流输出上限（字节）"
-                hint="超出部分会转存到临时文件，而不是被丢弃。"
-                overriddenLabel="已覆盖"
-                resetLabel="恢复默认"
-                invalidLabel="请填数字；留空表示使用默认值。"
+                label={i18n('Per-stream output limit (bytes)')}
+                hint={i18n('Output beyond the limit is stored in a temporary file instead of being discarded.')}
+                overriddenLabel={i18n('Overridden')}
+                resetLabel={i18n('Restore default')}
+                invalidLabel={i18n('Enter a number, or leave blank to use the default.')}
                 numeric
                 disabled={disabled}
                 text={maxOutputBytes.text}
@@ -53,14 +54,14 @@ export function AgentLoopCard({ rpc }: { rpc: SettingsRpc }) {
     const form = useCardForm({ rpc, ns: 'agent-loop', fields: [numberField('maxParallelToolCalls')] });
     const maxParallel = form.fieldState('maxParallelToolCalls');
     return (
-        <PluginCard title="Agent 循环" description="Agent 如何派发工具调用。" state={form.state} onSave={form.save} onDiscard={form.discard}>
+        <PluginCard title={i18n('Agent loop')} description={i18n('How the Agent dispatches tool calls.')} state={form.state} onSave={form.save} onDiscard={form.discard}>
             <ValueField
                 id="plugin-config-agent-loop-parallel"
-                label="并行工具调用数"
-                hint="同一步内最多同时运行多少个可并行的调用。"
-                overriddenLabel="已覆盖"
-                resetLabel="恢复默认"
-                invalidLabel="请填数字；留空表示使用默认值。"
+                label={i18n('Parallel tool calls')}
+                hint={i18n('How many parallel calls may run at once in the same step.')}
+                overriddenLabel={i18n('Overridden')}
+                resetLabel={i18n('Restore default')}
+                invalidLabel={i18n('Enter a number, or leave blank to use the default.')}
                 numeric
                 disabled={!form.state.writable}
                 text={maxParallel.text}
@@ -84,24 +85,24 @@ export function WebSearchCard({ rpc }: { rpc: SettingsRpc }) {
     const baseURL = form.fieldState('baseURL');
     const maxUses = form.fieldState('maxUses');
     return (
-        <PluginCard title="网页搜索" description="DeepSeek 搜索提供方。" state={form.state} onSave={form.save} onDiscard={form.discard}>
+        <PluginCard title={i18n('Web search')} description={i18n('DeepSeek search provider.')} state={form.state} onSave={form.save} onDiscard={form.discard}>
             <SecretField
                 id="plugin-config-web-search-key"
-                label="API Key"
-                hint="不写入设置文件。留空表示保持当前密钥。"
+                label={i18n('API key')}
+                hint={i18n('Not written to the settings file. Leave blank to keep the current key.')}
                 text={form.state.secretText}
                 configured={form.state.secretConfigured}
-                stateLabel={form.state.secretConfigured ? '已配置密钥。' : '未配置密钥；配置之前搜索不可用。'}
+                stateLabel={form.state.secretConfigured ? i18n('API key configured.') : i18n('No API key configured. Search stays unavailable until one is set.')}
                 disabled={!form.state.secretWritable}
                 onEdit={form.editSecret}
             />
             <ValueField
                 id="plugin-config-web-search-endpoint"
-                label="接口地址"
-                hint="留空则使用提供方默认地址。"
-                overriddenLabel="已覆盖"
-                resetLabel="恢复默认"
-                invalidLabel="请填数字；留空表示使用默认值。"
+                label={i18n('Endpoint')}
+                hint={i18n('Leave blank to use the provider default.')}
+                overriddenLabel={i18n('Overridden')}
+                resetLabel={i18n('Restore default')}
+                invalidLabel={i18n('Enter a number, or leave blank to use the default.')}
                 disabled={disabled}
                 text={baseURL.text}
                 overridden={baseURL.overridden}
@@ -111,11 +112,11 @@ export function WebSearchCard({ rpc }: { rpc: SettingsRpc }) {
             />
             <ValueField
                 id="plugin-config-web-search-max-uses"
-                label="单次请求最多搜索次数"
-                hint="一次请求在必须作答前最多可以搜索多少次。"
-                overriddenLabel="已覆盖"
-                resetLabel="恢复默认"
-                invalidLabel="请填数字；留空表示使用默认值。"
+                label={i18n('Maximum searches per request')}
+                hint={i18n('How many searches one request may make before it must answer.')}
+                overriddenLabel={i18n('Overridden')}
+                resetLabel={i18n('Restore default')}
+                invalidLabel={i18n('Enter a number, or leave blank to use the default.')}
                 numeric
                 disabled={disabled}
                 text={maxUses.text}

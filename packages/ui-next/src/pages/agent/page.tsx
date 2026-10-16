@@ -22,6 +22,8 @@ import { TeamContextSettingsPanel } from './components/structure/TeamContextSett
 import { TeamTree } from './components/structure/TeamTree';
 import type { HostOption } from './components/structure/HostPicker';
 import { ActionDialog } from './components/primitives/ActionDialog';
+import type { HierarchySelectOption } from './components/primitives/HierarchySelect';
+import { i18n } from '@/i18n';
 import { GeneralSection } from './components/settings/GeneralSection';
 import { EnterBehaviorRow, LanguageRow } from './components/settings/SettingsRows';
 import { PluginsSection } from './components/settings/PluginsSection';
@@ -84,7 +86,7 @@ type DialogState =
     | { kind: 'rename-session'; id: string; value: string }
     | { kind: 'delete-session'; id: string; title: string }
     | { kind: 'delete-selected'; agentIds: string[]; sessionIds: string[]; teamIds: string[] }
-    | { kind: 'create-team'; value: string }
+    | { kind: 'create-team'; value: string; parentTeamId?: string }
     | { kind: 'rename-team'; id: string; value: string };
 
 interface HistoryCacheEntry {
@@ -97,8 +99,43 @@ function sessionTitle(session: SessionSummary): string {
     const values = session.projections?.values;
     const title = values && typeof values.title === 'string' ? values.title : '';
     if (title.trim()) return title;
-    if (session.blank) return '新会话';
-    return `会话 ${session.sessionId.slice(8, 16)}`;
+    if (session.blank) return i18n('New session');
+    return i18n('Session {0}', session.sessionId.slice(8, 16));
+}
+
+function buildTeamParentOptions(teams: readonly AgentTeam[]): HierarchySelectOption[] {
+    const byId = new Map(teams.map((team) => [team.teamId, team]));
+    const children = new Map<string, AgentTeam[]>();
+    const roots: AgentTeam[] = [];
+    const sortedTeams = [...teams].sort((left, right) => left.order - right.order || left.text.localeCompare(right.text));
+    sortedTeams.forEach((team) => {
+        const parentTeamId = team.parentTeamId;
+        if (!parentTeamId || parentTeamId === team.teamId || !byId.has(parentTeamId)) {
+            roots.push(team);
+            return;
+        }
+        const siblings = children.get(parentTeamId) ?? [];
+        siblings.push(team);
+        children.set(parentTeamId, siblings);
+    });
+
+    const visited = new Set<string>();
+    const build = (team: AgentTeam, ancestors: ReadonlySet<string>): HierarchySelectOption => {
+        visited.add(team.teamId);
+        const path = new Set(ancestors);
+        path.add(team.teamId);
+        const nested = (children.get(team.teamId) ?? []).filter((child) => !path.has(child.teamId));
+        return {
+            value: team.teamId,
+            label: team.isRootTeam ? i18n('{0} (root team)', team.text) : team.text,
+            ...(nested.length === 0 ? {} : { children: nested.map((child) => build(child, path)) }),
+        };
+    };
+    const options = roots.map((team) => build(team, new Set()));
+    sortedTeams.forEach((team) => {
+        if (!visited.has(team.teamId)) options.push(build(team, new Set()));
+    });
+    return options;
 }
 
 function newSessionId(): string {
@@ -122,7 +159,7 @@ function readyFiles(attachments: DraftAttachment[]): UploadedFileMeta[] {
 }
 
 function promptParts(text: string, fileCount: number): Array<{ type: 'text'; text: string }> {
-    const value = text || (fileCount > 0 ? `已上传 ${fileCount} 个文件` : '');
+    const value = text || (fileCount > 0 ? i18n('Uploaded {0} files', fileCount) : '');
     return value ? [{ type: 'text' as const, text: value }] : [];
 }
 
@@ -130,7 +167,7 @@ function optimisticUserMessage(text: string, fileCount: number, sessionId: strin
     return {
         key: `user-local-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         role: 'user',
-        text: text || `已上传 ${fileCount} 个文件`,
+        text: text || i18n('Uploaded {0} files', fileCount),
         eventType: 'user/message',
         time: Date.now(),
         sendStatus: 'sending',
@@ -243,24 +280,24 @@ function assistantText(message: ChatMessage): string {
         : message.text;
 }
 
-function assistantStage(message: ChatMessage): 'Think' | 'Agent' {
-    return message.eventType === 'assistant/chunk' && message.segments?.at(-1)?.kind === 'reasoning' ? 'Think' : 'Agent';
+function assistantStage(message: ChatMessage): string {
+    return message.eventType === 'assistant/chunk' && message.segments?.at(-1)?.kind === 'reasoning' ? i18n('Thinking') : i18n('Agent');
 }
 
-function activityPreview(message: ChatMessage, userName = 'User'): string {
-    if (message.role === 'context') return `Inject · ${flatLine(message.text)}`;
+function activityPreview(message: ChatMessage, userName = i18n('User')): string {
+    if (message.role === 'context') return `${i18n('Context injection')} · ${flatLine(message.text)}`;
     if (message.role === 'addon' && message.addonMount) {
-        return `插件挂载 · ${message.addonMount.addonId}`;
+        return `${i18n('Plugin mounted')} · ${message.addonMount.addonId}`;
     }
     if (message.role === 'user') return `${userName} · ${flatLine(message.text)}`;
     if (message.role === 'assistant') return `${assistantStage(message)} · ${latestLine(assistantText(message))}`;
-    if (message.role === 'retry') return `Think · ${flatLine(message.text)}`;
-    if (message.role === 'compaction') return `上下文整理 · ${flatLine(message.compactionSummary || '已更新')}`;
-    if (message.role === 'system') return `${message.eventType === 'turn/error' ? 'Error' : 'Agent'} · ${flatLine(message.text)}`;
+    if (message.role === 'retry') return `${i18n('Thinking')} · ${flatLine(message.text)}`;
+    if (message.role === 'compaction') return `${i18n('Context compacted')} · ${flatLine(message.compactionSummary || i18n('Updated'))}`;
+    if (message.role === 'system') return `${i18n(message.eventType === 'turn/error' ? 'Error' : 'Agent')} · ${flatLine(message.text)}`;
     const model = toolRowModel(message);
-    if (model.errorSummary) return `Tool · ${model.errorSummary}`;
-    if (message.eventType === 'tool/result' && model.output) return `Tool · ${firstLine(model.output)}`;
-    return `Tool · ${model.title} · ${model.summary}`;
+    if (model.errorSummary) return `${i18n('Tool')} · ${model.errorSummary}`;
+    if (message.eventType === 'tool/result' && model.output) return `${i18n('Tool')} · ${firstLine(model.output)}`;
+    return `${i18n('Tool')} · ${model.title} · ${model.summary}`;
 }
 
 function appendAssistantActivity(previous: SessionActivityPreview, message: ChatMessage, key: string, seq: number): SessionActivityPreview {
@@ -323,7 +360,7 @@ function latestActivityPreview(entries: readonly HistoryEntry[], userName = 'Use
             const turn = String(asObject(entry.event.data).turn ?? entry.event.seq);
             const key = `turn-${turn}`;
             previewIndex += 1;
-            latest = { seq: entry.event.seq, index: previewIndex, key, text: 'Think · 思考中…' };
+            latest = { seq: entry.event.seq, index: previewIndex, key, text: `${i18n('Thinking')} · ${i18n('Thinking...')}` };
             continue;
         }
         const message = eventMessage(entry.event);
@@ -453,11 +490,13 @@ export default function AgentPage() {
     const [teamContextEditing, setTeamContextEditing] = useState(false);
     const [teamConfigSaving, setTeamConfigSaving] = useState(false);
     const [selectedAgentSettingsId, setSelectedAgentSettingsId] = useState<string | null>(() => readAgentSelection().agentId);
-    const [agentSettingsSection, setAgentSettingsSection] = useState<'model' | 'context' | 'host'>('model');
+    const [agentSettingsSection, setAgentSettingsSection] = useState<'model' | 'context' | 'host'>('context');
     const [agentContextEditing, setAgentContextEditing] = useState(false);
     const [agentContextSaving, setAgentContextSaving] = useState(false);
     const [selectedTool, setSelectedTool] = useState<ChatMessage | null>(null);
     const [newSessionConfigOpen, setNewSessionConfigOpen] = useState(false);
+    const [newAgentTargetRequired, setNewAgentTargetRequired] = useState(false);
+    const [quickSessionOnly, setQuickSessionOnly] = useState(false);
     const [newSessionConfigLoading, setNewSessionConfigLoading] = useState(false);
     const [creatingSession, setCreatingSession] = useState(false);
     const newSessionLoadRef = useRef(0);
@@ -510,6 +549,7 @@ export default function AgentPage() {
     const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(() => new Set());
     const [selectedTeamIds, setSelectedTeamIds] = useState<Set<string>>(() => new Set());
     const agentById = useMemo(() => new Map(agents.map((agent) => [agent.agentId, agent])), [agents]);
+    const teamParentTree = useMemo(() => buildTeamParentOptions(teams), [teams]);
     const selectedAgentSettings = selectedAgentSettingsId ? agentById.get(selectedAgentSettingsId) : undefined;
     const openAgentSettings = useCallback((agentId: string) => {
         const agent = agentById.get(agentId);
@@ -517,7 +557,7 @@ export default function AgentPage() {
         setSelectedAgentSettingsId(agentId);
         setActiveTreeTeamId(agent.teamId);
         updateAgentSelectionUrl({ teamId: agent.teamId, agentId, sessionId: null });
-        setAgentSettingsSection('model');
+        setAgentSettingsSection('context');
         setAgentContextEditing(false);
         setTeamSettingsId(null);
         setCurrent(null);
@@ -608,7 +648,7 @@ export default function AgentPage() {
 
     const saveAgentSettings = useCallback(async (agentId: string, patch: AgentSettingsPatch) => {
         const agent = agentById.get(agentId);
-        if (!agent) throw new Error('Agent 不存在');
+        if (!agent) throw new Error(i18n('Agent not found'));
         const settings = { ...agent.settings };
         if (patch.runtimeId !== undefined) settings.runtimeId = patch.runtimeId;
         if (patch.model !== undefined) settings.model = patch.model;
@@ -626,7 +666,7 @@ export default function AgentPage() {
 
     const saveAgentContext = useCallback(async (agentId: string, context: string) => {
         const agent = agentById.get(agentId);
-        if (!agent) throw new Error('Agent 不存在');
+        if (!agent) throw new Error(i18n('Agent not found'));
         setAgentContextSaving(true);
         try {
             await rpc('agent.config.save', { agentId, patch: { context } });
@@ -1016,7 +1056,7 @@ export default function AgentPage() {
                 const turn = String(asObject(event.data).turn ?? event.seq);
                 setSessionActivityPreviews((previous) => {
                     const prior = previous[frame.sessionId!];
-                    const next = { seq: event.seq, index: prior?.key === `turn-${turn}` ? prior.index : (prior?.index ?? 0) + 1, key: `turn-${turn}`, text: 'Think · 思考中…' };
+                    const next = { seq: event.seq, index: prior?.key === `turn-${turn}` ? prior.index : (prior?.index ?? 0) + 1, key: `turn-${turn}`, text: `${i18n('Thinking')} · ${i18n('Thinking...')}` };
                     return prior?.key === next.key && prior.text === next.text
                         ? previous
                         : mergeActivityPreview(previous, frame.sessionId!, next);
@@ -1051,7 +1091,7 @@ export default function AgentPage() {
     const onHost = useCallback((frame: HostFrame) => {
         if (!frame.sessionId) return;
         if (frame.type === 'host/agent-error') {
-            const message = frame.message?.trim() || '本轮运行失败';
+            const message = frame.message?.trim() || i18n('This turn failed');
             setSessionErrors((previous) => previous[frame.sessionId!] === message ? previous : { ...previous, [frame.sessionId!]: message });
             return;
         }
@@ -1242,8 +1282,8 @@ export default function AgentPage() {
     const loadedHistoryMessages = useMemo(() => history.filter((entry) => entry.event.type === 'user/message' || entry.event.type === 'assistant/message').length, [history]);
     const historyLoadingRangeEnd = historyTotalMessages === null ? null : Math.max(0, historyTotalMessages - historyProgress);
     const historyLoadingLabel = historyLoadingRangeEnd === null
-        ? '加载中…'
-        : `加载中… ${Math.max(0, historyLoadingRangeEnd - HISTORY_INITIAL_MESSAGES)}-${historyLoadingRangeEnd}`;
+        ? i18n('Loading...')
+        : i18n('Loading... {0}-{1}', Math.max(0, historyLoadingRangeEnd - HISTORY_INITIAL_MESSAGES), historyLoadingRangeEnd);
     const selectedBaseId = current
         ? (currentSession?.agentSettings?.baseDocId === undefined ? undefined : Number(currentSession.agentSettings.baseDocId))
         : draftBaseId;
@@ -1272,9 +1312,9 @@ export default function AgentPage() {
         teamId: string | undefined,
         settings: AgentSummary['settings'],
     ) => {
-        if (!teamId) throw new Error('请先选择团队');
-        const value = await rpc('agent.create', { teamId, title: title.trim() || '新 Agent', settings }) as { agent?: AgentSummary };
-        if (!value.agent?.agentId) throw new Error('Agent 创建失败');
+        if (!teamId) throw new Error(i18n('Please choose a team first.'));
+        const value = await rpc('agent.create', { teamId, title: title.trim() || i18n('New agent'), settings }) as { agent?: AgentSummary };
+        if (!value.agent?.agentId) throw new Error(i18n('Agent creation failed'));
         return value.agent;
     }, [rpc]);
 
@@ -1329,7 +1369,7 @@ export default function AgentPage() {
             const value = await rpc('session.create', { sessionId: requestedSessionId, agentId, ...(sessionTitle ? { title: sessionTitle } : {}) }) as {
                 sessionId?: string; agentId?: string; activeRuntimeId?: string; teamId?: string; title?: string;
             };
-            if (value.sessionId !== requestedSessionId) throw new Error('会话创建失败');
+            if (value.sessionId !== requestedSessionId) throw new Error(i18n('Session creation failed'));
             if (optimisticKey) setMessages((items) => items.map((message) => message.key === optimisticKey ? { ...message, pendingSessionId: value.sessionId } : message));
             const actualHostId = value.activeRuntimeId ?? selectedHostId;
             const actualTeamId = value.teamId ?? selectedTeamId;
@@ -1346,7 +1386,7 @@ export default function AgentPage() {
                 ...(actualHostId === '' ? {} : { activeRuntimeId: actualHostId }),
                 ...(actualTeamId === undefined ? {} : { teamId: actualTeamId }),
                 agentSettings: settings,
-                projections: { values: { title: value.title || sessionTitle || '会话 1' } },
+                projections: { values: { title: value.title || sessionTitle || i18n('Session {0}', 1) } },
             };
             setSessions((items) => [session, ...items.filter((item) => item.sessionId !== session.sessionId)]);
             setDraftBaseId(undefined);
@@ -1407,7 +1447,7 @@ export default function AgentPage() {
 
     const updateAgentForSession = useCallback(async (sessionId: string, patch: AgentSettingsPatch) => {
         const session = sessionsWithAgentSettings.find((item) => item.sessionId === sessionId);
-        if (!session?.agentId) throw new Error('该会话尚未关联 Agent');
+        if (!session?.agentId) throw new Error(i18n('This session is not linked to an Agent'));
         await saveAgentSettings(session.agentId, patch);
     }, [saveAgentSettings, sessionsWithAgentSettings]);
 
@@ -1452,11 +1492,11 @@ export default function AgentPage() {
             setAgents((items) => [agent, ...items.filter((item) => item.agentId !== agent.agentId)]);
             setNewSessionConfigOpen(false);
             setSelectedAgentSettingsId(agent.agentId);
-            setAgentSettingsSection('model');
+            setAgentSettingsSection('context');
             setAgentContextEditing(false);
             setActiveTreeTeamId(agent.teamId);
             await Promise.all([loadAgents(), loadTeams()]);
-            await Notification.success('Agent 已创建');
+            await Notification.success(i18n('Agent created successfully'));
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             setLoadError(message);
@@ -1466,7 +1506,7 @@ export default function AgentPage() {
         }
     }, [agentPresetChoice, createAgentRecord, draftAgentId, draftBaseId, draftHostId, draftTeamId, loadAgents, loadTeams, rootTeamId, selectedDraftModel, startSession]);
 
-    const prepareNewSession = useCallback(async (baseId?: number, agentId?: string) => {
+    const prepareNewSession = useCallback(async (baseId?: number, agentId?: string, requireTeamTarget = agentId === undefined, quickOnly = false) => {
         const loadId = ++newSessionLoadRef.current;
         setCurrent(null);
         setDetailsOpen(false);
@@ -1477,20 +1517,22 @@ export default function AgentPage() {
         setActiveTreeTeamId(selectedTeamId);
         updateAgentSelectionUrl({ teamId: selectedTeamId, agentId: agentId ?? null, sessionId: null });
         setNewSessionConfigOpen(true);
-        setNewSessionConfigLoading(true);
+        setNewAgentTargetRequired(requireTeamTarget);
+        setQuickSessionOnly(quickOnly);
+        setNewSessionConfigLoading(!quickOnly);
         setModelCatalog(null);
         setInput('');
         clearAttachments();
         setDraftAgentId(agentId);
         setDraftBaseId(baseId ?? (selectedAgent?.settings.baseDocId ? Number(selectedAgent.settings.baseDocId) : undefined));
-        setDraftTeamId(selectedTeamId ?? undefined);
+        setDraftTeamId(requireTeamTarget ? undefined : selectedTeamId ?? undefined);
         setDraftModelSelection(selectedAgent?.settings.model);
         setAgentPresetChoice(selectedAgent?.settings.agentPreset ?? '');
         // Keep the Agent's host default, falling back to an online host.
         setDraftHostId(selectedAgent
             ? selectedAgent.settings.runtimeId ?? ''
             : fallbackHostId !== '' ? fallbackHostId : hosts.find((host) => host.online !== false)?.runtimeId ?? '');
-        await loadModelCatalog();
+        if (!quickOnly) await loadModelCatalog();
         if (newSessionLoadRef.current === loadId) setNewSessionConfigLoading(false);
     }, [activeTreeTeamId, agentById, fallbackHostId, hosts, loadModelCatalog, teams, rootTeamId]);
 
@@ -1507,7 +1549,7 @@ export default function AgentPage() {
         try {
             if (sessionsRef.current.find((session) => session.sessionId === sessionId)?.started === false) {
                 await updateAgentForSession(sessionId, { runtimeId });
-                await Notification.success('主机已保存');
+                await Notification.success(i18n('Host saved'));
                 return;
             }
             const value = await rpc('session.setHost', { sessionId, runtimeId }) as { runtimeId?: string };
@@ -1519,7 +1561,7 @@ export default function AgentPage() {
                 delete next[sessionId];
                 return next;
             });
-            await Notification.success('已切换 host，下一条消息由它处理');
+            await Notification.success(i18n('Host switched. It will handle the next message.'));
         } catch (error) {
             setSessionErrors((previous) => ({ ...previous, [sessionId]: error instanceof Error ? error.message : String(error) }));
             throw error;
@@ -1529,18 +1571,18 @@ export default function AgentPage() {
     const saveBaseSetting = useCallback(async (baseId: number | undefined) => {
         if (!current) {
             setDraftBaseId(baseId);
-            await Notification.success('上下文已保存');
+            await Notification.success(i18n('Context saved'));
             return;
         }
         if (currentSession?.started === false) {
             await updateAgentForSession(current, { baseDocId: baseId ?? null });
-            await Notification.success('上下文已保存');
+            await Notification.success(i18n('Context saved'));
             return;
         }
         await rpc('session.context.save', { sessionId: current, baseDocId: baseId ?? null });
         setDraftBaseId(undefined);
         void Promise.all([loadSessions(), loadAgents()]);
-        await Notification.success('上下文已保存');
+        await Notification.success(i18n('Context saved'));
     }, [current, currentSession?.started, loadSessions, rpc, updateAgentForSession]);
 
     const saveDisplaySettings = useCallback(async (next: AgentDisplaySettings) => {
@@ -1553,7 +1595,7 @@ export default function AgentPage() {
             if (requestId !== displaySettingsRequestRef.current) return;
             setDisplaySettings(readAgentDisplaySettings(value.display ?? next));
             setDisplaySettingsOpen(false);
-            await Notification.success('显示设置已保存');
+            await Notification.success(i18n('Display settings saved'));
         } catch (error) {
             if (requestId !== displaySettingsRequestRef.current) return;
             setDisplaySettings(previous);
@@ -1598,7 +1640,7 @@ export default function AgentPage() {
         const effective = !running ? 'queue' : mode === 'steer' ? 'steer' : busyEnter;
         const files = readyFiles(attachments);
         if (attachments.some((attachment) => attachment.meta === undefined && attachment.error === undefined)) {
-            setLoadError('文件仍在上传中，请稍候');
+            setLoadError(i18n('File upload is still in progress. Please wait.'));
             return;
         }
         if ((!text && !files.length) || !current || sending) return;
@@ -1684,7 +1726,7 @@ export default function AgentPage() {
         });
         if (response.redirected) {
             window.location.href = response.url;
-            throw new Error('登录跳转中');
+            throw new Error(i18n('Redirecting to sign in'));
         }
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
     }, [domainId]);
@@ -1741,11 +1783,11 @@ export default function AgentPage() {
 
     const saveSessionModel = useCallback(async (provider: string, model: string) => {
         const sessionId = current;
-        if (!sessionId) throw new Error('当前没有会话');
+        if (!sessionId) throw new Error(i18n('No current session'));
         if (sessionsRef.current.find((session) => session.sessionId === sessionId)?.started === false) {
             await updateAgentForSession(sessionId, { model: { provider, model } });
             setModelMenuOpen(false);
-            await Notification.success('模型已保存');
+            await Notification.success(i18n('Model saved'));
             return;
         }
         await rpc('session.selectModel', { sessionId, provider, model });
@@ -1758,7 +1800,7 @@ export default function AgentPage() {
         });
         setModelMenuOpen(false);
         setLoadError(null);
-        await Notification.success('模型已保存');
+        await Notification.success(i18n('Model saved'));
     }, [current, loadAgents, rpc, updateAgentForSession]);
 
     const renameSession = useCallback(async (sessionId = current ?? '', requestedTitle = titleDraft) => {
@@ -1794,7 +1836,7 @@ export default function AgentPage() {
             return title === sessionTitle(session) ? [] : [{ sessionId: session.sessionId, title }];
         });
         if (changes.some((change) => change.title === '')) {
-            setLoadError('会话名称不能为空');
+            setLoadError(i18n('Session name cannot be empty'));
             return;
         }
         if (changes.length === 0) {
@@ -1808,7 +1850,7 @@ export default function AgentPage() {
         try {
             await Promise.all(changes.map(async (change) => {
                 const value = await rpc('session.rename', { sessionId: change.sessionId, title: change.title }) as { title?: string };
-                if (value.title !== change.title) throw new Error('会话名称保存失败');
+                if (value.title !== change.title) throw new Error(i18n('Failed to save session name'));
             }));
             const titles = new Map(changes.map((change) => [change.sessionId, change.title]));
             setSessions((items) => items.map((session) => {
@@ -1820,7 +1862,7 @@ export default function AgentPage() {
                 setSelectedAgentIds(new Set());
                 setSelectedSessionIds(new Set());
             setLoadError(null);
-            await Notification.success('会话名称已保存');
+            await Notification.success(i18n('Session name saved'));
         } catch (error) {
             setLoadError(error instanceof Error ? error.message : String(error));
             void Promise.all([loadSessions(), loadAgents()]);
@@ -1866,7 +1908,7 @@ export default function AgentPage() {
             setPendingApproval(null);
             setPendingQuestion(null);
         }
-        await Notification.success('会话已删除');
+        await Notification.success(i18n('Session deleted'));
     }, [current, rpc]);
 
     const performHardDeleteMany = useCallback(async (sessionIds: readonly string[]) => {
@@ -1894,7 +1936,8 @@ export default function AgentPage() {
     }, [current, rpc]);
 
     const submitDialog = useCallback(async () => {
-        if (!dialog || (('value' in dialog) && !dialog.value.trim())) return;
+        if (!dialog || (('value' in dialog) && !dialog.value.trim())
+            || (dialog.kind === 'create-team' && !dialog.parentTeamId)) return;
         const active = dialog;
         setDialogBusy(true);
         setDialogError(null);
@@ -1904,18 +1947,21 @@ export default function AgentPage() {
                 const value = await rpc('session.rename', { sessionId: active.id, title }) as { title?: string };
                 if (value.title) setSessions((items) => items.map((session) => session.sessionId === active.id ? { ...session, projections: { values: { ...(session.projections?.values ?? {}), title: value.title } } } : session));
             } else if (active.kind === 'create-team') {
-                const parentTeamId = activeTreeTeamId ?? rootTeamId ?? undefined;
-                const value = await rpc('team.create', { text: active.value.trim(), ...(parentTeamId === undefined ? {} : { parentTeamId }) }) as { team?: AgentTeam };
-                if (!value.team) throw new Error('团队创建失败');
+                const parentTeamId = active.parentTeamId;
+                if (!parentTeamId || !teams.some((team) => team.teamId === parentTeamId)) {
+                    throw new Error(i18n('Please choose an existing team as the parent team.'));
+                }
+                const value = await rpc('team.create', { text: active.value.trim(), parentTeamId }) as { team?: AgentTeam };
+                if (!value.team) throw new Error(i18n('Team creation failed'));
                 setTeams((items) => [...items, value.team!]);
                 setActiveTreeTeamId(value.team.teamId);
                 updateAgentSelectionUrl({ teamId: value.team.teamId, agentId: null, sessionId: null });
-                await Notification.success('团队已创建');
+                await Notification.success(i18n('Team created successfully'));
             } else if (active.kind === 'rename-team') {
                 const value = await rpc('team.rename', { teamId: active.id, text: active.value.trim() }) as { team?: AgentTeam };
-                if (!value.team) throw new Error('团队重命名失败');
+                if (!value.team) throw new Error(i18n('Team rename failed'));
                 setTeams((items) => items.map((team) => team.teamId === active.id ? value.team! : team));
-                await Notification.success('团队已重命名');
+                await Notification.success(i18n('Team renamed'));
             } else if (active.kind === 'delete-selected') {
                 const selectedAgentSet = new Set(active.agentIds);
                 const standaloneSessionIds = active.sessionIds.filter((sessionId) => {
@@ -1985,9 +2031,9 @@ export default function AgentPage() {
                 void Promise.all([loadAgents(), loadSessions()]);
                 const deletedCount = deletedSessionIds.size + active.agentIds.length + active.teamIds.length;
                 if (failedSessionIds.size > 0) {
-                    await Notification.error(`已删除 ${deletedCount} 项；${failedSessionIds.size} 个会话的 Addon 设置未能同步，请检查主机状态后重试。`);
+                    await Notification.error(i18n('Deleted {0} items, but could not sync Addon settings for {1} sessions. Check the host and retry.', deletedCount, failedSessionIds.size));
                 } else {
-                    await Notification.success(`已删除 ${deletedCount} 项`);
+                    await Notification.success(i18n('Deleted {0} items', deletedCount));
                 }
             } else {
                 await performHardDelete(active.id);
@@ -2111,7 +2157,7 @@ export default function AgentPage() {
     }, [current, teams, rootTeamId, sessions]);
     if (guest) return null;
     if (booting) {
-        return <div className="eza-app" data-ds-dark-theme={dark || undefined}><div className="eza-boot"><div className="eza-bootCard"><EjunzLogo size={40} className="eza-heroLogo" /><div className="eza-bootSpinner" /><div className="eza-bootHint">正在连接 Ejunz Agent…</div></div></div></div>;
+        return <div className="eza-app" data-ds-dark-theme={dark || undefined}><div className="eza-boot"><div className="eza-bootCard"><EjunzLogo size={40} className="eza-heroLogo" /><div className="eza-bootSpinner" /><div className="eza-bootHint">{i18n('Connecting to Ejunz Agent...')}</div></div></div></div>;
     }
 
     return (
@@ -2130,6 +2176,8 @@ export default function AgentPage() {
                 onPickAgent={selectDraftAgent}
                 selectedTeamId={draftTeamId}
                 onPickTeam={selectDraftTeam}
+                requireTeamSelection={newAgentTargetRequired}
+                quickSessionOnly={quickSessionOnly}
                 models={newSessionConfigLoading ? null : composerModels}
                 selectModel={(provider, model) => { setDraftModelSelection({ provider, model }); }}
                 agentPresetOptions={agentPresetOptions}
@@ -2165,17 +2213,17 @@ export default function AgentPage() {
                 onSelect={setSettingsSection}
                 headerAction={<SettingsDocumentAction rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} />}
                 sections={[
-                    { id: 'general', label: '通用设置', render: () => <div className="eza-settingsColumn">
+                    { id: 'general', label: i18n('General settings'), render: () => <div className="eza-settingsColumn">
                     <AgentPresetRow rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} />
                     <LanguageRow rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} />
                     <GeneralSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} onThemeChange={applyTheme} />
                     <EnterBehaviorRow rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} onBehaviorChange={setBusyEnter} />
                 </div> },
-                    { id: 'models', label: '模型', render: () => <ModelsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} /> },
-                    { id: 'agent-presets', label: 'Agent 预设', render: () => <AgentPresetSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} onCreatorDraft={startCreatorDraft} /> },
-                    { id: 'tools', label: '工具', render: () => <ToolsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} sessionId={isUnstartedCurrent ? undefined : current ?? undefined} refreshKey={currentSession?.agentSettings?.agentPreset} /> },
-                    { id: 'plugins', label: '插件', render: () => <PluginsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} /> },
-                    { id: 'agent-addons', label: 'Agent Addons', render: () => <AgentAddonsSection
+                    { id: 'models', label: i18n('Models'), render: () => <ModelsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} /> },
+                    { id: 'agent-presets', label: i18n('Agent presets'), render: () => <AgentPresetSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} onCreatorDraft={startCreatorDraft} /> },
+                    { id: 'tools', label: i18n('Tools'), render: () => <ToolsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} sessionId={isUnstartedCurrent ? undefined : current ?? undefined} refreshKey={currentSession?.agentSettings?.agentPreset} /> },
+                    { id: 'plugins', label: i18n('Plugins'), render: () => <PluginsSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} /> },
+                    { id: 'agent-addons', label: i18n('Agent add-ons'), render: () => <AgentAddonsSection
                         rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>}
                         marketHref={`${domainPrefix(String(domainId || 'system'))}/market`}
                         onAddonChange={(addonId, enabled, installed) => {
@@ -2206,19 +2254,24 @@ export default function AgentPage() {
             />}
             {dialog && <ActionDialog
                 open
-                title={dialog.kind === 'rename-session' ? '重命名会话' : dialog.kind === 'create-team' ? '新建团队' : dialog.kind === 'rename-team' ? '重命名团队' : dialog.kind === 'delete-selected' ? '删除所选项目？' : '永久删除会话？'}
-                description={dialog.kind === 'delete-selected' ? [
-                    dialog.teamIds.length > 0 ? `删除 ${dialog.teamIds.length} 个团队，其 Agent 会移到上级团队` : '',
-                    dialog.agentIds.length > 0 ? `删除 ${dialog.agentIds.length} 个 Agent 及其关联 Session 和历史消息` : '',
-                    dialog.sessionIds.length > 0 ? `永久删除 ${dialog.sessionIds.length} 个会话及其历史消息、工具调用，无法恢复` : '',
-                ].filter(Boolean).join('；') + '。' : dialog.kind === 'delete-session' ? `永久删除“${dialog.title}”及其历史消息、工具调用，无法恢复。` : undefined}
-                inputLabel={dialog.kind === 'create-team' ? '团队名称' : dialog.kind === 'rename-session' || dialog.kind === 'rename-team' ? '名称' : undefined}
+                title={dialog.kind === 'rename-session' ? i18n('Rename session') : dialog.kind === 'create-team' ? i18n('New team') : dialog.kind === 'rename-team' ? i18n('Rename team') : dialog.kind === 'delete-selected' ? i18n('Delete selected items?') : i18n('Permanently delete session?')}
+                description={dialog.kind === 'create-team' ? i18n('Choose an existing team as the parent for the new team.') : dialog.kind === 'delete-selected' ? [
+                    dialog.teamIds.length > 0 ? i18n('Delete {0} teams; move their agents to the parent team.', dialog.teamIds.length) : '',
+                    dialog.agentIds.length > 0 ? i18n('Delete {0} agents and their linked sessions and messages.', dialog.agentIds.length) : '',
+                    dialog.sessionIds.length > 0 ? i18n('Permanently delete {0} sessions, including history and tool calls. This cannot be undone.', dialog.sessionIds.length) : '',
+                ].filter(Boolean).join('; ') + '.' : dialog.kind === 'delete-session' ? i18n('Permanently delete "{0}" and its history and tool calls. This cannot be undone.', dialog.title) : undefined}
+                selectLabel={dialog.kind === 'create-team' ? i18n('Parent team') : undefined}
+                selectValue={dialog.kind === 'create-team' ? dialog.parentTeamId ?? '' : ''}
+                selectPlaceholder={i18n('Choose an existing team')}
+                selectTreeOptions={dialog.kind === 'create-team' ? teamParentTree : []}
+                inputLabel={dialog.kind === 'create-team' ? i18n('Team name') : dialog.kind === 'rename-session' || dialog.kind === 'rename-team' ? i18n('Name') : undefined}
                 inputValue={'value' in dialog ? dialog.value : ''}
-                inputPlaceholder="请输入名称"
-                confirmLabel={dialog.kind === 'create-team' ? '创建' : dialog.kind === 'rename-session' || dialog.kind === 'rename-team' ? '保存' : '删除'}
+                inputPlaceholder={i18n('Please enter a name')}
+                confirmLabel={dialog.kind === 'create-team' ? i18n('Create') : dialog.kind === 'rename-session' || dialog.kind === 'rename-team' ? i18n('Save') : i18n('Delete')}
                 danger={dialog.kind === 'delete-selected' || dialog.kind === 'delete-session'}
                 busy={dialogBusy}
                 error={dialogError}
+                onSelectChange={(parentTeamId) => setDialog((previous) => previous?.kind === 'create-team' ? { ...previous, parentTeamId } : previous)}
                 onInputChange={(value) => setDialog((previous) => previous && 'value' in previous ? { ...previous, value } : previous)}
                 onClose={() => { if (!dialogBusy) setDialog(null); }}
                 onConfirm={() => { void submitDialog(); }}
@@ -2276,6 +2329,7 @@ export default function AgentPage() {
                             onToggleAgentSelection={toggleAgentSelection}
                             onToggleSessionSelection={toggleSessionSelection}
                             onToggleTeamSelection={toggleTeamSelection}
+                            onCreateAgent={() => { void prepareNewSession(undefined, undefined, true); }}
                             onCreateTeam={requestCreateTeam}
                             onRenameTeam={requestRenameTeam}
                             onSessionTitleChange={updateSessionTitleDraft}
@@ -2284,7 +2338,7 @@ export default function AgentPage() {
                             onQuery={setQuery}
                             onSelect={selectSession}
                             onSelectAgent={openAgentSettings}
-                            onStartSession={(agentId) => { void prepareNewSession(undefined, agentId); }}
+                            onStartSession={(agentId) => { void prepareNewSession(undefined, agentId, false, true); }}
                             onDeleteSelected={requestDeleteSelected}
                             onExitEdit={() => { setEditMode(false); setSessionTitleDrafts({}); setSelectedAgentIds(new Set());
                 setSelectedSessionIds(new Set()); setSelectedTeamIds(new Set()); }}
@@ -2297,10 +2351,10 @@ export default function AgentPage() {
                     view="model"
                     title={teamSettingsTeam.text}
                     headerTabs={[
-                        { id: 'context', label: '上下文', active: teamSettingsTab === 'context', onSelect: () => { setTeamSettingsTab('context'); setTeamContextEditing(false); } },
-                        { id: 'addons', label: '插件', active: teamSettingsTab === 'addons', onSelect: () => { setTeamSettingsTab('addons'); setTeamContextEditing(false); } },
+                        { id: 'context', label: i18n('Context'), active: teamSettingsTab === 'context', onSelect: () => { setTeamSettingsTab('context'); setTeamContextEditing(false); } },
+                        { id: 'addons', label: i18n('Add-ons'), active: teamSettingsTab === 'addons', onSelect: () => { setTeamSettingsTab('addons'); setTeamContextEditing(false); } },
                     ]}
-                    headerActions={teamSettingsTab === 'context' ? <button type="button" className="bd-drawer__edit" onClick={() => setTeamContextEditing(true)} disabled={teamConfigSaving}>编辑</button> : undefined}
+                    headerActions={teamSettingsTab === 'context' ? <button type="button" className="bd-drawer__edit" onClick={() => setTeamContextEditing(true)} disabled={teamConfigSaving}>{i18n('Edit')}</button> : undefined}
                     onViewChange={() => {}}
                     onResize={(delta) => setSessionDrawerWidth((width) => Math.max(SESSION_DRAWER_MIN, width + delta))}
                     onClose={() => { setTeamSettingsId(null); setTeamContextEditing(false); }}
@@ -2313,7 +2367,7 @@ export default function AgentPage() {
                             onCloseEdit={() => setTeamContextEditing(false)}
                             onSave={async (context) => {
                                 await saveTeamConfig(teamSettingsTeam.teamId, { context });
-                                await Notification.success('团队上下文已保存，现有 Agent 将在后台注入');
+                                await Notification.success(i18n('Team context saved. Existing agents will receive it in the background.'));
                             }}
                         />
                         : <TeamAddonSettingsPanel
@@ -2322,7 +2376,7 @@ export default function AgentPage() {
                             saving={teamConfigSaving}
                             onSave={async (addonIds) => {
                                 await saveTeamConfig(teamSettingsTeam.teamId, { addonIds });
-                                await Notification.success('团队插件配置已保存，现有 Agent 将在后台同步');
+                                await Notification.success(i18n('Team add-on settings saved. Existing agents will sync in the background.'));
                             }}
                         />}
                 </SessionDrawer>}
@@ -2332,11 +2386,11 @@ export default function AgentPage() {
                     view={agentSettingsSection}
                     title={selectedAgentSettings.title}
                     headerTabs={[
-                        { id: 'model', label: '模型', active: agentSettingsSection === 'model', onSelect: () => { setAgentSettingsSection('model'); setAgentContextEditing(false); } },
-                        { id: 'context', label: '上下文', active: agentSettingsSection === 'context', onSelect: () => setAgentSettingsSection('context') },
-                        { id: 'host', label: '主机', active: agentSettingsSection === 'host', onSelect: () => { setAgentSettingsSection('host'); setAgentContextEditing(false); } },
+                        { id: 'context', label: i18n('Context'), active: agentSettingsSection === 'context', onSelect: () => setAgentSettingsSection('context') },
+                        { id: 'model', label: i18n('Model'), active: agentSettingsSection === 'model', onSelect: () => { setAgentSettingsSection('model'); setAgentContextEditing(false); } },
+                        { id: 'host', label: i18n('Host'), active: agentSettingsSection === 'host', onSelect: () => { setAgentSettingsSection('host'); setAgentContextEditing(false); } },
                     ]}
-                    headerActions={agentSettingsSection === 'context' ? <button type="button" className="bd-drawer__edit" onClick={() => setAgentContextEditing(true)} disabled={agentContextSaving}>编辑</button> : undefined}
+                    headerActions={agentSettingsSection === 'context' ? <button type="button" className="bd-drawer__edit" onClick={() => setAgentContextEditing(true)} disabled={agentContextSaving}>{i18n('Edit')}</button> : undefined}
                     onViewChange={(view) => { if (view === 'model' || view === 'context' || view === 'host') setAgentSettingsSection(view); }}
                     onResize={(delta) => setSessionDrawerWidth((width) => Math.max(SESSION_DRAWER_MIN, width + delta))}
                     onClose={() => { setSelectedAgentSettingsId(null); setAgentContextEditing(false); }}
@@ -2370,7 +2424,7 @@ export default function AgentPage() {
                 </SessionDrawer>}
                 {detailsOpen && (currentSession || creatingSession) && <SessionDrawer
                             loading={creatingSession || (historyLoading && !pendingSendVisible)}
-                            loadingLabel={creatingSession ? '正在创建会话…' : historyLoadingLabel}
+                            loadingLabel={creatingSession ? i18n('Creating session...') : historyLoadingLabel}
                             drawerWidth={sessionDrawerWidth}
                             view={view}
                             onViewChange={setView}
@@ -2382,8 +2436,8 @@ export default function AgentPage() {
                                 ? null
                                 : view === 'context'
                                 ? <div className="eza-sessionAgentSettingsNotice">
-                                    <p>运行设置由所属 Agent 统一管理，Session 不再单独保存模型、Base、主机或预设。</p>
-                                    {currentSession.agentId && <button type="button" onClick={() => openAgentSettings(currentSession.agentId!)}>打开 Agent 设置</button>}
+                                    <p>{i18n('Runtime settings are managed by the Agent. Sessions no longer store their own model, Base, host, or preset.')}</p>
+                                    {currentSession.agentId && <button type="button" onClick={() => openAgentSettings(currentSession.agentId!)}>{i18n('Open Agent settings')}</button>}
                                 </div>
                                 : <ConversationRoot
                                     blank={false}
@@ -2397,7 +2451,7 @@ export default function AgentPage() {
                                     chat={<ChatView messages={messages} addons={agentAddons} running={running} runningTurnStartTime={runningTurnStart} historyHasMore={historyHasMore} loadingOlder={loadingOlder} loadedMessages={loadedHistoryMessages} totalMessages={historyTotalMessages} historyPageSize={HISTORY_PAGE_SIZE} onLoadOlder={() => void loadOlder()} onOpenFile={openFile} onOpenDetails={(tool) => { setSelectedTool(tool); }} />}
                                     trajectory={<TrajectoryView messages={messages} history={history} session={currentSession} historyHasMore={historyHasMore} loadingOlder={loadingOlder} onLoadOlder={loadOlder} />}
                                     composer={<div className="eza-composerLayer">
-                                        <InputBar input={input} setInput={setInput} send={send} cancel={cancel} running={running} sending={sending} attachments={attachments} onAddFiles={addAttachments} onRemoveAttachment={removeAttachment} models={composerModels} showModelPicker={false} projections={currentSession.projections?.values} modelMenuOpen={modelMenuOpen} setModelMenuOpen={setModelMenuOpen} selectModel={selectModel} notice={currentSessionError ?? loadError} placeholder="输入消息，Shift+Enter 换行">
+                                        <InputBar input={input} setInput={setInput} send={send} cancel={cancel} running={running} sending={sending} attachments={attachments} onAddFiles={addAttachments} onRemoveAttachment={removeAttachment} models={composerModels} showModelPicker={false} projections={currentSession.projections?.values} modelMenuOpen={modelMenuOpen} setModelMenuOpen={setModelMenuOpen} selectModel={selectModel} notice={currentSessionError ?? loadError} placeholder={i18n('Type a message. Press Shift+Enter for a new line.')}>
                                             <TodoPanel value={currentSession.projections?.values?.todos} />
                                             {pendingQuestion && <QuestionPanel question={pendingQuestion} onAnswer={answerQuestion} />}
                                             {queue.length > 0 && <QueueDock items={queue} running={running} onAction={updateQueue} />}

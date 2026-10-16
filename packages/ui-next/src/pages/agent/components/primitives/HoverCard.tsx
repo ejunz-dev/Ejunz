@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { i18n } from '@/i18n';
 import { writeClipboard } from './clipboard';
 import { usePointerGrace } from './pointer-grace';
 import css from './HoverCard.module.css';
@@ -15,7 +16,7 @@ export interface HoverCardProps {
     copiedLabel?: string;
 }
 
-export function HoverCard({ anchor, content, openDelayMs = 500, disabled = false, copyText, copyLabel = '复制', copiedLabel = '复制成功' }: HoverCardProps) {
+export function HoverCard({ anchor, content, openDelayMs = 500, disabled = false, copyText, copyLabel = i18n('Copy'), copiedLabel = i18n('Copied successfully') }: HoverCardProps) {
     const rootRef = useRef<HTMLSpanElement>(null);
     const cardRef = useRef<HTMLDivElement>(null);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -88,7 +89,7 @@ export function HoverCard({ anchor, content, openDelayMs = 500, disabled = false
         copyTimerRef.current = setTimeout(clearCopied, 1000);
     };
     const copyable = copyText !== undefined;
-    const card = open && pos !== null ? <div ref={cardRef} className={`${css.card}${copyable ? ` ${css.copyable}` : ''}${copied ? ` ${css.feedback}` : ''}`} style={{ ...pos, minHeight: copied && copyHeightRef.current !== null ? copyHeightRef.current : undefined }} role={copyable ? 'button' : undefined} tabIndex={copyable ? 0 : undefined} aria-label={copyable ? `${copyLabel}: ${copyText}` : undefined} onClick={copyable ? () => { void copy(); } : undefined} onKeyDown={copyable ? (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void copy(); } } : undefined}>
+    const card = open && pos !== null ? <div ref={cardRef} className={`${css.card}${copyable ? ` ${css.copyable}` : ''}${copied ? ` ${css.feedback}` : ''}`} style={{ ...pos, minHeight: copied && copyHeightRef.current !== null ? copyHeightRef.current : undefined }} role={copyable ? 'button' : undefined} tabIndex={copyable ? 0 : undefined} aria-label={copyable ? i18n('{0}: {1}', copyLabel, copyText) : undefined} onClick={copyable ? () => { void copy(); } : undefined} onKeyDown={copyable ? (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void copy(); } } : undefined}>
         {copied ? <span className={css.copied}>{copiedLabel}</span> : content}
     </div> : null;
     return <span ref={rootRef} className={css.root} onPointerEnter={() => {

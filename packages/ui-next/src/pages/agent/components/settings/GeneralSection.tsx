@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { i18n } from '@/i18n';
 import {
     IconDarkOutline16, IconFollowsystemOutline16, IconLightOutline16,
 } from '../../icons';
@@ -7,9 +8,9 @@ import css from './GeneralSection.module.css';
 export type ThemePreference = 'light' | 'dark' | 'system';
 
 const CUBES: { id: ThemePreference; label: string; Icon: typeof IconLightOutline16 }[] = [
-    { id: 'light', label: '浅色', Icon: IconLightOutline16 },
-    { id: 'dark', label: '深色', Icon: IconDarkOutline16 },
-    { id: 'system', label: '跟随系统', Icon: IconFollowsystemOutline16 },
+    { id: 'light', label: i18n('Light'), Icon: IconLightOutline16 },
+    { id: 'dark', label: i18n('Dark'), Icon: IconDarkOutline16 },
+    { id: 'system', label: i18n('Follow system'), Icon: IconFollowsystemOutline16 },
 ];
 
 function systemDark(): boolean {
@@ -55,7 +56,7 @@ export function AppearanceRow({ rpc, onThemeChange }: AppearanceRowProps) {
     };
 
     return <div className={css.group}>
-        <div className={css.title}>外观</div>
+        <div className={css.title}>{i18n('Appearance')}</div>
         <div className={css.cubeRow}>
             {CUBES.map(({ id, label, Icon }) => (
                 <button

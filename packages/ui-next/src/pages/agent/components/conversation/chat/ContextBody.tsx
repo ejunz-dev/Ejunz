@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n';
 import css from './ContextBody.module.css';
 
 type JsonObject = Record<string, unknown>;
@@ -17,7 +18,7 @@ export function ContextBody({ text, source, form }: { text: string; source?: unk
     const sections = Array.isArray(data.sections) ? data.sections.map(record).filter((item) => typeof item.name === 'string') : [];
     return <>
         {form === 'instructions' && changes.length > 0 && <ul className={css.files}>{changes.map((change, index) => <li key={index} className={css.file}><span className={css.fileAction}>{String(change.action ?? 'set')}</span><span className={css.filePath}>{String(change.path)}</span></li>)}</ul>}
-        {form === 'recall' && references.length > 0 && <ul className={css.recalls}>{references.map((reference, index) => <li key={index} className={css.recall}><span className={css.recallLabel}>{String(reference.label)}</span>{reference.messageCount !== undefined && <span className={css.recallCounts}>{String(reference.messageCount)} 条</span>}</li>)}</ul>}
+        {form === 'recall' && references.length > 0 && <ul className={css.recalls}>{references.map((reference, index) => <li key={index} className={css.recall}><span className={css.recallLabel}>{String(reference.label)}</span>{reference.messageCount !== undefined && <span className={css.recallCounts}>{i18n('{0} messages', Number(reference.messageCount))}</span>}</li>)}</ul>}
         {form === 'relay' && stringValue(data.sender) && <p className={css.relaySender}>{stringValue(data.sender)}</p>}
         {form === 'snapshot' && sections.length > 0
             ? <div className={css.sections}>{sections.map((section, index) => <section key={index} className={css.section}><span className={css.sectionName}>{String(section.name)}</span><pre className={css.sectionText}>{String(section.text ?? '')}</pre></section>)}</div>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { i18n } from '@/i18n';
 import { deriveKeyRef, type SettingsNamespaceView } from './modelsStore';
 import css from './Onboarding.module.css';
 
@@ -97,7 +98,7 @@ export function DeepSeekOnboarding({ rpc }: DeepSeekOnboardingProps) {
 
     const save = async () => {
         if (!key.trim() || busy) {
-            setError('请输入 API 密钥后继续。');
+            setError(i18n('Enter an API key to continue.'));
             return;
         }
         setBusy(true);
@@ -117,15 +118,15 @@ export function DeepSeekOnboarding({ rpc }: DeepSeekOnboardingProps) {
 
     return <div className={css.overlay} role="presentation">
         <div className={css.dialog} role="dialog" aria-modal="true" aria-labelledby="eza-deepseek-title">
-            <h2 className={css.title} id="eza-deepseek-title">添加一个 API Key 开始使用</h2>
+            <h2 className={css.title} id="eza-deepseek-title">{i18n('Add an API key to get started')}</h2>
             <div className={css.body}>
-                <p className={css.description}>配置 DeepSeek 官方模型，即可开始使用。</p>
-                <label className={css.field}><span>API Key</span><input className={css.input} type="password" autoComplete="off" autoFocus value={key} placeholder="输入 API Key" disabled={busy} onChange={(event) => { setKey(event.target.value); setError(null); }} /></label>
+                <p className={css.description}>{i18n('Configure the official DeepSeek models to start using the agent.')}</p>
+                <label className={css.field}><span>{i18n('API key')}</span><input className={css.input} type="password" autoComplete="off" autoFocus value={key} placeholder={i18n('Enter API key')} disabled={busy} onChange={(event) => { setKey(event.target.value); setError(null); }} /></label>
                 {error ? <p className={css.error} role="alert">{error}</p> : null}
             </div>
             <div className={css.footer}>
-                <button type="button" className={css.outline} disabled={busy} onClick={() => { setTarget(null); }}>稍后配置</button>
-                <button type="button" className={css.primary} disabled={busy} onClick={() => { void save(); }}>{busy ? '保存中…' : '保存并继续'}</button>
+                <button type="button" className={css.outline} disabled={busy} onClick={() => { setTarget(null); }}>{i18n('Configure later')}</button>
+                <button type="button" className={css.primary} disabled={busy} onClick={() => { void save(); }}>{busy ? i18n('Saving...') : i18n('Save and continue')}</button>
             </div>
         </div>
     </div>;

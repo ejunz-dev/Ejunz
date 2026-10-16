@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { i18n } from '@/i18n';
 import { DisclosureRow } from '../../primitives/DisclosureRow';
 import { fileInjectionText, formatBytes, type UploadedFileMeta } from '../../../runtime/uploads';
 import css from './FileInjectionRow.module.css';
@@ -11,14 +12,14 @@ export function FileInjectionRow({ files }: { files: UploadedFileMeta[] }) {
         rowClassName={css.root}
         chevronClassName={css.chevron}
         icon="▤"
-        title="文件注入"
+        title={i18n('File injection')}
         open={open}
         expandable
         expandOnRowClick
         onToggle={() => setOpen((value) => !value)}
         collapsedContent={<>
             <span className={css.sep} aria-hidden />
-            <span className={css.count}>{files.length} 个文件</span>
+            <span className={css.count}>{i18n('{0} files', files.length)}</span>
             {names ? <><span className={css.sep} aria-hidden /><span className={css.names}>{names}</span></> : null}
         </>}
     >

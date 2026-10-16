@@ -48,7 +48,8 @@
     font-size: 12px;
 }
 
-.field input {
+.field input,
+.field select {
     width: 100%;
     box-sizing: border-box;
     padding: 8px 10px;

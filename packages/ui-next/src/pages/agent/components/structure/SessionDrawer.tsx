@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { i18n } from '@/i18n';
 import type { CSSProperties, PointerEvent, ReactNode } from 'react';
 import { defineSlot } from '../../../../registry';
 import { store } from '../../../../registry/store';
@@ -68,7 +69,7 @@ function ResizeHandle({ onResize }: { onResize: (delta: number) => void }) {
     return <div className="eza-sessionDrawerResize" data-dragging={dragging || undefined} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} />;
 }
 
-export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWidth, view, title = '会话历史', hideTabs = false, headerTabs, headerActions, onViewChange, onResize, onClose, children, overlay }: SessionDrawerProps) {
+export function SessionDrawer({ loading, loadingLabel = i18n('Loading...'), drawerWidth, view, title = i18n('Session history'), hideTabs = false, headerTabs, headerActions, onViewChange, onResize, onClose, children, overlay }: SessionDrawerProps) {
     const contextTabRegistered = useSyncExternalStore(
         (listener) => store.subscribe('component:agent-context-tab', listener),
         () => store.getInterceptors('component:agent-context-tab').length > 0,
@@ -122,7 +123,7 @@ export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWi
         swipeRef.current = null;
     };
     return <>
-        <button type="button" className="bd-backdrop bd-card-backdrop eza-sessionDrawerBackdrop" data-closing={closing || undefined} onClick={requestClose} aria-label={`关闭${title}`} />
+        <button type="button" className="bd-backdrop bd-card-backdrop eza-sessionDrawerBackdrop" data-closing={closing || undefined} onClick={requestClose} aria-label={i18n('Close {0}', title)} />
         <aside className="bd-drawer bd-card-drawer eza-sessionDrawer" data-closing={closing || undefined} style={{ '--eza-session-drawer-width': `${drawerWidth}px` } as CSSProperties} role="dialog" aria-modal="true" aria-label={title} onWheel={(event) => event.stopPropagation()} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerCancel}>
             <ResizeHandle onResize={onResize} />
             <header className="bd-drawer__header">
@@ -130,17 +131,17 @@ export function SessionDrawer({ loading, loadingLabel = '加载中…', drawerWi
                     <strong>{title}</strong>
                     {headerTabs.map((tab) => <button type="button" role="tab" className={tab.active ? 'is-active' : ''} aria-selected={tab.active} key={tab.id} onClick={tab.onSelect}>{tab.label}</button>)}
                 </div> : hideTabs ? <div className="bd-drawer__tabs"><strong>{title}</strong></div> : <div className="bd-drawer__tabs" role="tablist">
-                    <button type="button" role="tab" className={view === 'chat' ? 'is-active' : ''} aria-selected={view === 'chat'} onClick={() => onViewChange('chat')}>对话</button>
-                    <button type="button" role="tab" className={view === 'trajectory' ? 'is-active' : ''} aria-selected={view === 'trajectory'} onClick={() => onViewChange('trajectory')}>轨迹</button>
+                    <button type="button" role="tab" className={view === 'chat' ? 'is-active' : ''} aria-selected={view === 'chat'} onClick={() => onViewChange('chat')}>{i18n('Chat')}</button>
+                    <button type="button" role="tab" className={view === 'trajectory' ? 'is-active' : ''} aria-selected={view === 'trajectory'} onClick={() => onViewChange('trajectory')}>{i18n('Trajectory')}</button>
                     <ContextTabSlot view={view} onViewChange={onViewChange} />
                 </div>}
                 <div className="bd-drawer__header-actions">
                     {headerActions}
-                    <button type="button" className="bd-drawer__close" onClick={requestClose} aria-label="关闭">×</button>
+                    <button type="button" className="bd-drawer__close" onClick={requestClose} aria-label={i18n('Close')}>×</button>
                 </div>
             </header>
             <div className="bd-drawer__body eza-sessionDrawerBody">
-                {loading ? <div className="eza-sessionDrawerLoading" role="status" aria-label={`加载${title}`}><span />{loadingLabel}</div> : children}
+                {loading ? <div className="eza-sessionDrawerLoading" role="status" aria-label={i18n('Loading {0}', title)}><span />{loadingLabel}</div> : children}
             </div>
             {overlay}
         </aside>

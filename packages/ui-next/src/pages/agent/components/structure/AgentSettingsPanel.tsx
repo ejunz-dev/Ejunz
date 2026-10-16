@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { i18n } from '@/i18n';
 import { defineSlot } from '../../../../registry';
 import type { BaseView } from '../../runtime/session';
 import type { SessionModels } from '../types';
@@ -57,13 +58,13 @@ export function AgentSettingsPanel({
         }
     };
     const onlineHosts = hosts.filter((host) => host.online !== false);
-    const label = section === 'model' ? '模型' : section === 'host' ? '主机' : '上下文';
+    const label = i18n(section === 'model' ? 'Model' : section === 'host' ? 'Host' : 'Context');
     return <section className="eza-agentSettingsFields" aria-label={label}>
         {readOnly && readOnlyMessage ? <p className="bd-muted">{readOnlyMessage}</p> : null}
         {error && <div className="bd-edit-dialog__error" role="alert">{error}</div>}
         {section === 'model' ? <div className="bd-edit-field">
             <div className="eza-agentSettingsModelHeader">
-                <h2>模型</h2>
+                <h2>{i18n('Model')}</h2>
                 {modelActions}
             </div>
             {models ? models.groups.map((group) => <div className="eza-agentSettingsGroup" key={group.id}>
@@ -71,12 +72,12 @@ export function AgentSettingsPanel({
                 <div className="bd-edit-tags">
                     {group.models.map((item) => <button type="button" className={`bd-edit-tag${modelSelection?.provider === group.id && modelSelection.model === item.id ? ' is-selected' : ''}`} disabled={saving !== null || readOnly} key={`${group.id}:${item.id}`} onClick={() => void apply(`${group.id}:${item.id}`, () => { setModelSelection({ provider: group.id, model: item.id }); return onModel(group.id, item.id); })} title={item.description || item.name}>{item.name}</button>)}
                 </div>
-            </div>) : <span className="bd-muted">模型加载中…</span>}
+            </div>) : <span className="bd-muted">{i18n('Loading models...')}</span>}
         </div> : section === 'host' ? <div className="bd-edit-field">
-            <h2>主机</h2>
+            <h2>{i18n('Host')}</h2>
             <div className="bd-edit-tags">
                 {onlineHosts.map((host) => <button type="button" className={`bd-edit-tag${hostSelection === host.runtimeId ? ' is-selected' : ''}`} disabled={saving !== null || readOnly} key={host.runtimeId} title={host.runtimeId} onClick={() => void apply(host.runtimeId, () => { setHostSelection(host.runtimeId); return onHost(host.runtimeId); })}>{host.label}</button>)}
-                {onlineHosts.length === 0 && <span className="bd-muted">没有在线的 host</span>}
+                {onlineHosts.length === 0 && <span className="bd-muted">{i18n('No hosts online')}</span>}
             </div>
         </div> : <AgentSettingsContextSlot
             bases={bases}

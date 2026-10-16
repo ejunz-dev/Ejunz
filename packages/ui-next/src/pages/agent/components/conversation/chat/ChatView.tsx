@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { i18n } from '@/i18n';
 import { IconChevronDownOutline14 } from '../../../icons';
 import { placeInitialAddonMountsAfterFirstUser } from '../../../runtime/conversation';
 import type { AgentAddonView, ChatMessage } from '../../types';
@@ -50,7 +51,7 @@ function pinnedOf(scrollElement: HTMLElement): boolean {
 }
 
 function olderHistoryRange(loadedMessages: number, totalMessages: number | null, pageSize: number): string {
-    if (totalMessages === null) return `再 ${pageSize} 条消息`;
+    if (totalMessages === null) return i18n('{0} more messages', pageSize);
     const end = Math.max(1, totalMessages - loadedMessages);
     const start = Math.max(1, end - pageSize + 1);
     return `${start}-${end}`;
@@ -180,13 +181,13 @@ export function ChatView({ messages, addons, running, runningTurnStartTime, hist
     return <div className={css.root}>
         <div ref={localRef} className={css.scroll}>
             <div className={css.column} data-chat-flow="">
-                {historyHasMore && <div className={css.older}><button type="button" disabled={loadingOlder} onClick={loadOlder}>{loadingOlder ? `加载中…（${olderRange}）` : `加载历史消息（${olderRange}）`}</button></div>}
+                {historyHasMore && <div className={css.older}><button type="button" disabled={loadingOlder} onClick={loadOlder}>{loadingOlder ? i18n('Loading... ({0})', olderRange) : i18n('Load earlier messages ({0})', olderRange)}</button></div>}
                 {visibleMessages.map((message) => <div key={message.key} className={css.flowItem} data-chat-anchor-key={message.key} data-chat-flow-key={message.key} data-chat-flow-kind={message.role}><ChatMessageView message={message} addons={addons} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} /></div>)}
-                {!messages.some((message) => message.role === 'user' || message.role === 'assistant') && <div className={css.hint}>发送消息开始对话</div>}
+                {!messages.some((message) => message.role === 'user' || message.role === 'assistant') && <div className={css.hint}>{i18n('Send a message to start the conversation')}</div>}
                 {running && <TurnStatus startTime={runningTurnStartTime} />}
             </div>
             {!atBottom && <div className={css.toBottomSlot}>
-                <button type="button" className={css.toBottom} aria-label="回到底部" onClick={toBottom}>
+                <button type="button" className={css.toBottom} aria-label={i18n('Back to bottom')} onClick={toBottom}>
                     <IconChevronDownOutline14 />
                 </button>
             </div>}

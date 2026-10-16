@@ -1,4 +1,5 @@
 import { useId, useRef, useState } from 'react';
+import { i18n } from '@/i18n';
 import { AgentLoopCard, BashCard, WebSearchCard } from './PluginCards';
 import { PluginInventoryTab } from './PluginInventoryTab';
 import type { SettingsRpc } from './cardForm';
@@ -10,8 +11,8 @@ interface TabEntry {
 }
 
 const TABS: TabEntry[] = [
-    { id: 'configurable', label: '插件配置' },
-    { id: 'inventory', label: '插件列表' },
+    { id: 'configurable', label: 'Plugin configuration' },
+    { id: 'inventory', label: 'Plugin list' },
 ];
 
 export interface PluginsSectionProps {
@@ -26,9 +27,9 @@ export function PluginsSection({ rpc }: PluginsSectionProps) {
 
     return (
         <div className={css.section}>
-            <h2 className={css.heading}>插件</h2>
-            <p className={css.intro}>配置和查看本部署已安装的插件。</p>
-            <div className={css.tabs} role="tablist" aria-label="插件视图">
+            <h2 className={css.heading}>{i18n('Plugins')}</h2>
+            <p className={css.intro}>{i18n('Configure and inspect the plugins installed in this deployment.')}</p>
+            <div className={css.tabs} role="tablist" aria-label={i18n('Plugin views')}>
                 {TABS.map((tab, index) => {
                     const selected = tab.id === active;
                     return (
@@ -59,7 +60,7 @@ export function PluginsSection({ rpc }: PluginsSectionProps) {
                                 tabRefs.current[nextIndex]?.focus();
                             }}
                         >
-                            {tab.label}
+                            {i18n(tab.label)}
                         </button>
                     );
                 })}

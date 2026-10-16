@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { i18n } from '@/i18n';
 import { Notification } from '@ejunz/ui-next';
 
 export function useUploadNotice(uploadingCount: number): void {
@@ -11,7 +12,7 @@ export function useUploadNotice(uploadingCount: number): void {
             return;
         }
         const previous = noticeRef.current;
-        void Notification.show({ message: `正在上传 ${uploadingCount} 个文件…`, type: 'info', duration: 0 }).then((id) => {
+        void Notification.show({ message: i18n('Uploading {0} files...', uploadingCount), type: 'info', duration: 0 }).then((id) => {
             noticeRef.current = id;
             if (previous !== null) Notification.hide(previous);
         });

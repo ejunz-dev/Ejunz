@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { i18n } from '@/i18n';
 import { useUiContext } from '@ejunz/ui-next';
 import { usePageData } from '../../../context/page-data';
 
@@ -39,7 +40,7 @@ export function useAgentRpc(): (method: string, payload: unknown, signal?: Abort
         });
         if (res.redirected) {
             window.location.href = res.url;
-            throw new Error('登录跳转中');
+            throw new Error(i18n('Redirecting to sign in'));
         }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json() as {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { i18n } from '@/i18n';
 import { RowMenu, type RowMenuItem } from './RowMenu';
 import css from './SettingsRows.module.css';
 
@@ -24,8 +25,8 @@ function SettingsRowShell({ title, description, alert, children }: SettingsRowSh
 }
 
 const LOCALE_ITEMS: RowMenuItem[] = [
-    { id: 'zh', label: '中文' },
-    { id: 'en', label: 'English' },
+    { id: 'zh', label: i18n('Chinese') },
+    { id: 'en', label: i18n('English') },
 ];
 
 export function LanguageRow({ rpc }: { rpc: SettingsRpc }) {
@@ -50,14 +51,14 @@ export function LanguageRow({ rpc }: { rpc: SettingsRpc }) {
         window.location.reload();
     };
 
-    return <SettingsRowShell title="语言">
+    return <SettingsRowShell title={i18n('Language')}>
         <RowMenu items={LOCALE_ITEMS} selectedId={active} onSelect={select} />
     </SettingsRowShell>;
 }
 
 const ENTER_ITEMS: RowMenuItem[] = [
-    { id: 'queue', label: '排队发送' },
-    { id: 'steer', label: '插话发送' },
+    { id: 'queue', label: i18n('Queue send') },
+    { id: 'steer', label: i18n('Steer send') },
 ];
 
 export function EnterBehaviorRow({ rpc, onBehaviorChange }: { rpc: SettingsRpc; onBehaviorChange: (behavior: 'queue' | 'steer') => void }) {
@@ -85,7 +86,7 @@ export function EnterBehaviorRow({ rpc, onBehaviorChange }: { rpc: SettingsRpc; 
         void rpc('settings.update', { ns: 'ui-conversation', patch: { busyEnter: next } }).catch(() => { });
     };
 
-    return <SettingsRowShell title="繁忙时 Enter 键行为" description="仅在智能体运行时生效；Cmd/Ctrl+Enter 使用另一行为">
+    return <SettingsRowShell title={i18n('Enter behavior while busy')} description={i18n('Applies only while the Agent is running. Cmd/Ctrl+Enter uses the other behavior.')}>
         <RowMenu items={ENTER_ITEMS} selectedId={behavior} onSelect={select} />
     </SettingsRowShell>;
 }

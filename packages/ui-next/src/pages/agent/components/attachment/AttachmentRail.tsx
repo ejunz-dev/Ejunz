@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react';
+import { i18n } from '@/i18n';
 import { formatBytes, type DraftAttachment } from '../../runtime/uploads';
 
 interface AttachmentRailProps {
@@ -23,9 +24,9 @@ export function AttachmentRail({ attachments, onRemove }: AttachmentRailProps) {
                     : <img src={preview} alt={attachment.originalName} />}
                 {preview === null && <span className="eza-attachmentName">{attachment.originalName}</span>}
                 {preview === null && <span className="eza-attachmentSize">{formatBytes(attachment.size)}</span>}
-                {attachment.error !== undefined && <span className="eza-attachmentError">上传失败</span>}
+                {attachment.error !== undefined && <span className="eza-attachmentError">{i18n('Upload failed')}</span>}
                 {uploading && <span className="eza-attachmentProgress" style={{ width: `${attachment.progress}%` }} />}
-                <button type="button" aria-label={`移除 ${attachment.originalName}`} onClick={() => onRemove(attachment.id)}>×</button>
+                <button type="button" aria-label={i18n('Remove {0}', attachment.originalName)} onClick={() => onRemove(attachment.id)}>×</button>
             </div>;
         })}
     </div>;

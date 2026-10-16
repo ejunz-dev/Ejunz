@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MarkdownEditor } from '../../../../components/markdown-editor';
 import { renderMarkdown } from '../../../../components/base-detail/markdown';
+import { i18n } from '@/i18n';
 
 interface AgentContextSettingsPanelProps {
     context?: string;
@@ -54,23 +55,23 @@ export function AgentContextSettingsPanel({ context = '', editing, saving, onClo
         <div className="bd-drawer__body eza-teamContextPreview">
             {context.trim()
                 ? <div className="bd-markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(context) }} />
-                : <p className="bd-muted">当前 Agent 尚未配置专属上下文。</p>}
+                : <p className="bd-muted">{i18n('This Agent has no private context configured.')}</p>}
         </div>
         {editing ? createPortal(
             <div className="bd-edit-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onCloseEdit(); }}>
                 <section className="bd-edit-dialog bd-edit-dialog--card" role="dialog" aria-modal="true" aria-labelledby="agent-context-edit-title">
                     <header className="bd-edit-dialog__header">
-                        <h2 id="agent-context-edit-title">编辑 Agent 上下文</h2>
+                        <h2 id="agent-context-edit-title">{i18n('Edit Agent context')}</h2>
                         <div className="bd-edit-dialog__actions">
-                            {saving ? <span className="bd-edit-dialog__status">保存中…</span> : null}
-                            <button type="button" className="bd-edit-button bd-edit-button--primary" disabled={saving} onClick={() => { void save(); }}>保存</button>
-                            <button type="button" className="bd-edit-button" disabled={saving} onClick={onCloseEdit}>取消</button>
+                            {saving ? <span className="bd-edit-dialog__status">{i18n('Saving...')}</span> : null}
+                            <button type="button" className="bd-edit-button bd-edit-button--primary" disabled={saving} onClick={() => { void save(); }}>{i18n('Save')}</button>
+                            <button type="button" className="bd-edit-button" disabled={saving} onClick={onCloseEdit}>{i18n('Cancel')}</button>
                         </div>
                     </header>
                     <div className="bd-edit-dialog__body">
                         {error ? <p className="bd-edit-dialog__error" role="alert">{error}</p> : null}
                         <div className="bd-edit-field bd-edit-field--content">
-                            <span>上下文</span>
+                            <span>{i18n('Context')}</span>
                             <MarkdownEditor value={draft} onChange={setDraft} theme={editorTheme} style={{ height: '100%', minHeight: '16rem' }} />
                             <span className="bd-muted">{draft.length.toLocaleString()} / {MAX_AGENT_CONTEXT_CHARS.toLocaleString()}</span>
                         </div>

@@ -9,3 +9,531 @@
 'Network error': '网络错误'
 'Upload aborted': '上传已中断'
 'Not logged in': '未登录'
+'Select': 选择
+'Cancel': 取消
+'Working...': 处理中…
+'Expand {0}': '展开{0}'
+'Collapse {0}': '收起{0}'
+'No teams available': 暂无可选团队
+'Parent team': 上级团队
+'Choose an existing team': 选择现有团队
+'Choose an existing team as the parent for the new team.': 先选择一个现有团队作为新团队的上级。
+'Please choose an existing team as the parent team.': 请选择一个现有团队作为上级团队。
+'Team name': 团队名称
+'Please enter a name': 请输入名称
+'Create': 创建
+'New team': 新团队
+'New smart agent': 新智能体
+'Search teams, agents, or sessions': 搜索团队、Agent 或 Session
+'Root team': 根团队
+'Team created successfully': 团队已创建
+'Rename session': 重命名会话
+'Rename team': 重命名团队
+'Delete selected items?': 删除所选项目？
+'Permanently delete session?': 永久删除会话？
+'Name': 名称
+'Save': 保存
+'Delete': 删除
+'Delete {0} teams; move their agents to the parent team.': 删除 {0} 个团队，其 Agent 会移到上级团队。
+'Delete {0} agents and their linked sessions and messages.': 删除 {0} 个 Agent 及其关联的 Session 和消息。
+'Permanently delete {0} sessions, including history and tool calls. This cannot be undone.': 永久删除 {0} 个会话及其历史和工具调用，无法撤销。
+'Permanently delete "{0}" and its history and tool calls. This cannot be undone.': 永久删除“{0}”及其历史和工具调用，无法撤销。
+'Session {0}': '会话 {0}'
+'Not selected': 未选择
+'Just now': 刚刚
+'{0} minutes ago': '{0} 分钟前'
+'{0} hours ago': '{0} 小时前'
+'{0} days ago': '{0} 天前'
+'Sending': 发送中
+'Sent': 发送成功
+'Send failed': 发送失败
+'Failed': 运行失败
+'Waiting for answer': 等待回答
+'Running': 运行中
+'Completed': 已完成
+'Session name': 会话名称
+'Ungrouped': 未分组
+'Select {0}': '选择 {0}'
+'Model: {0}': '模型：{0}'
+'Base: {0}': 'Base：{0}'
+'Select agent {0}': '选择 Agent {0}'
+'Collapse sessions': 收起 Session
+'Expand sessions': 展开 Session
+'Open settings for agent {0}': '设置 Agent：{0}'
+'Create a session under {0}': '在 {0} 下新建 Session'
+'Select team {0}': '选择团队 {0}'
+'Collapse': 收起
+'Expand': 展开
+'No sessions': 暂无会话
+'Team, Agent, and Session tree': '团队、Agent 与 Session'
+'Editing actions': 编辑操作
+'{0} agents · {1} sessions · {2} teams': 'Agent {0} · Session {1} · 团队 {2}'
+'Saving...': 保存中…
+'Save session names': 保存会话名
+'Exit edit mode': 退出编辑
+'Close team structure': 关闭团队结构
+'Team structure': 团队结构
+'Close': 关闭
+'Resize team panel': 调整团队面板宽度
+'Switch team?': 切换团队？
+'Switch to "{0}"?': '切换到“{0}”？'
+'Switch the current team?': 切换当前团队？
+'Switch': 切换
+'Only part of the search results are shown. Narrow your search.': 仅显示部分搜索结果，请缩小搜索范围。
+'New session': 新会话
+'New agent': 新 Agent
+'Agent name': Agent 名称
+'Enter a message': 输入消息
+'Enter the first message': 输入第一条消息
+'Enter the first message, or create only an agent': 输入第一条消息，或只创建 Agent
+'Done editing {0}': '完成编辑{0}'
+'Edit {0}': '编辑{0}'
+'Loading latest settings...': 正在加载最新配置…
+'Target team': 目标团队
+'Team': 团队
+'No teams available. Create a team first.': 暂无可选团队，请先创建团队。
+'Select an existing team before configuring the new agent.': 请先选择一个现有团队，再配置新智能体。
+'Host': 主机
+'No hosts online': 没有在线的 host
+'Model': 模型
+'Loading models...': 模型加载中…
+'Agent': Agent
+'Create new agent': 新建 Agent
+'These settings update the selected Agent and are shared by its sessions.': 以下设置会更新所选 Agent，其 Sessions 共用这些设置。
+'These settings will be saved to the new Agent.': 以下设置将保存到新建的 Agent。
+'Agent preset': Agent 预设
+'Custom': 自定义
+'Create agent': 创建智能体
+'Create only an agent': 只创建 Agent
+'Create sessions for this agent from the team tree.': 创建后可在团队树中为智能体添加 Session。
+'Settings are saved to the Agent; you can add sessions after creation.': 参数保存在 Agent 上；创建后可以再添加多个 Session。
+'{0} (root team)': '{0}（根团队）'
+'Uploaded {0} files': '已上传 {0} 个文件'
+'Thinking': 思考中
+'User': 用户
+'Context injection': 注入上下文
+'Plugin mounted': 插件已挂载
+'Context compacted': 上下文已整理
+'Updated': 已更新
+'Error': 错误
+'Tool': 工具
+'Thinking...': 思考中…
+'Agent not found': Agent 不存在
+'This turn failed': 本轮运行失败
+'Loading...': 加载中…
+'Loading... {0}-{1}': '加载中… {0}-{1}'
+'Please choose a team first.': 请先选择团队。
+'Agent creation failed': Agent 创建失败
+'Session creation failed': 会话创建失败
+'This session is not linked to an Agent': 该会话尚未关联 Agent
+'Agent created successfully': Agent 已创建
+'Host saved': 主机已保存
+'Host switched. It will handle the next message.': 已切换 host，下一条消息由它处理
+'Context saved': 上下文已保存
+'Display settings saved': 显示设置已保存
+'File upload is still in progress. Please wait.': 文件仍在上传中，请稍候。
+'Redirecting to sign in': 登录跳转中
+'No current session': 当前没有会话
+'Model saved': 模型已保存
+'Session name cannot be empty': 会话名称不能为空
+'Failed to save session name': 会话名称保存失败
+'Session name saved': 会话名称已保存
+'Session deleted': 会话已删除
+'Team creation failed': 团队创建失败
+'Team rename failed': 团队重命名失败
+'Team renamed': 团队已重命名
+'Deleted {0} items, but could not sync Addon settings for {1} sessions. Check the host and retry.': '已删除 {0} 项；{1} 个会话的 Addon 设置未能同步，请检查主机状态后重试。'
+'Deleted {0} items': '已删除 {0} 项'
+'Connecting to Ejunz Agent...': '正在连接 Ejunz Agent…'
+'General settings': 通用设置
+'Models': 模型
+'Agent presets': Agent 预设
+'Tools': 工具
+'Plugins': 插件
+'Agent add-ons': Agent Addons
+'Context': 上下文
+'Add-ons': 插件
+'Edit': 编辑
+'Team context saved. Existing agents will receive it in the background.': 团队上下文已保存，现有 Agent 将在后台注入
+'Team add-on settings saved. Existing agents will sync in the background.': 团队插件配置已保存，现有 Agent 将在后台同步
+'Creating session...': 正在创建会话…
+'Runtime settings are managed by the Agent. Sessions no longer store their own model, Base, host, or preset.': 运行设置由所属 Agent 统一管理，Session 不再单独保存模型、Base、主机或预设。
+'Open Agent settings': 打开 Agent 设置
+'Type a message. Press Shift+Enter for a new line.': 输入消息，Shift+Enter 换行
+'Expired': 已过期
+'Expires in {0} minutes': '还有 {0} 分钟过期'
+'This URL has no pairing code.': 这个地址里没有绑定码
+'Link an Agent runtime': 绑定 Agent 运行时
+'An Agent runtime is requesting permission to run on this server. After approval, it will receive credentials and appear in the runtime status list.': 一个 Agent 运行时请求在这台服务器上运行。授权后它会拿到凭据，并出现在运行状态列表里。
+'Could not read this pairing request': 无法读取这个绑定请求
+'Source: {0}:{1}': '来源 {0}:{1}'
+'Pairing code: {0}': '绑定码 {0}'
+'Approved': 已授权
+'Approve': 授权
+'Refresh': 刷新
+'The runtime logs will show that it is linked. You can close this page.': 运行时日志会显示它已绑定；这一页可以关闭了。
+'{0} seconds': '{0} 秒'
+'{0} minutes': '{0} 分钟'
+'{0} hours {1} minutes': '{0} 小时 {1} 分钟'
+'{0} days {1} hours': '{0} 天 {1} 小时'
+'Online': 在线
+'Heartbeat timed out': 心跳超时
+'Stopped': 已停止
+'Agent runtimes': Agent 运行时
+'Ejunz-Agent instances that handle this server’s sessions. The embedded instance runs inside the Ejunz process, so each process appears as one row.': 处理本服务器会话的 Ejunz-Agent 实例。内嵌实例运行在 Ejunz 进程内，因此每个进程显示为一行。
+'Failed to load runtime status': 读取运行时状态失败
+'Runtimes ({0})': '运行时（{0}）'
+'No runtime has reported yet. It starts and registers after the server begins listening.': 还没有运行时上报过。运行时会在服务器开始监听后启动并注册。
+'Version {0}': '版本 {0}'
+'{0} sessions': '会话 {0}'
+'Uptime: {0}': '已运行 {0}'
+'Last report: {0} ago': '上次上报 {0}前'
+'Rename': 重命名
+'Delete record': 删除记录
+'Rename runtime': 重命名运行时
+'e.g. builtin@devshell': '例如 builtin@devshell'
+'Delete runtime record': 删除运行时记录
+'Runtime {0} ({1}) no longer reports and its record will be deleted. Running sessions are unaffected.': '{0}（{1}）不再上报，其记录将被删除。正在运行的会话不受影响。'
+'Group save failed': Group 保存失败
+'Group saved': Group 已保存
+'Group creation failed': Group 创建失败
+'Group created': Group 已创建
+'Group deleted': Group 已删除
+'Groups': Groups
+'Manage Groups available in {0}.': 管理 {0} 中可用的 Group。
+'Group management actions': Group 管理操作
+'Open chat workspace': 打开聊天工作台
+'New Group': 新建 Group
+'Group list': Group 列表
+'Configuration': 配置
+'{0} items': '{0} 个'
+'Loading Groups...': 正在读取 Group…
+'No Groups yet': 还没有 Group
+'Create a configuration to save its name and behavior description.': 创建一个配置，保存它的名称和行为说明。
+'Create your first Group': 创建第一个 Group
+'Untitled Group': 未命名 Group
+'Not updated yet': 尚未更新
+'No behavior description added.': 尚未添加行为说明。
+'Open Group workspace': 打开 Group 工作区
+'Edit Group': 编辑 Group
+'Configuration ID: {0}': 配置编号 {0}
+'e.g. Research assistant': '例如：研究助理'
+'Behavior description': 行为说明
+'Describe this Group’s role, goals, and way of working.': 描述这个 Group 的职责、目标和工作方式。
+'Up to 100000 characters': 最多 100000 个字符
+'Save changes': 保存更改
+'Close editor': 关闭编辑
+'Close new Group dialog': 关闭新建 Group 对话框
+'Enter a name and behavior description. You can open its workspace after creation.': 填写名称和行为说明，创建后即可打开独立工作区。
+'Creating...': 创建中…
+'Create Group': 创建 Group
+'Delete Group?': 删除 Group？
+'Delete "{0}" to remove only its configuration. Existing sessions will remain. This cannot be undone.': '删除“{0}”只会移除这条配置，不会删除现有会话。此操作无法撤销。'
+'Delete Group': 删除 Group
+'Add-on market': Addon 市场
+'Installation is limited to this domain and does not enable add-ons automatically. Enable each add-on separately in each Agent’s settings.': 安装只开放给当前 domain，不会自动启用；每个 Agent 都需在自己的设置中单独开启。
+'Installation scope': 安装范围
+'Current domain': 当前 domain
+'All Agents share installation status': 所有 Agent 共用安装状态
+'Available add-ons': 可用 Addon
+'installed': 已安装
+'Loading add-on market...': 正在读取 Addon 市场…
+'No Agent add-ons are listed yet.': 当前没有已上架的 Agent Addon。
+'Includes': 包含
+'Installed': 已安装
+'Available to install': 可安装
+'Uninstall {0}': '卸载 {0}'
+'Uninstall': 卸载
+'Install {0}': '安装 {0}'
+'Install': 安装
+'Display settings': 显示设置
+'Display': 显示
+'WS connected': WS 已连接
+'WS disconnected': WS 未连接
+'WS connecting': WS 连接中
+'Show model': 显示模型
+'Show the selected model in the session card tags.': 在当前会话卡片的标签区域显示使用的模型。
+'Show creation and update times': 显示创建时间和修改时间
+'Show the creation time and relative update time in the Base Detail style.': 使用 Base Detail 同款格式显示卡片创建时间和相对修改时间。
+'Show live status': 显示实时状态
+'Show the current runtime status before each session card title.': 在每个会话卡片标题前显示当前运行状态。
+'Choose which information to show on session cards.': 选择要显示在会话卡片中的信息。
+'Offline': 不在线
+'Choose a host': 选择 host
+'This team has no context configured.': 当前团队尚未配置上下文。
+'Edit team context': 编辑团队上下文
+'This Agent has no private context configured.': 当前 Agent 尚未配置专属上下文。
+'Edit Agent context': 编辑 Agent 上下文
+'Select multiple add-ons. Changes remain a draft until you save. If unset, Agent-wide settings are used.': 可多选；勾选只修改草稿，不会立即保存。选完后统一点击保存配置。未配置时沿用 Agent 全局设置。
+'Disabled globally for Agent': Agent 全局未启用
+'No add-ons are installed in this domain.': 当前 domain 尚未安装 Addon。
+'{0} add-ons selected. Not saved yet.': '已选择 {0} 个 Addon，尚未保存'
+'Save configuration': 保存配置
+'A full-featured coding Agent with file editing, shell, file and web search, Skills, plans, goals, subagents, and workflows.': '功能完整的编码 Agent，支持文件编辑、Shell、文件与网页检索、Skills、计划、目标、子代理和工作流。'
+'A full-featured coding Agent.': '功能完整的编码 Agent。'
+'A preset is the plugin assembly an Agent runs for a session.': '预设即一个会话的 Agent 所运行的插件组装。'
+'A preset is the plugin assembly an Agent runs for a session: its tools, prompts, and capabilities. Copy an existing preset and make it your own.': '预设即一个会话的 Agent 所运行的插件组装 —— 它的工具、提示词与能力。复制一份既有预设改成自己的。'
+'A two-tool coding Agent with persistent bash and str_replace_editor only.': '仅提供持久 bash 与 str_replace_editor 的双工具编码 Agent。'
+'API key': 'API 密钥'
+'API key configured.': '已配置密钥。'
+'API key is not configured': '尚未配置 API 密钥'
+'API protocol': 'API 协议'
+'Add an API key to get started': '添加一个 API Key 开始使用'
+'Add at least one model.': '请至少添加一个模型。'
+'Add at most {0} files': '最多添加 {0} 个文件'
+'Add model': '添加模型'
+'Add provider': '添加提供方'
+'Add selected': '添加所选'
+'Add-on mounted': '插件挂载'
+'Add-on mounted · {0}': '插件挂载 · {0}'
+'Add-on unmounted · {0}': '插件卸载 · {0}'
+'Advanced': '高级设置'
+'Agent loop': 'Agent 循环'
+'Agent plugin status': 'Agent 插件状态'
+'Agent preset used for upcoming sessions': '即将开始的会话所用的 Agent 预设'
+'Agent requested to run {0}': 'Agent 请求运行 {0}'
+'Allow once': '允许一次'
+'Appearance': '外观'
+'Applies only while the Agent is running. Cmd/Ctrl+Enter uses the other behavior.': '仅在智能体运行时生效；Cmd/Ctrl+Enter 使用另一行为。'
+'Approval details': '批准详情'
+'Assembly (agent.cordis.yml)': '组装（agent.cordis.yml）'
+'Attach files': '添加附件'
+'Average time to first token {0}': '首 token 平均 {0}'
+'Back to bottom': '回到底部'
+'Built-in': '内置'
+'Cache hit {0}%': '缓存命中 {0}%'
+'Call': '调用'
+'Cancelled': '已取消'
+'Chat': '对话'
+'Chinese': '中文'
+'Choose a knowledge base': '选择知识库'
+'Choose a model': '选择模型'
+'Choose models to add': '选择要添加的模型'
+'Choose the add-ons available to this Agent. Install and uninstall them in the domain': '这里设置当前 Agent 可用的 Addon。安装与卸载请到 domain 的'
+'Choose the default preset for new sessions. Running sessions are unaffected.': '选择新会话使用的默认 Agent 预设。运行中的会话不会改变。'
+'Clear the current input': '清空当前输入'
+'Close {0}': '关闭{0}'
+'Collapse settings: {0}': '收起设置: {0}'
+'Command timeout (ms)': '命令超时（毫秒）'
+'Commands': '命令'
+'Compact the current context': '压缩当前上下文'
+'Compacted {0} messages · {1} tokens': '已压缩 {0} 条消息 · {1} tokens'
+'Compaction summary unavailable': '压缩摘要不可用'
+'Compose multi-step operations through the Code Mode SDK.': '通过 Code Mode SDK 组合多步操作。'
+'Configuration status': '配置状态'
+'Configure and inspect the plugins installed in this deployment.': '配置和查看本部署已安装的插件。'
+'Configure later': '稍后配置'
+'Configure model providers, API keys, endpoints, and model catalogs.': '配置模型提供方、API 密钥、地址和模型目录。'
+'Configure the official DeepSeek models to start using the agent.': '配置 DeepSeek 官方模型，即可开始使用。'
+'Configured; enter a new value to replace it': '已配置；输入新值可替换'
+'Context compaction': '上下文压缩'
+'Context recall': '上下文召回'
+'Context window': '上下文窗口'
+'Copied successfully': '复制成功'
+'Copy preset': '复制预设'
+'Cordis status': 'Cordis 状态'
+'Create a custom Agent preset with Creator mode': '用「创造模式」创作自定义 Agent preset'
+'Create a custom Agent preset with Standard mode capabilities, runtime inspection, plugin experiments, and preset-authoring guidance.': '用于创建自定义 Agent preset：具备标准模式的全部能力，并提供运行时检查、插件实验和 preset 创作指导。'
+'Create a custom Agent preset.': '用于创建自定义 Agent preset。'
+'Create provider': '创建提供方'
+'Creating…': '创建中…'
+'Creator mode': '创造模式'
+'Currently in use': '当前使用'
+'Custom model catalog': '已自定义模型目录'
+'Custom provider': '自定义提供方'
+'Dark': '深色'
+'DeepSeek search provider.': 'DeepSeek 搜索提供方。'
+'Default': '默认'
+'Delete model': '删除模型'
+'Delete provider?': '删除提供方？'
+'Delete this preset?': '删除该预设？'
+'Deleting...': '正在删除…'
+'Deleting…': '删除中…'
+'Delivered': '已发送'
+'Disabled': '已停用'
+'Discard changes': '放弃修改'
+'Discover models': '发现模型'
+'Discovering…': '正在发现…'
+'Display name': '显示名称'
+'Do not use': '不使用'
+'Each file must be under {0}': '单个文件不能超过 {0}'
+'Enabled': '已启用'
+'Endpoint': '接口地址'
+'English': 'English'
+'Enter API key': '输入 API Key'
+'Enter a base URL.': '请输入 API 地址。'
+'Enter a number, or leave blank to use the default.': '请填数字；留空表示使用默认值。'
+'Enter an API key to continue.': '请输入 API 密钥后继续。'
+'Enter an API key.': '请输入 API 密钥。'
+'Enter an identifier.': '请填写标识符。'
+'Enter behavior while busy': '繁忙时 Enter 键行为'
+'Every model needs a unique ID.': '每个模型都需要唯一的 ID。'
+'Expand settings: {0}': '展开设置: {0}'
+'Expand to view the compaction summary': '展开查看压缩摘要'
+'Failed to load': '加载失败'
+'Failed to load Agent add-ons': 'Agent Addon 读取失败'
+'Failed to update Agent add-ons': 'Agent Addon 设置失败'
+'Failure': '失败'
+'File injection': '文件注入'
+'Follow system': '跟随系统'
+'How long a single command may run before it is stopped.': '单条命令允许运行多久，超时即终止。'
+'How many parallel calls may run at once in the same step.': '同一步内最多同时运行多少个可并行的调用。'
+'How many searches one request may make before it must answer.': '一次请求在必须作答前最多可以搜索多少次。'
+'How the Agent dispatches tool calls.': 'Agent 如何派发工具调用。'
+'Identifier': '标识符'
+'Idle': '空闲'
+'Includes all Standard mode capabilities and exposes tools through the Code Mode SDK, so the model can compose multi-step operations in one TypeScript program.': '具备标准模式的全部能力，并通过 Code Mode SDK 呈现工具，让模型用一个 TypeScript 程序组合多步操作。'
+'Input {0} tok · output {1} tok': '输入 {0} tok · 输出 {1} tok'
+'Knowledge base: {0}': '知识库：{0}'
+'Leave blank to use the provider default.': '留空则使用提供方默认地址。'
+'Light': '浅色'
+'Limit every command the agent runs.': '限制 agent 运行的每一条命令。'
+'Load earlier messages ({0})': '加载历史消息（{0}）'
+'Load failed': '加载失败'
+'Loading': '加载中'
+'Loading Agent add-ons...': '正在读取 Agent Addon…'
+'Loading plugins...': '正在读取插件…'
+'Loading presets...': '正在加载预设…'
+'Loading tools...': '正在读取工具…'
+'Loading {0}': '加载{0}'
+'Loading... ({0})': '加载中…（{0}）'
+'Max output tokens': '最大输出 token 数'
+'Maximum searches per request': '单次请求最多搜索次数'
+'Message waiting to send': '待发送消息'
+'Minimal mode': '极简模式'
+'Model ID': '模型 ID'
+'Model catalog': '模型目录'
+'Mount failed': '挂载失败'
+'Mounted': '已挂载'
+'Name shown in the picker. Defaults to the identifier.': '选择器中显示的名字，缺省用标识符'
+'Network error. Upload failed.': '网络错误，上传失败'
+'No API key configured. Search stays unavailable until one is set.': '未配置密钥；配置之前搜索不可用。'
+'No add-ons are installed in this domain. Install them from the': '当前 domain 尚未安装 Addon。请前往'
+'No custom presets yet.': '暂无自定义预设。'
+'No description available.': '暂无描述。'
+'No matching commands': '没有匹配的命令'
+'No models configured.': '尚未配置模型。'
+'No plugins available.': '暂无插件。'
+'No plugins match your search.': '没有匹配的插件。'
+'No tools available.': '暂无工具。'
+'No tools match your search.': '没有匹配的工具。'
+'Not mounted': '未挂载'
+'Not written to the settings file. Leave blank to keep the current key.': '不写入设置文件。留空表示保持当前密钥。'
+'Open folder': '打开目录'
+'Open settings file': '打开设置文件'
+'Opening...': '正在打开…'
+'Output beyond the limit is stored in a temporary file instead of being discarded.': '超出部分会转存到临时文件，而不是被丢弃。'
+'Output limit reached': '输出达到上限'
+'Overridden': '已覆盖'
+'PTC mode': 'PTC 模式'
+'Parallel tool calls': '并行工具调用数'
+'Per-stream output limit (bytes)': '单流输出上限（字节）'
+'Plug-ins': '插件'
+'Plugin configuration': '插件配置'
+'Plugin list': '插件列表'
+'Plugin views': '插件视图'
+'Preset file:': '预设文件：'
+'Provided by the environment': '由环境提供'
+'Provider': '提供方'
+'Provider ID': 'Provider ID'
+'Provides persistent bash and str_replace_editor only.': '仅提供持久 bash 与 str_replace_editor。'
+'Queue send': '排队发送'
+'Read': '读取'
+'Reason': '原因'
+'Reject': '拒绝'
+'Remove {0}': '移除 {0}'
+'Restore default': '恢复默认'
+'Restore defaults': '恢复默认值'
+'Result': '结果'
+'Result (error)': '结果（错误）'
+'Retry': '重试'
+'Running...': '运行中…'
+'Save and continue': '保存并继续'
+'Saving…': '保存中…'
+'Scheduled': '已安排'
+'Search plugins': '搜索插件'
+'Search results': '搜索结果'
+'Search tools': '搜索工具'
+'Select models returned by the provider.': '选择提供方返回的模型。'
+'Send a message to start the conversation': '发送消息开始对话'
+'Session details': '会话详情'
+'Session history': '会话历史'
+'Set as default': '设为默认'
+'Settings are read-only in this deployment.': '当前部署的设置为只读。'
+'Show available commands': '显示可用命令'
+'Show knowledge base': '显示知识库'
+'Show the knowledge base used in the Agent tags.': '在 Agent 标签中显示所使用的知识库。'
+'Standard mode': '标准模式'
+'Started': '已开始'
+'Status': '状态'
+'Steer': '插队'
+'Steer send': '插话发送'
+'Stop': '停止'
+'Tasks': '任务'
+'Terminal': '终端'
+'The API key contains invalid characters.': 'API 密钥包含无效字符。'
+'The Agent preset this session runs. It is fixed when the session starts.': '本会话运行的 Agent 预设，开始时即固定'
+'The change could not be saved.': '无法保存此次修改。'
+'The preset folder will be deleted. Sessions already running on it are unaffected. New sessions will no longer be able to select it.': '预设目录将被删除。已在其上运行的会话不受影响；新会话将无法再选择它。'
+'The whole preset is copied on this machine. The identifier becomes the folder name, and you then edit the preset in its own files.': '整个预设会在本机复制一份。标识符将成为目录名，之后直接在预设自己的文件里编辑。'
+'This add-on has been uninstalled from the current session.': '该 Addon 已从当前会话卸载。'
+'This add-on has no tools available.': '该 Addon 当前没有可用工具。'
+'This deployment did not accept these values. They are kept so you can edit them.': '本部署没有接受这些值，已保留供你修改。'
+'This deployment has no Agent presets available.': '当前部署没有可用的 Agent 预设。'
+'This identifier is already in use.': '该标识符已被占用。'
+'This provider ID is already in use.': '这个 Provider ID 已被使用。'
+'This removes the provider configuration and its managed API key.': '这会删除提供方配置及其托管的 API 密钥。'
+'Title': '标题'
+'Tool details': '工具详情'
+'Tool list': '工具列表'
+'Tool list response is missing its tools field.': '工具列表响应缺少 tools 字段'
+'Tool result': '工具结果'
+'Tools registered by the current Agent host and available to the model.': '当前 Agent host 注册的模型可用工具。'
+'Tools {0}': '工具 {0}'
+'Trajectory': '轨迹'
+'Turn failed': '回合执行失败'
+'Unable to load Agent presets: {0}': '无法加载 Agent 预设：{0}'
+'Unable to load model providers': '无法加载模型提供方'
+'Unable to load plugins right now.': '暂时无法读取插件。'
+'Unable to load tools list: {0}': '无法加载工具列表：{0}'
+'Uninstalled': '已卸载'
+'Uninstalling': '卸载中'
+'Unsaved': '未保存'
+'Upload cancelled': '上传已取消'
+'Upload failed': '上传失败'
+'Upload failed (HTTP {0})': '上传失败（HTTP {0}）'
+'Upload failed: {0}': '上传失败：{0}'
+'Uploaded {0}': '已上传 {0}'
+'Uploading {0} files...': '正在上传 {0} 个文件…'
+'Use a lowercase letter first, followed by lowercase letters, numbers, or dashes.': '需以小写字母开头，之后可用小写字母、数字或短横线。'
+'Use lowercase letters, numbers, and dashes; start with a letter.': '使用小写字母、数字和短横线，并以字母开头。'
+'Use lowercase letters, numbers, and hyphens; start with a letter or number.': '只能使用小写字母、数字与连字符，且以字母或数字开头。'
+'Using provider defaults': '使用提供方默认值'
+'View details': '查看详情'
+'View model settings': '查看模型设置'
+'View path': '查看路径'
+'View · {0}': '查看 · {0}'
+'Waiting for approval': '等待批准'
+'Waiting for dependencies': '等待依赖'
+'Waiting to retry': '等待重试'
+'Web results': '网页结果'
+'Web search': '网页搜索'
+'Write': '写入'
+'Your answer is needed': '需要你的回答'
+'Your sign-in expired. Refresh the page and try again.': '登录已过期，请刷新页面后重试'
+'{0} add-on': '{0} 个插件'
+'{0} completed': '{0} 已完成'
+'{0} files': '{0} 个文件'
+'{0} in progress': '{0} 进行中'
+'{0} messages': '{0} 条消息'
+'{0} messages queued': '队列中 {0} 条消息'
+'{0} more messages': '再 {0} 条消息'
+'{0} pending': '{0} 待处理'
+'{0} tools': '{0} 个工具'
+'{0} turns · {1} steps': '{0} 轮 · {1} 步'
+'{0} · attempt {1} · {2}s': '{0} · 第 {1} 次 · {2}s'
+'{0}: {1}': '{0}：{1}'
+'Code': '代码'
+'Done': '完成'
+'In use': '当前使用'
+'View': '查看'

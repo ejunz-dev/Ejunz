@@ -1,12 +1,13 @@
 import { useMemo } from 'react';
+import { i18n } from '@/i18n';
 import { Menu } from '../primitives/Menu';
 
 export const COMMANDS = [
-    { name: 'help', detail: '查看可用命令' },
-    { name: 'compact', detail: '压缩当前上下文' },
-    { name: 'clear', detail: '清空当前输入' },
-    { name: 'model', detail: '查看模型设置' },
-    { name: 'attach', detail: '添加文件' },
+    { name: 'help', detail: i18n('Show available commands') },
+    { name: 'compact', detail: i18n('Compact the current context') },
+    { name: 'clear', detail: i18n('Clear the current input') },
+    { name: 'model', detail: i18n('View model settings') },
+    { name: 'attach', detail: i18n('Attach files') },
 ];
 
 interface CommandMenuProps {
@@ -20,7 +21,7 @@ export function CommandMenu({ query, activeIndex, onSelect, onClose }: CommandMe
     const items = useMemo(() => COMMANDS.filter((command) => command.name.includes(query.toLowerCase())), [query]);
     const entries = items.length > 0
         ? items.map((item) => ({ id: item.name, label: `${item.name} · ${item.detail}` }))
-        : [{ id: 'empty', label: '没有匹配的命令', disabled: true }];
+        : [{ id: 'empty', label: i18n('No matching commands'), disabled: true }];
     return <Menu
         open
         onClose={onClose}

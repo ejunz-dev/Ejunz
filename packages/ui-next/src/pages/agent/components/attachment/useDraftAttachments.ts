@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { i18n } from '@/i18n';
 import { Notification } from '@ejunz/ui-next';
 import { attachmentId, uploadFileToStore, type DraftAttachment } from '../../runtime/uploads';
 import { useUploadNotice } from './useUploadNotice';
@@ -39,12 +40,12 @@ export function useDraftAttachments(options: { prefix: string; ownerId: number |
             })
                 .then((meta) => {
                     patchAttachment(draft.id, { meta, progress: 100 });
-                    void Notification.success(`已上传 ${meta.originalName}`);
+                    void Notification.success(i18n('Uploaded {0}', meta.originalName));
                 })
                 .catch((error: unknown) => {
                     const message = error instanceof Error ? error.message : String(error);
                     patchAttachment(draft.id, { error: message });
-                    void Notification.error(`上传失败：${message}`);
+                    void Notification.error(i18n('Upload failed: {0}', message));
                 });
         }
     }, [ownerId, patchAttachment, prefix]);

@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { i18n } from '@/i18n';
 import { IconChecklistOutline14, IconChevronDownOutline14, IconChevronUpOutline14 } from '../../../icons';
 import css from './TodoPanel.module.css';
 
@@ -53,9 +54,9 @@ function progressLabel(todos: TodoItem[]): string {
     const active = todos.filter((item) => item.status === 'in_progress').length;
     const pending = todos.length - done - active;
     return [
-        ...(done > 0 ? [`${done} 已完成`] : []),
-        ...(active > 0 ? [`${active} 进行中`] : []),
-        ...(pending > 0 ? [`${pending} 待处理`] : []),
+        ...(done > 0 ? [i18n('{0} completed', done)] : []),
+        ...(active > 0 ? [i18n('{0} in progress', active)] : []),
+        ...(pending > 0 ? [i18n('{0} pending', pending)] : []),
     ].join(' · ');
 }
 
@@ -64,11 +65,11 @@ export function TodoPanel({ value }: { value: unknown }) {
     const [collapsed, setCollapsed] = useState(true);
     if (todos.length === 0) return null;
 
-    return <section className={css.root} data-testid="todo-panel" aria-label="任务">
+    return <section className={css.root} data-testid="todo-panel" aria-label={i18n('Tasks')}>
         <div className={css.body}>
             <button type="button" className={css.header} aria-expanded={!collapsed} onClick={() => setCollapsed((current) => !current)}>
                 <span className={css.lead} aria-hidden><IconChecklistOutline14 /></span>
-                <span className={css.title}>任务</span>
+                <span className={css.title}>{i18n('Tasks')}</span>
                 <span className={css.progress}>{progressLabel(todos)}</span>
                 <span className={css.chevron} aria-hidden>{collapsed ? <IconChevronUpOutline14 /> : <IconChevronDownOutline14 />}</span>
             </button>

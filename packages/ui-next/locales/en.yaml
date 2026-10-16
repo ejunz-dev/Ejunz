@@ -9,3 +9,645 @@
 'Network error': 'Network error'
 'Upload aborted': 'Upload aborted'
 'Not logged in': 'Not logged in'
+'Select': Select
+'Cancel': Cancel
+'Working...': Working…
+'Expand {0}': 'Expand {0}'
+'Collapse {0}': 'Collapse {0}'
+'No teams available': No teams available
+'Parent team': Parent team
+'Choose an existing team': Choose an existing team
+'Choose an existing team as the parent for the new team.': 'Choose an existing team as the parent for the new team.'
+'Please choose an existing team as the parent team.': 'Please choose an existing team as the parent team.'
+'Team name': Team name
+'Please enter a name': Please enter a name
+'Create': Create
+'New team': New team
+'New smart agent': New smart agent
+'Search teams, agents, or sessions': Search teams, agents, or sessions
+'Root team': Root team
+'Team created successfully': Team created successfully
+'Rename session': Rename session
+'Rename team': Rename team
+'Delete selected items?': Delete selected items?
+'Permanently delete session?': Permanently delete session?
+'Name': Name
+'Save': Save
+'Delete': Delete
+'Delete {0} teams; move their agents to the parent team.': 'Delete {0} teams; move their agents to the parent team.'
+'Delete {0} agents and their linked sessions and messages.': 'Delete {0} agents and their linked sessions and messages.'
+'Permanently delete {0} sessions, including history and tool calls. This cannot be undone.': 'Permanently delete {0} sessions, including history and tool calls. This cannot be undone.'
+'Permanently delete "{0}" and its history and tool calls. This cannot be undone.': 'Permanently delete "{0}" and its history and tool calls. This cannot be undone.'
+'Session {0}': 'Session {0}'
+'Not selected': Not selected
+'Just now': Just now
+'{0} minutes ago': '{0} minutes ago'
+'{0} hours ago': '{0} hours ago'
+'{0} days ago': '{0} days ago'
+'Sending': Sending
+'Sent': Sent
+'Send failed': Send failed
+'Failed': Failed
+'Waiting for answer': Waiting for answer
+'Running': Running
+'Completed': Completed
+'Session name': Session name
+'Ungrouped': Ungrouped
+'Select {0}': 'Select {0}'
+'Model: {0}': 'Model: {0}'
+'Base: {0}': 'Base: {0}'
+'Select agent {0}': 'Select agent {0}'
+'Collapse sessions': Collapse sessions
+'Expand sessions': Expand sessions
+'Open settings for agent {0}': 'Open settings for agent {0}'
+'Create a session under {0}': 'Create a session under {0}'
+'Select team {0}': 'Select team {0}'
+'Collapse': Collapse
+'Expand': Expand
+'No sessions': No sessions
+'Team, Agent, and Session tree': 'Team, Agent, and Session tree'
+'Editing actions': 'Editing actions'
+'{0} agents · {1} sessions · {2} teams': '{0} agents · {1} sessions · {2} teams'
+'Saving...': Saving…
+'Save session names': Save session names
+'Exit edit mode': Exit edit mode
+'Close team structure': Close team structure
+'Team structure': Team structure
+'Close': Close
+'Resize team panel': Resize team panel
+'Switch team?': 'Switch team?'
+'Switch to "{0}"?': 'Switch to "{0}"?'
+'Switch the current team?': 'Switch the current team?'
+'Switch': Switch
+'Only part of the search results are shown. Narrow your search.': 'Only part of the search results are shown. Narrow your search.'
+'New session': New session
+'New agent': New agent
+'Agent name': Agent name
+'Enter a message': Enter a message
+'Enter the first message': Enter the first message
+'Enter the first message, or create only an agent': 'Enter the first message, or create only an agent'
+'Done editing {0}': 'Done editing {0}'
+'Edit {0}': 'Edit {0}'
+'Loading latest settings...': Loading latest settings…
+'Target team': Target team
+'Team': Team
+'No teams available. Create a team first.': 'No teams available. Create a team first.'
+'Select an existing team before configuring the new agent.': 'Select an existing team before configuring the new agent.'
+'Host': Host
+'No hosts online': No hosts online
+'Model': Model
+'Loading models...': Loading models…
+'Agent': Agent
+'Create new agent': Create new agent
+'These settings update the selected Agent and are shared by its sessions.': 'These settings update the selected Agent and are shared by its sessions.'
+'These settings will be saved to the new Agent.': 'These settings will be saved to the new Agent.'
+'Agent preset': Agent preset
+'Custom': Custom
+'Create agent': Create agent
+'Create only an agent': 'Create only an agent'
+'Create sessions for this agent from the team tree.': 'Create sessions for this agent from the team tree.'
+'Settings are saved to the Agent; you can add sessions after creation.': 'Settings are saved to the Agent; you can add sessions after creation.'
+'{0} (root team)': '{0} (root team)'
+'Uploaded {0} files': 'Uploaded {0} files'
+'Thinking': Thinking
+'User': User
+'Context injection': Context injection
+'Plugin mounted': Plugin mounted
+'Context compacted': Context compacted
+'Updated': Updated
+'Error': Error
+'Tool': Tool
+'Thinking...': Thinking…
+'Agent not found': Agent not found
+'This turn failed': This turn failed
+'Loading...': Loading…
+'Loading... {0}-{1}': 'Loading... {0}-{1}'
+'Please choose a team first.': Please choose a team first.
+'Agent creation failed': Agent creation failed
+'Session creation failed': Session creation failed
+'This session is not linked to an Agent': This session is not linked to an Agent
+'Agent created successfully': Agent created successfully
+'Host saved': Host saved
+'Host switched. It will handle the next message.': 'Host switched. It will handle the next message.'
+'Context saved': Context saved
+'Display settings saved': Display settings saved
+'File upload is still in progress. Please wait.': 'File upload is still in progress. Please wait.'
+'Redirecting to sign in': Redirecting to sign in
+'No current session': No current session
+'Model saved': Model saved
+'Session name cannot be empty': Session name cannot be empty
+'Failed to save session name': Failed to save session name
+'Session name saved': Session name saved
+'Session deleted': Session deleted
+'Team creation failed': Team creation failed
+'Team rename failed': Team rename failed
+'Team renamed': Team renamed
+'Deleted {0} items, but could not sync Addon settings for {1} sessions. Check the host and retry.': 'Deleted {0} items, but could not sync Addon settings for {1} sessions. Check the host and retry.'
+'Deleted {0} items': 'Deleted {0} items'
+'Connecting to Ejunz Agent...': 'Connecting to Ejunz Agent…'
+'General settings': General settings
+'Models': Models
+'Agent presets': Agent presets
+'Tools': Tools
+'Plugins': Plugins
+'Agent add-ons': Agent add-ons
+'Context': Context
+'Add-ons': Add-ons
+'Edit': Edit
+'Team context saved. Existing agents will receive it in the background.': 'Team context saved. Existing agents will receive it in the background.'
+'Team add-on settings saved. Existing agents will sync in the background.': 'Team add-on settings saved. Existing agents will sync in the background.'
+'Creating session...': Creating session…
+'Runtime settings are managed by the Agent. Sessions no longer store their own model, Base, host, or preset.': 'Runtime settings are managed by the Agent. Sessions no longer store their own model, Base, host, or preset.'
+'Open Agent settings': Open Agent settings
+'Type a message. Press Shift+Enter for a new line.': 'Type a message. Press Shift+Enter for a new line.'
+'Expired': Expired
+'Expires in {0} minutes': 'Expires in {0} minutes'
+'This URL has no pairing code.': 'This URL has no pairing code.'
+'Link an Agent runtime': 'Link an Agent runtime'
+'An Agent runtime is requesting permission to run on this server. After approval, it will receive credentials and appear in the runtime status list.': 'An Agent runtime is requesting permission to run on this server. After approval, it will receive credentials and appear in the runtime status list.'
+'Could not read this pairing request': 'Could not read this pairing request'
+'Source: {0}:{1}': 'Source: {0}:{1}'
+'Pairing code: {0}': 'Pairing code: {0}'
+'Approved': Approved
+'Approve': Approve
+'Refresh': Refresh
+'The runtime logs will show that it is linked. You can close this page.': 'The runtime logs will show that it is linked. You can close this page.'
+'{0} seconds': '{0} seconds'
+'{0} minutes': '{0} minutes'
+'{0} hours {1} minutes': '{0} hours {1} minutes'
+'{0} days {1} hours': '{0} days {1} hours'
+'Online': Online
+'Heartbeat timed out': Heartbeat timed out
+'Stopped': Stopped
+'Agent runtimes': 'Agent runtimes'
+'Ejunz-Agent instances that handle this server’s sessions. The embedded instance runs inside the Ejunz process, so each process appears as one row.': 'Ejunz-Agent instances that handle this server’s sessions. The embedded instance runs inside the Ejunz process, so each process appears as one row.'
+'Failed to load runtime status': 'Failed to load runtime status'
+'Runtimes ({0})': 'Runtimes ({0})'
+'No runtime has reported yet. It starts and registers after the server begins listening.': 'No runtime has reported yet. It starts and registers after the server begins listening.'
+'Version {0}': 'Version {0}'
+'{0} sessions': '{0} sessions'
+'Uptime: {0}': 'Uptime: {0}'
+'Last report: {0} ago': 'Last report: {0} ago'
+'Rename': Rename
+'Delete record': Delete record
+'Rename runtime': Rename runtime
+'e.g. builtin@devshell': 'e.g. builtin@devshell'
+'Delete runtime record': Delete runtime record
+'Runtime {0} ({1}) no longer reports and its record will be deleted. Running sessions are unaffected.': 'Runtime {0} ({1}) no longer reports and its record will be deleted. Running sessions are unaffected.'
+'Group save failed': Group save failed
+'Group saved': Group saved
+'Group creation failed': Group creation failed
+'Group created': Group created
+'Group deleted': Group deleted
+'Groups': Groups
+'Manage Groups available in {0}.': 'Manage Groups available in {0}.'
+'Group management actions': Group management actions
+'Open chat workspace': Open chat workspace
+'New Group': New Group
+'Group list': Group list
+'Configuration': Configuration
+'{0} items': '{0} items'
+'Loading Groups...': Loading Groups…
+'No Groups yet': No Groups yet
+'Create a configuration to save its name and behavior description.': 'Create a configuration to save its name and behavior description.'
+'Create your first Group': 'Create your first Group'
+'Untitled Group': Untitled Group
+'Not updated yet': Not updated yet
+'No behavior description added.': 'No behavior description added.'
+'Open Group workspace': Open Group workspace
+'Edit Group': Edit Group
+'Configuration ID: {0}': 'Configuration ID: {0}'
+'e.g. Research assistant': 'e.g. Research assistant'
+'Behavior description': Behavior description
+'Describe this Group’s role, goals, and way of working.': 'Describe this Group’s role, goals, and way of working.'
+'Up to 100000 characters': 'Up to 100000 characters'
+'Save changes': Save changes
+'Close editor': Close editor
+'Close new Group dialog': Close new Group dialog
+'Enter a name and behavior description. You can open its workspace after creation.': 'Enter a name and behavior description. You can open its workspace after creation.'
+'Creating...': Creating…
+'Create Group': Create Group
+'Delete Group?': 'Delete Group?'
+'Delete "{0}" to remove only its configuration. Existing sessions will remain. This cannot be undone.': 'Delete "{0}" to remove only its configuration. Existing sessions will remain. This cannot be undone.'
+'Delete Group': Delete Group
+'Add-on market': Add-on market
+'Installation is limited to this domain and does not enable add-ons automatically. Enable each add-on separately in each Agent’s settings.': 'Installation is limited to this domain and does not enable add-ons automatically. Enable each add-on separately in each Agent’s settings.'
+'Installation scope': Installation scope
+'Current domain': Current domain
+'All Agents share installation status': All Agents share installation status
+'Available add-ons': Available add-ons
+'installed': installed
+'Loading add-on market...': Loading add-on market…
+'No Agent add-ons are listed yet.': 'No Agent add-ons are listed yet.'
+'Includes': Includes
+'Installed': Installed
+'Available to install': Available to install
+'Uninstall {0}': 'Uninstall {0}'
+'Uninstall': Uninstall
+'Install {0}': 'Install {0}'
+'Install': Install
+'Display settings': Display settings
+'Display': Display
+'WS connected': 'WS connected'
+'WS disconnected': 'WS disconnected'
+'WS connecting': 'WS connecting'
+'Show model': Show model
+'Show the selected model in the session card tags.': 'Show the selected model in the session card tags.'
+'Show creation and update times': 'Show creation and update times'
+'Show the creation time and relative update time in the Base Detail style.': 'Show the creation time and relative update time in the Base Detail style.'
+'Show live status': 'Show live status'
+'Show the current runtime status before each session card title.': 'Show the current runtime status before each session card title.'
+'Choose which information to show on session cards.': 'Choose which information to show on session cards.'
+'Offline': Offline
+'Choose a host': 'Choose a host'
+'This team has no context configured.': 'This team has no context configured.'
+'Edit team context': Edit team context
+'This Agent has no private context configured.': 'This Agent has no private context configured.'
+'Edit Agent context': Edit Agent context
+'Select multiple add-ons. Changes remain a draft until you save. If unset, Agent-wide settings are used.': 'Select multiple add-ons. Changes remain a draft until you save. If unset, Agent-wide settings are used.'
+'Disabled globally for Agent': Disabled globally for Agent
+'No add-ons are installed in this domain.': 'No add-ons are installed in this domain.'
+'{0} add-ons selected. Not saved yet.': '{0} add-ons selected. Not saved yet.'
+'Save configuration': Save configuration
+'A full-featured coding Agent with file editing, shell, file and web search, Skills, plans, goals, subagents, and workflows.': 'A full-featured coding Agent with file editing, shell, file and web search, Skills, plans, goals, subagents, and workflows.'
+'A full-featured coding Agent.': 'A full-featured coding Agent.'
+'A preset is the plugin assembly an Agent runs for a session.': 'A preset is the plugin assembly an Agent runs for a session.'
+'A preset is the plugin assembly an Agent runs for a session: its tools, prompts, and capabilities. Copy an existing preset and make it your own.': 'A preset is the plugin assembly an Agent runs for a session: its tools, prompts, and capabilities. Copy an existing preset and make it your own.'
+'A two-tool coding Agent with persistent bash and str_replace_editor only.': 'A two-tool coding Agent with persistent bash and str_replace_editor only.'
+'API key': 'API key'
+'API key configured.': 'API key configured.'
+'API key is not configured': 'API key is not configured'
+'API protocol': 'API protocol'
+'Add an API key to get started': 'Add an API key to get started'
+'Add at least one model.': 'Add at least one model.'
+'Add at most {0} files': 'Add at most {0} files'
+'Add model': 'Add model'
+'Add provider': 'Add provider'
+'Add selected': 'Add selected'
+'Add-on mounted': 'Add-on mounted'
+'Add-on mounted · {0}': 'Add-on mounted · {0}'
+'Add-on unmounted · {0}': 'Add-on unmounted · {0}'
+'Advanced': 'Advanced'
+'Agent loop': 'Agent loop'
+'Agent plugin status': 'Agent plugin status'
+'Agent preset used for upcoming sessions': 'Agent preset used for upcoming sessions'
+'Agent requested to run {0}': 'Agent requested to run {0}'
+'Allow once': 'Allow once'
+'Appearance': 'Appearance'
+'Applies only while the Agent is running. Cmd/Ctrl+Enter uses the other behavior.': 'Applies only while the Agent is running. Cmd/Ctrl+Enter uses the other behavior.'
+'Approval details': 'Approval details'
+'Assembly (agent.cordis.yml)': 'Assembly (agent.cordis.yml)'
+'Attach files': 'Attach files'
+'Average time to first token {0}': 'Average time to first token {0}'
+'Back to bottom': 'Back to bottom'
+'Built-in': 'Built-in'
+'Cache hit {0}%': 'Cache hit {0}%'
+'Call': 'Call'
+'Cancelled': 'Cancelled'
+'Chat': 'Chat'
+'Chinese': 'Chinese'
+'Choose a knowledge base': 'Choose a knowledge base'
+'Choose a model': 'Choose a model'
+'Choose models to add': 'Choose models to add'
+'Choose the add-ons available to this Agent. Install and uninstall them in the domain': 'Choose the add-ons available to this Agent. Install and uninstall them in the domain'
+'Choose the default preset for new sessions. Running sessions are unaffected.': 'Choose the default preset for new sessions. Running sessions are unaffected.'
+'Clear the current input': 'Clear the current input'
+'Close {0}': 'Close {0}'
+'Collapse settings: {0}': 'Collapse settings: {0}'
+'Command timeout (ms)': 'Command timeout (ms)'
+'Commands': 'Commands'
+'Compact the current context': 'Compact the current context'
+'Compacted {0} messages · {1} tokens': 'Compacted {0} messages · {1} tokens'
+'Compaction summary unavailable': 'Compaction summary unavailable'
+'Compose multi-step operations through the Code Mode SDK.': 'Compose multi-step operations through the Code Mode SDK.'
+'Configuration status': 'Configuration status'
+'Configure and inspect the plugins installed in this deployment.': 'Configure and inspect the plugins installed in this deployment.'
+'Configure later': 'Configure later'
+'Configure model providers, API keys, endpoints, and model catalogs.': 'Configure model providers, API keys, endpoints, and model catalogs.'
+'Configure the official DeepSeek models to start using the agent.': 'Configure the official DeepSeek models to start using the agent.'
+'Configured; enter a new value to replace it': 'Configured; enter a new value to replace it'
+'Context compaction': 'Context compaction'
+'Context recall': 'Context recall'
+'Context window': 'Context window'
+'Copied successfully': 'Copied successfully'
+'Copy preset': 'Copy preset'
+'Cordis status': 'Cordis status'
+'Create a custom Agent preset with Creator mode': 'Create a custom Agent preset with Creator mode'
+'Create a custom Agent preset with Standard mode capabilities, runtime inspection, plugin experiments, and preset-authoring guidance.': 'Create a custom Agent preset with Standard mode capabilities, runtime inspection, plugin experiments, and preset-authoring guidance.'
+'Create a custom Agent preset.': 'Create a custom Agent preset.'
+'Create provider': 'Create provider'
+'Creating…': 'Creating…'
+'Creator mode': 'Creator mode'
+'Currently in use': 'Currently in use'
+'Custom model catalog': 'Custom model catalog'
+'Custom provider': 'Custom provider'
+'Dark': 'Dark'
+'DeepSeek search provider.': 'DeepSeek search provider.'
+'Default': 'Default'
+'Delete model': 'Delete model'
+'Delete provider?': 'Delete provider?'
+'Delete this preset?': 'Delete this preset?'
+'Deleting...': 'Deleting...'
+'Deleting…': 'Deleting…'
+'Delivered': 'Delivered'
+'Disabled': 'Disabled'
+'Discard changes': 'Discard changes'
+'Discover models': 'Discover models'
+'Discovering…': 'Discovering…'
+'Display name': 'Display name'
+'Do not use': 'Do not use'
+'Each file must be under {0}': 'Each file must be under {0}'
+'Enabled': 'Enabled'
+'Endpoint': 'Endpoint'
+'English': 'English'
+'Enter API key': 'Enter API key'
+'Enter a base URL.': 'Enter a base URL.'
+'Enter a number, or leave blank to use the default.': 'Enter a number, or leave blank to use the default.'
+'Enter an API key to continue.': 'Enter an API key to continue.'
+'Enter an API key.': 'Enter an API key.'
+'Enter an identifier.': 'Enter an identifier.'
+'Enter behavior while busy': 'Enter behavior while busy'
+'Every model needs a unique ID.': 'Every model needs a unique ID.'
+'Expand settings: {0}': 'Expand settings: {0}'
+'Expand to view the compaction summary': 'Expand to view the compaction summary'
+'Failed to load': 'Failed to load'
+'Failed to load Agent add-ons': 'Failed to load Agent add-ons'
+'Failed to update Agent add-ons': 'Failed to update Agent add-ons'
+'Failure': 'Failure'
+'File injection': 'File injection'
+'Follow system': 'Follow system'
+'How long a single command may run before it is stopped.': 'How long a single command may run before it is stopped.'
+'How many parallel calls may run at once in the same step.': 'How many parallel calls may run at once in the same step.'
+'How many searches one request may make before it must answer.': 'How many searches one request may make before it must answer.'
+'How the Agent dispatches tool calls.': 'How the Agent dispatches tool calls.'
+'Identifier': 'Identifier'
+'Idle': 'Idle'
+'Includes all Standard mode capabilities and exposes tools through the Code Mode SDK, so the model can compose multi-step operations in one TypeScript program.': 'Includes all Standard mode capabilities and exposes tools through the Code Mode SDK, so the model can compose multi-step operations in one TypeScript program.'
+'Input {0} tok · output {1} tok': 'Input {0} tok · output {1} tok'
+'Knowledge base: {0}': 'Knowledge base: {0}'
+'Leave blank to use the provider default.': 'Leave blank to use the provider default.'
+'Light': 'Light'
+'Limit every command the agent runs.': 'Limit every command the agent runs.'
+'Load earlier messages ({0})': 'Load earlier messages ({0})'
+'Load failed': 'Load failed'
+'Loading': 'Loading'
+'Loading Agent add-ons...': 'Loading Agent add-ons...'
+'Loading plugins...': 'Loading plugins...'
+'Loading presets...': 'Loading presets...'
+'Loading tools...': 'Loading tools...'
+'Loading {0}': 'Loading {0}'
+'Loading... ({0})': 'Loading... ({0})'
+'Max output tokens': 'Max output tokens'
+'Maximum searches per request': 'Maximum searches per request'
+'Message waiting to send': 'Message waiting to send'
+'Minimal mode': 'Minimal mode'
+'Model ID': 'Model ID'
+'Model catalog': 'Model catalog'
+'Mount failed': 'Mount failed'
+'Mounted': 'Mounted'
+'Name shown in the picker. Defaults to the identifier.': 'Name shown in the picker. Defaults to the identifier.'
+'Network error. Upload failed.': 'Network error. Upload failed.'
+'No API key configured. Search stays unavailable until one is set.': 'No API key configured. Search stays unavailable until one is set.'
+'No add-ons are installed in this domain. Install them from the': 'No add-ons are installed in this domain. Install them from the'
+'No custom presets yet.': 'No custom presets yet.'
+'No description available.': 'No description available.'
+'No matching commands': 'No matching commands'
+'No models configured.': 'No models configured.'
+'No plugins available.': 'No plugins available.'
+'No plugins match your search.': 'No plugins match your search.'
+'No tools available.': 'No tools available.'
+'No tools match your search.': 'No tools match your search.'
+'Not mounted': 'Not mounted'
+'Not written to the settings file. Leave blank to keep the current key.': 'Not written to the settings file. Leave blank to keep the current key.'
+'Open folder': 'Open folder'
+'Open settings file': 'Open settings file'
+'Opening...': 'Opening...'
+'Output beyond the limit is stored in a temporary file instead of being discarded.': 'Output beyond the limit is stored in a temporary file instead of being discarded.'
+'Output limit reached': 'Output limit reached'
+'Overridden': 'Overridden'
+'PTC mode': 'PTC mode'
+'Parallel tool calls': 'Parallel tool calls'
+'Per-stream output limit (bytes)': 'Per-stream output limit (bytes)'
+'Plug-ins': 'Plug-ins'
+'Plugin configuration': 'Plugin configuration'
+'Plugin list': 'Plugin list'
+'Plugin views': 'Plugin views'
+'Preset file:': 'Preset file:'
+'Provided by the environment': 'Provided by the environment'
+'Provider': 'Provider'
+'Provider ID': 'Provider ID'
+'Provides persistent bash and str_replace_editor only.': 'Provides persistent bash and str_replace_editor only.'
+'Queue send': 'Queue send'
+'Read': 'Read'
+'Reason': 'Reason'
+'Reject': 'Reject'
+'Remove {0}': 'Remove {0}'
+'Restore default': 'Restore default'
+'Restore defaults': 'Restore defaults'
+'Result': 'Result'
+'Result (error)': 'Result (error)'
+'Retry': 'Retry'
+'Running...': 'Running...'
+'Save and continue': 'Save and continue'
+'Saving…': 'Saving…'
+'Scheduled': 'Scheduled'
+'Search plugins': 'Search plugins'
+'Search results': 'Search results'
+'Search tools': 'Search tools'
+'Select models returned by the provider.': 'Select models returned by the provider.'
+'Send a message to start the conversation': 'Send a message to start the conversation'
+'Session details': 'Session details'
+'Session history': 'Session history'
+'Set as default': 'Set as default'
+'Settings are read-only in this deployment.': 'Settings are read-only in this deployment.'
+'Show available commands': 'Show available commands'
+'Show knowledge base': 'Show knowledge base'
+'Show the knowledge base used in the Agent tags.': 'Show the knowledge base used in the Agent tags.'
+'Standard mode': 'Standard mode'
+'Started': 'Started'
+'Status': 'Status'
+'Steer': 'Steer'
+'Steer send': 'Steer send'
+'Stop': 'Stop'
+'Tasks': 'Tasks'
+'Terminal': 'Terminal'
+'The API key contains invalid characters.': 'The API key contains invalid characters.'
+'The Agent preset this session runs. It is fixed when the session starts.': 'The Agent preset this session runs. It is fixed when the session starts.'
+'The change could not be saved.': 'The change could not be saved.'
+'The preset folder will be deleted. Sessions already running on it are unaffected. New sessions will no longer be able to select it.': 'The preset folder will be deleted. Sessions already running on it are unaffected. New sessions will no longer be able to select it.'
+'The whole preset is copied on this machine. The identifier becomes the folder name, and you then edit the preset in its own files.': 'The whole preset is copied on this machine. The identifier becomes the folder name, and you then edit the preset in its own files.'
+'This add-on has been uninstalled from the current session.': 'This add-on has been uninstalled from the current session.'
+'This add-on has no tools available.': 'This add-on has no tools available.'
+'This deployment did not accept these values. They are kept so you can edit them.': 'This deployment did not accept these values. They are kept so you can edit them.'
+'This deployment has no Agent presets available.': 'This deployment has no Agent presets available.'
+'This identifier is already in use.': 'This identifier is already in use.'
+'This provider ID is already in use.': 'This provider ID is already in use.'
+'This removes the provider configuration and its managed API key.': 'This removes the provider configuration and its managed API key.'
+'Title': 'Title'
+'Tool details': 'Tool details'
+'Tool list': 'Tool list'
+'Tool list response is missing its tools field.': 'Tool list response is missing its tools field.'
+'Tool result': 'Tool result'
+'Tools registered by the current Agent host and available to the model.': 'Tools registered by the current Agent host and available to the model.'
+'Tools {0}': 'Tools {0}'
+'Trajectory': 'Trajectory'
+'Turn failed': 'Turn failed'
+'Unable to load Agent presets: {0}': 'Unable to load Agent presets: {0}'
+'Unable to load model providers': 'Unable to load model providers'
+'Unable to load plugins right now.': 'Unable to load plugins right now.'
+'Unable to load tools list: {0}': 'Unable to load tools list: {0}'
+'Uninstalled': 'Uninstalled'
+'Uninstalling': 'Uninstalling'
+'Unsaved': 'Unsaved'
+'Upload cancelled': 'Upload cancelled'
+'Upload failed': 'Upload failed'
+'Upload failed (HTTP {0})': 'Upload failed (HTTP {0})'
+'Upload failed: {0}': 'Upload failed: {0}'
+'Uploaded {0}': 'Uploaded {0}'
+'Uploading {0} files...': 'Uploading {0} files...'
+'Use a lowercase letter first, followed by lowercase letters, numbers, or dashes.': 'Use a lowercase letter first, followed by lowercase letters, numbers, or dashes.'
+'Use lowercase letters, numbers, and dashes; start with a letter.': 'Use lowercase letters, numbers, and dashes; start with a letter.'
+'Use lowercase letters, numbers, and hyphens; start with a letter or number.': 'Use lowercase letters, numbers, and hyphens; start with a letter or number.'
+'Using provider defaults': 'Using provider defaults'
+'View details': 'View details'
+'View model settings': 'View model settings'
+'View path': 'View path'
+'View · {0}': 'View · {0}'
+'Waiting for approval': 'Waiting for approval'
+'Waiting for dependencies': 'Waiting for dependencies'
+'Waiting to retry': 'Waiting to retry'
+'Web results': 'Web results'
+'Web search': 'Web search'
+'Write': 'Write'
+'Your answer is needed': 'Your answer is needed'
+'Your sign-in expired. Refresh the page and try again.': 'Your sign-in expired. Refresh the page and try again.'
+'{0} add-on': '{0} add-on'
+'{0} completed': '{0} completed'
+'{0} files': '{0} files'
+'{0} in progress': '{0} in progress'
+'{0} messages': '{0} messages'
+'{0} messages queued': '{0} messages queued'
+'{0} more messages': '{0} more messages'
+'{0} pending': '{0} pending'
+'{0} tools': '{0} tools'
+'{0} turns · {1} steps': '{0} turns · {1} steps'
+'{0} · attempt {1} · {2}s': '{0} · attempt {1} · {2}s'
+'{0}: {1}': '{0}: {1}'
+'Code': 'Code'
+'Done': 'Done'
+'In use': 'In use'
+'View': 'View'
+'6-Digit Code': '6-Digit Code'
+'Add': Add
+'Base pulled': 'Base pulled'
+'Cannot get hitokoto.': 'Cannot get hitokoto.'
+'Card created': 'Card created'
+'Card deleted': 'Card deleted'
+'Card updated': 'Card updated'
+'Card updated:': 'Card updated:'
+'Committed': Committed
+'Committed: {0}': 'Committed: {0}'
+'Community': Community
+'Connecting…': Connecting…
+'Consumption ranking': 'Consumption ranking'
+'Content has been updated': 'Content has been updated'
+'Content update sync failed': 'Content update sync failed'
+'Contribution ranking': 'Contribution ranking'
+'Deselect all': 'Deselect all'
+'Discussion': Discussion
+'Discussion Nodes': 'Discussion Nodes'
+'Domain': Domain
+'Edit Problem': 'Edit Problem'
+'Failed to fetch registration data.': 'Failed to fetch registration data.'
+'Failed to load the add-on market': 'Failed to load the add-on market'
+'Failed to update add-on installation status': 'Failed to update add-on installation status'
+'File added': 'File added'
+'File deleted': 'File deleted'
+'Forgot Password and/or Username': 'Forgot Password and/or Username'
+'Guest': Guest
+'Hitokoto': Hitokoto
+'Index failed': 'Index failed'
+'Index queued': 'Index queued'
+'Indexed': Indexed
+'Indexing…': Indexing…
+'Keep WS connection indicator open': 'Keep WS connection indicator open'
+'Keep the live collaboration viewer list expanded': 'Keep the live collaboration viewer list expanded'
+'Logging out…': 'Logging out…'
+'Login': Login
+'Logout': Logout
+'Match: {0}%': 'Match: {0}%'
+'My Profile': 'My Profile'
+'No other viewers': 'No other viewers'
+'No results found': 'No results found'
+'Node created': 'Node created'
+'Node deleted': 'Node deleted'
+'Node migrated to new base': 'Node migrated to new base'
+'Node updated': 'Node updated'
+'Not indexed': 'Not indexed'
+'Online: {0}': 'Online: {0}'
+'Open': Open
+'Order': Order
+'Other': Other
+'Page not found:': 'Page not found:'
+'Password': Password
+'Please wait…': 'Please wait…'
+'Powered by': 'Powered by'
+'Problem created': 'Problem created'
+'Problem deleted': 'Problem deleted'
+'Problem tags filter': 'Problem tags filter'
+'Problem tags filter placeholder': 'Problem tags filter placeholder'
+'Problem updated': 'Problem updated'
+'Professional': Professional
+'Recommended': Recommended
+'Remember me': 'Remember me'
+'Reset positions to defaults': 'Reset positions to defaults'
+'Resize': Resize
+'Saved': Saved
+'Scroll to bottom': 'Scroll to bottom'
+'Scroll to top': 'Scroll to top'
+'Search knowledge base by meaning...': 'Search knowledge base by meaning...'
+'Searching...': Searching…
+'Select all': 'Select all'
+'Semantic Search': 'Semantic Search'
+'Send': Send
+'Settings': Settings
+'Settings saved': 'Settings saved'
+'Share': Share
+'Show AI tutor': 'Show AI tutor'
+'Show floating AI tutor entry at bottom right': 'Show floating AI tutor entry at bottom right'
+'Show floating toolbar with scroll, structure and search': 'Show floating toolbar with scroll, structure and search'
+'Show problem tree': 'Show problem tree'
+'Show problems nested under cards in the tree view': 'Show problems nested under cards in the tree view'
+'Show save status indicator': 'Show save status indicator'
+'Show toolbar': 'Show toolbar'
+'Show tree expand state save indicator at top right': 'Show tree expand state save indicator at top right'
+'Sign Up': 'Sign Up'
+'Slot Error': 'Slot Error'
+'Tag added': 'Tag added'
+'Tag added: {0}': 'Tag added: {0}'
+'Tags': Tags
+'Template {0} not found.': 'Template {0} not found.'
+'Tree state saved': 'Tree state saved'
+'Two Factor Authentication': 'Two Factor Authentication'
+'Unsaved changes — click to save': 'Unsaved changes — click to save'
+'Use Authenticator': 'Use Authenticator'
+'Use TFA Code': 'Use TFA Code'
+'Username': Username
+'Verifying…': Verifying…
+'Your account has two factor authentication enabled. Please choose an authenticator to verify.': 'Your account has two factor authentication enabled. Please choose an authenticator to verify.'
+'Your browser does not support WebAuthn or you are not in secure context.': 'Your browser does not support WebAuthn or you are not in secure context.'
+'home_files': Files
+'host': Host
+'in': in
+'model': Model
+'theme': Theme
+'unknown error': 'Unknown error'
+'{0} cards deleted': '{0} cards deleted'
+'{0} cards updated': '{0} cards updated'
+'{0} edges deleted': '{0} edges deleted'
+'{0} new cards': '{0} new cards'
+'{0} new edges': '{0} new edges'
+'{0} new nodes': '{0} new nodes'
+'{0} nodes deleted': '{0} nodes deleted'
+'{0} nodes updated': '{0} nodes updated'
+'{0} problems': '{0} problems'

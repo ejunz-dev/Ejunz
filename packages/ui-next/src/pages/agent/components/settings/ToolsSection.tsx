@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react';
+import { i18n } from '@/i18n';
 import { IconChevronDownOutline14, IconSearchOutline16 } from '../../icons';
 import type { SettingsRpc } from './cardForm';
 import css from './PluginInventoryTab.module.css';
@@ -29,7 +30,7 @@ export function ToolsSection({ rpc, sessionId, refreshKey }: { rpc: SettingsRpc;
         const payload = sessionId === undefined ? { args: {} } : { args: { agentId: sessionId } };
         void rpc<ToolInventorySnapshot>(method, payload).then((value) => {
             if (!current) return;
-            if (!Array.isArray(value.tools)) throw new Error('工具列表响应缺少 tools 字段');
+            if (!Array.isArray(value.tools)) throw new Error(i18n('Tool list response is missing its tools field.'));
             setTools(value.tools);
             setError(null);
         }).catch((caught: unknown) => {
@@ -44,27 +45,27 @@ export function ToolsSection({ rpc, sessionId, refreshKey }: { rpc: SettingsRpc;
     const filtered = useMemo(() => (tools ?? []).filter((tool) => normalized.length === 0 || `${tool.name} ${tool.description}`.toLocaleLowerCase().includes(normalized)), [normalized, tools]);
 
     return <div className={css.section} aria-busy={tools === null && error === null}>
-        <h2 className={css.title}>工具</h2>
-        <p className={css.intro}>当前 Agent host 注册的模型可用工具。</p>
-        {error ? <div className={css.failure}><p role="alert">无法加载工具列表：{error}</p><button type="button" onClick={() => { setTools(null); setError(null); setRequest((value) => value + 1); }}>重试</button></div> : null}
-        {tools === null && error === null ? <p className={css.status}>正在读取工具…</p> : null}
+        <h2 className={css.title}>{i18n('Tools')}</h2>
+        <p className={css.intro}>{i18n('Tools registered by the current Agent host and available to the model.')}</p>
+        {error ? <div className={css.failure}><p role="alert">{i18n('Unable to load tools list: {0}', error)}</p><button type="button" onClick={() => { setTools(null); setError(null); setRequest((value) => value + 1); }}>{i18n('Retry')}</button></div> : null}
+        {tools === null && error === null ? <p className={css.status}>{i18n('Loading tools...')}</p> : null}
         {tools !== null ? <div className={css.catalog}>
             <label className={css.search}>
                 <IconSearchOutline16 aria-hidden="true" />
-                <span className={css.visuallyHidden}>搜索工具</span>
-                <input type="search" value={query} placeholder="搜索工具" aria-label="搜索工具" onChange={(event) => { setQuery(event.currentTarget.value); }} />
+                <span className={css.visuallyHidden}>{i18n('Search tools')}</span>
+                <input type="search" value={query} placeholder={i18n('Search tools')} aria-label={i18n('Search tools')} onChange={(event) => { setQuery(event.currentTarget.value); }} />
             </label>
-            <div className={css.catalogHeading}><h3>工具列表</h3><span>{filtered.length}</span></div>
-            {filtered.length === 0 ? <p className={css.status}>{tools.length === 0 ? '暂无工具。' : '没有匹配的工具。'}</p> : <ul className={css.cards}>
+            <div className={css.catalogHeading}><h3>{i18n('Tool list')}</h3><span>{filtered.length}</span></div>
+            {filtered.length === 0 ? <p className={css.status}>{tools.length === 0 ? i18n('No tools available.') : i18n('No tools match your search.')}</p> : <ul className={css.cards}>
                 {filtered.map((tool) => {
                     const open = expanded === tool.name;
                     const detailId = `${listId}-${encodeURIComponent(tool.name)}`;
                     return <li className={css.card} key={tool.name} data-open={open ? 'true' : undefined}>
                         <button className={css.cardContent} type="button" aria-expanded={open} aria-controls={detailId} onClick={() => { setExpanded((current) => current === tool.name ? null : tool.name); }}>
                             <strong className={css.cardTitle} title={tool.name}>{tool.name}</strong>
-                            <span className={css.cardTrailing}><span className={css.configTag}>工具</span><IconChevronDownOutline14 className={css.chevron} size={12} aria-hidden="true" /></span>
+                            <span className={css.cardTrailing}><span className={css.configTag}>{i18n('Tool')}</span><IconChevronDownOutline14 className={css.chevron} size={12} aria-hidden="true" /></span>
                         </button>
-                        {open ? <div className={css.cardDetails} id={detailId}><p>{tool.description || '暂无描述。'}</p></div> : null}
+                        {open ? <div className={css.cardDetails} id={detailId}><p>{tool.description || i18n('No description available.')}</p></div> : null}
                     </li>;
                 })}
             </ul>}

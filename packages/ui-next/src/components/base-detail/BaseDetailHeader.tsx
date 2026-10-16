@@ -56,8 +56,8 @@ export function BaseDetailHeader({ title, description, domainId, docId, treeOpen
           {onSearchClick ? (
             <button type="button" className={`bd-header__action${searchActive ? ' is-active' : ''}`} onClick={onSearchClick} aria-label={i18n('Semantic Search')}>⌕ <span>{i18n('Search')}</span></button>
           ) : null}
-          {onEditClick ? <button type="button" className={`bd-header__action${editActive ? ' is-active' : ''}`} onClick={onEditClick} aria-pressed={editActive}>{editActive ? '✓' : '✎'} <span>编辑</span></button> : null}
-          {onOpenDisplaySettings ? <button type="button" className="bd-header__action" onClick={onOpenDisplaySettings} aria-label="显示设置">◌ <span>显示</span></button> : null}
+          {onEditClick ? <button type="button" className={`bd-header__action${editActive ? ' is-active' : ''}`} onClick={onEditClick} aria-pressed={editActive}>{editActive ? '✓' : '✎'} <span>{i18n('Edit')}</span></button> : null}
+          {onOpenDisplaySettings ? <button type="button" className="bd-header__action" onClick={onOpenDisplaySettings} aria-label={i18n('Display settings')}>◌ <span>{i18n('Display')}</span></button> : null}
           <button type="button" className="bd-header__action" onClick={onOpenSettings} aria-label={i18n('Roadmap detail settings title')}>⚙ <span>{i18n('Settings')}</span></button>
           <button type="button" className="bd-header__action" onClick={share} aria-label={i18n('Copy link')}>↗ <span>{copied ? i18n('Copied') : i18n('Share')}</span></button>
         </div>

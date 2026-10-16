@@ -1,3 +1,4 @@
+import { i18n } from '@/i18n';
 import type { ChatMessage } from '../types';
 
 export type ToolRowVariant = 'search' | 'read' | 'bash' | 'write' | 'edit' | 'code' | 'web' | 'others';
@@ -88,7 +89,7 @@ export function toolRowModel(message: ChatMessage): ToolRowModel {
     const input = message.toolInput ?? '';
     const output = message.toolOutput || undefined;
     const state: ToolRowState = message.toolError ? 'error' : message.running ? 'running' : 'ok';
-    const errorSummary = state === 'error' ? (output ? firstLine(output) : '失败') : undefined;
+    const errorSummary = state === 'error' ? (output ? firstLine(output) : i18n('Failure')) : undefined;
     const inputText = toolInput(name, input);
     const filePath = toolFilePath(name, input);
     return {

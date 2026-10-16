@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { i18n } from '@/i18n';
 import type { ToolRowVariant } from '../tool-call-model';
 
 interface ToolViewCardProps {
@@ -32,14 +33,14 @@ interface WebMeta {
 }
 
 const labels: Record<ToolRowVariant, string> = {
-    bash: '终端',
-    read: '读取',
-    search: '搜索结果',
-    write: '写入',
-    edit: '编辑',
-    code: '代码',
-    web: '网页结果',
-    others: '工具结果',
+    bash: 'Terminal',
+    read: 'Read',
+    search: 'Search results',
+    write: 'Write',
+    edit: 'Edit',
+    code: 'Code',
+    web: 'Web results',
+    others: 'Tool result',
 };
 
 function TextBlock({ value, className = '' }: { value: string; className?: string }) {
@@ -161,7 +162,7 @@ export function ToolViewCard({ variant, input, output, meta, error }: ToolViewCa
     const structured = output && !error ? structuredView(variant, output, meta) : null;
     const showInput = input && (structured === null || variant === 'bash' || variant === 'code' || variant === 'others');
     return <div className={`eza-toolView eza-toolView-${variant}`}>
-        <div className="eza-toolViewHeader"><span>{labels[variant]}</span><span>{error ? '失败' : output ? '完成' : '运行中…'}</span></div>
+        <div className="eza-toolViewHeader"><span>{i18n(labels[variant])}</span><span>{error ? i18n('Failure') : output ? i18n('Done') : i18n('Running...')}</span></div>
         {showInput && <pre className="eza-toolViewInput">{input}</pre>}
         {structured ?? (output && (error ? <TextBlock value={output} className="error" /> : variant === 'read' ? <ReadView output={output} /> : variant === 'edit' || variant === 'write' ? <DiffView output={output} /> : variant === 'search' ? <SearchView output={output} /> : variant === 'web' ? <WebView output={output} /> : variant === 'others' && output.includes('http') ? <WebView output={output} /> : <TextBlock value={output} />))}
     </div>;

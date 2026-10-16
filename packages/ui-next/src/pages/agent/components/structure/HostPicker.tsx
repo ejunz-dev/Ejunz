@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { i18n } from '@/i18n';
 
 /** One host the page can run a session on, as the runtime roster reports it. */
 export interface HostOption {
@@ -62,14 +63,14 @@ export function HostPicker({ hosts, value, onPick, disabled, hint }: {
             disabled={disabled === true}
             onClick={() => setOpen((previous) => !previous)}
         >
-            <span className="eza-hostBar__caption">主机</span>
-            <span className="eza-hostBar__value">{value === '' ? '未选择' : label}</span>
-            {value !== '' && chosen?.online === false && <span className="eza-hostBar__offline">不在线</span>}
+            <span className="eza-hostBar__caption">{i18n('Host')}</span>
+            <span className="eza-hostBar__value">{value === '' ? i18n('Not selected') : label}</span>
+            {value !== '' && chosen?.online === false && <span className="eza-hostBar__offline">{i18n('Offline')}</span>}
             <span className="eza-hostBar__caret" aria-hidden="true">▾</span>
         </button>
         {hint !== undefined && hint !== '' && <span className="eza-hostBar__hint">{hint}</span>}
-        {open && <div className="eza-hostBar__menu" role="listbox" aria-label="选择 host">
-            {selectable.length === 0 && <p className="eza-hostBar__empty">没有在线的 host</p>}
+        {open && <div className="eza-hostBar__menu" role="listbox" aria-label={i18n('Choose a host')}>
+            {selectable.length === 0 && <p className="eza-hostBar__empty">{i18n('No hosts online')}</p>}
             {selectable.map((host) => <button
                 key={host.runtimeId}
                 type="button"

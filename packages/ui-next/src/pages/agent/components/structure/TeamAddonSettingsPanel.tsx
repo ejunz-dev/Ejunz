@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Notification } from '@ejunz/ui-next';
 import type { AgentTeam } from '../../runtime/session';
 import type { AgentAddonView } from '../types';
+import { i18n } from '@/i18n';
 
 interface TeamAddonSettingsPanelProps {
     team: AgentTeam;
@@ -57,8 +58,8 @@ export function TeamAddonSettingsPanel({ team, addons, saving, onSave }: TeamAdd
     return <div className="eza-teamAddonSettings">
         <div className="bd-edit-dialog__body eza-teamAddonConfig">
             <div className="bd-edit-field">
-                <h3>Addons</h3>
-                <p className="bd-muted">可多选；勾选只修改草稿，不会立即保存。选完后统一点击保存配置。未配置时沿用 Agent 全局设置。</p>
+                <h3>{i18n('Add-ons')}</h3>
+                <p className="bd-muted">{i18n('Select multiple add-ons. Changes remain a draft until you save. If unset, Agent-wide settings are used.')}</p>
                 <div className="bd-edit-tags">
                     {addons.filter((addon) => addon.installed).map((addon) => {
                         const selected = draftAddonIds.includes(addon.addonId) && addon.enabled;
@@ -70,16 +71,16 @@ export function TeamAddonSettingsPanel({ team, addons, saving, onSave }: TeamAdd
                             key={addon.addonId}
                             title={addon.description}
                             onClick={() => toggleAddon(addon.addonId)}
-                        >{addon.displayName}{!addon.enabled ? ' · Agent 全局未启用' : ''}</button>;
+                        >{addon.displayName}{!addon.enabled ? ` · ${i18n('Disabled globally for Agent')}` : ''}</button>;
                     })}
                 </div>
-                {addons.every((addon) => !addon.installed) && <span className="bd-muted">当前 domain 尚未安装 Addon。</span>}
-                {isDirty && <span className="bd-muted" role="status">已选择 {draftAddonIds.length} 个 Addon，尚未保存</span>}
+                {addons.every((addon) => !addon.installed) && <span className="bd-muted">{i18n('No add-ons are installed in this domain.')}</span>}
+                {isDirty && <span className="bd-muted" role="status">{i18n('{0} add-ons selected. Not saved yet.', draftAddonIds.length)}</span>}
             </div>
         </div>
         <footer className="bd-edit-dialog__footer eza-teamAddonFooter">
-            <span className="bd-muted">{saving ? '正在保存…' : ''}</span>
-            <button type="button" className="eza-inputConfigCreate" disabled={!isDirty || saving} onClick={() => { void save(); }}>保存配置</button>
+            <span className="bd-muted">{saving ? i18n('Saving...') : ''}</span>
+            <button type="button" className="eza-inputConfigCreate" disabled={!isDirty || saving} onClick={() => { void save(); }}>{i18n('Save configuration')}</button>
         </footer>
     </div>;
 }
