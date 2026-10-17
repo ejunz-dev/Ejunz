@@ -130,10 +130,12 @@ function AdminMenu({ menu }: { menu: NavDropdownData }) {
   const items = Array.isArray(menu.items) ? menu.items : [];
   if (!items.length) return null;
   const badge = menu.badge || '⚙';
+  const badgeClass = menu.badge === 'SU' ? 'uix-nav__admin-badge--su' : menu.badge === 'MOD' ? 'uix-nav__admin-badge--mod' : 'uix-nav__admin-badge--generic';
+  const badgeTitle = menu.badge === 'SU' ? i18n('SuperUser') : menu.badge === 'MOD' ? i18n('Moderator') : i18n('Management');
   return (
     <div className="uix-nav__admin-wrap" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
       <button type="button" className="uix-nav__admin" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-label={i18n('Management')}>
-        <span>{badge}</span><span aria-hidden>⌄</span>
+        <span className={`uix-nav__admin-badge ${badgeClass}`} title={badgeTitle}>{badge}</span><span aria-hidden>⌄</span>
       </button>
       <div className={`uix-nav__admin-menu${open ? ' is-open' : ''}`} role="menu" aria-hidden={!open}>
         {items.map((item) => <Link key={item.name} to={item.name} params={item.args} className="uix-nav__menu-link" onClick={() => setOpen(false)}>{i18n(item.displayName || item.name)}</Link>)}
