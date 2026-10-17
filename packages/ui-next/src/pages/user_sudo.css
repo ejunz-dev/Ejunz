@@ -1,0 +1,84 @@
+.uix-user-sudo {
+  width: min(440px, calc(100% - 2rem));
+  margin: clamp(2rem, 12vh, 7rem) auto 2rem;
+}
+
+.uix-user-sudo form {
+  display: grid;
+  gap: 1rem;
+}
+
+.uix-user-sudo__field {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+}
+
+.uix-user-sudo__field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
+  border-radius: 6px;
+  background: var(--web-card-bg, #fff);
+  color: inherit;
+  font: inherit;
+}
+
+.uix-user-sudo__submit {
+  display: flex;
+}
+
+.uix-user-sudo__submit .uix-button {
+  width: 100%;
+  text-align: center;
+}
+
+.uix-user-sudo__tip {
+  margin-top: 1rem;
+  color: var(--web-muted-fg, hsl(0, 0%, 45%));
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.uix-user-sudo__tip p {
+  margin: 0.35rem 0;
+}
+
+.uix-user-sudo__methods {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
+  font-size: 0.8rem;
+}
+
+.uix-user-sudo__methods > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+}
+
+.uix-user-sudo__methods button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--web-link, #2563eb);
+  cursor: pointer;
+  font: inherit;
+}
+
+.uix-user-sudo--redirect {
+  text-align: center;
+}
+
+.uix-user-sudo__fallback {
+  justify-self: center;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
+  border-radius: 6px;
+  background: var(--web-card-bg, #fff);
+  color: inherit;
+  cursor: pointer;
+}
