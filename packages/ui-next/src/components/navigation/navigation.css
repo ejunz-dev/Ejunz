@@ -17,7 +17,8 @@
 .uix-nav__admin-badge--su { background: #ff0000; color: #fff; }
 .uix-nav__admin-badge--mod { background: #cf70ab; color: #fff; }
 .uix-nav__admin-badge--generic { background: var(--web-tag-bg); color: var(--web-muted-fg); }
-.uix-nav__admin-menu { position: absolute; top: 100%; right: 0; z-index: 35; min-width: 190px; padding: 7px 0; border: 1px solid var(--web-border); border-radius: 4px; background: var(--web-card-bg); box-shadow: 0 8px 25px var(--web-shadow); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-4px); transition: opacity .14s, visibility .14s, transform .14s; }
+.uix-nav__admin-menu { position: absolute; top: 100%; right: 0; z-index: 35; min-width: 190px; padding: 7px 0; overflow: hidden; border: 1px solid var(--web-border); border-radius: 4px; background: var(--web-card-bg); box-shadow: 0 8px 25px var(--web-shadow); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-4px); transition: opacity .14s, visibility .14s, transform .14s; }
+.uix-nav__menu { overflow: hidden; }
 .uix-nav__admin-menu.is-open, .uix-nav__admin-wrap:hover > .uix-nav__admin-menu { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0); }
 .uix-nav__domain, .uix-nav__user { height: 100%; display: flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--web-fg); cursor: pointer; font: inherit; font-size: 13px; }
 .uix-nav__domain img, .uix-nav__user img, .uix-domain-menu__item img { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; }
