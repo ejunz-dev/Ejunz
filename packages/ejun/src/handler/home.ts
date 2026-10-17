@@ -540,7 +540,17 @@ class HomeDomainHandler extends Handler {
             }
         }
         this.response.template = 'home_domain.html';
-        this.response.body = { ddocs, canManage, role };
+        this.response.body = {
+            ddocs: ddocs.map((ddoc) => ({
+                ...ddoc,
+                avatarUrl: ddoc.avatar ? avatar(ddoc.avatar, 32) : '/img/team_avatar.png',
+            })),
+            canManage,
+            role,
+            canCreate: this.user.hasPriv(PRIV.PRIV_CREATE_DOMAIN),
+            canJoin: this.user.hasPriv(PRIV.PRIV_USER_PROFILE),
+            pinnedDomains: this.user.pinnedDomains || [],
+        };
     }
 
     @param('id', Types.String)

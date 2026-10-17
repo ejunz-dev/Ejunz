@@ -1,0 +1,127 @@
+.uix-home-domain__tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.uix-home-domain__help {
+  margin-left: auto;
+  color: var(--web-muted-fg, hsl(0, 0%, 45%));
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+
+.uix-home-domain__help:hover {
+  color: var(--web-link, #2563eb);
+}
+
+.uix-home-domain__table-wrap {
+  overflow-x: auto;
+  margin: 0 -1rem -1rem;
+}
+
+.uix-home-domain__table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.uix-home-domain__table th,
+.uix-home-domain__table td {
+  padding: 0.55rem 0.75rem;
+  border-top: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
+}
+
+.uix-home-domain__table th {
+  color: var(--web-muted-fg, hsl(0, 0%, 45%));
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.uix-home-domain__icon {
+  width: 48px;
+  padding-right: 0 !important;
+}
+
+.uix-home-domain__icon img {
+  display: block;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.uix-home-domain__role {
+  width: 10rem;
+  border-left: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
+}
+
+.uix-home-domain__name {
+  min-width: 12rem;
+}
+
+.uix-home-domain__id {
+  color: var(--web-muted-fg, hsl(0, 0%, 45%));
+  font-size: 0.85em;
+}
+
+.uix-home-domain__pin {
+  margin-right: 0.45rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--web-muted-fg, hsl(0, 0%, 45%));
+  cursor: pointer;
+}
+
+.uix-home-domain__pin.is-pinned {
+  color: #eab308;
+}
+
+.uix-home-domain__actions {
+  white-space: nowrap;
+}
+
+.uix-home-domain__actions a,
+.uix-home-domain__actions button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--web-link, #2563eb);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.uix-home-domain__actions a:hover,
+.uix-home-domain__actions button:hover {
+  text-decoration: underline;
+}
+
+.uix-home-domain__actions button:disabled,
+.uix-home-domain__pin:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.uix-home-domain__empty {
+  padding: 1.5rem !important;
+  color: var(--web-muted-fg, hsl(0, 0%, 45%));
+  text-align: center;
+}
+
+@media (max-width: 700px) {
+  .uix-home-domain__icon,
+  .uix-home-domain__role {
+    display: none;
+  }
+
+  .uix-home-domain__table th,
+  .uix-home-domain__table td {
+    padding: 0.5rem;
+  }
+
+  .uix-home-domain__name {
+    min-width: 9rem;
+  }
+}
