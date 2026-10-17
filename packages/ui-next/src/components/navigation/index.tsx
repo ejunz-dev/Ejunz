@@ -21,6 +21,11 @@ interface NavItem {
   prefix?: string;
 }
 
+interface NavDropdownData {
+  badge?: 'SU' | 'MOD' | null;
+  items?: NavItem[];
+}
+
 function avatarUrl(domain: DomainItem | null | undefined): string {
   return domain?.avatarUrl || '';
 }
@@ -85,7 +90,7 @@ function LogoutButton() {
   return <button type="button" className="uix-nav__menu-link" onClick={() => void logout()} disabled={busy}>{busy ? i18n('Logging out…') : i18n('Logout')}</button>;
 }
 
-function UserMenu({ user, domain }: { user: Record<string, any>; domain: DomainItem | null }) {
+function UserMenu({ user, domain, navDropdown, mobile = false }: { user: Record<string, any>; domain: DomainItem | null; navDropdown?: NavDropdownData; mobile?: boolean }) {
   const [open, setOpen] = useState(false);
   const buildUrl = useBuildUrl();
   const uid = String(user._id);
@@ -108,9 +113,30 @@ function UserMenu({ user, domain }: { user: Record<string, any>; domain: DomainI
         <Link to="home_settings" params={{ category: 'preference' }} className="uix-nav__menu-link">{i18n('home_preference')}</Link>
         <Link to="home_security" className="uix-nav__menu-link">{i18n('home_security')}</Link>
         <Link to="home_domain" className="uix-nav__menu-link">{i18n('home_domain')}</Link>
+        {mobile && navDropdown?.items?.length ? <>
+          <div className="uix-nav__menu-separator" />
+          {navDropdown.items.map((item) => <Link key={item.name} to={item.name} params={item.args} className="uix-nav__menu-link" onClick={() => setOpen(false)}>{i18n(item.displayName || item.name)}</Link>)}
+        </> : null}
         {user.priv != null && user.priv !== 0 ? <Link to="home_files" className="uix-nav__menu-link">{i18n('home_files')}</Link> : null}
         <div className="uix-nav__menu-separator" />
         <LogoutButton />
+      </div>
+    </div>
+  );
+}
+
+function AdminMenu({ menu }: { menu: NavDropdownData }) {
+  const [open, setOpen] = useState(false);
+  const items = Array.isArray(menu.items) ? menu.items : [];
+  if (!items.length) return null;
+  const badge = menu.badge || '⚙';
+  return (
+    <div className="uix-nav__admin-wrap" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button type="button" className="uix-nav__admin" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-label={i18n('Management')}>
+        <span>{badge}</span><span aria-hidden>⌄</span>
+      </button>
+      <div className={`uix-nav__admin-menu${open ? ' is-open' : ''}`} role="menu" aria-hidden={!open}>
+        {items.map((item) => <Link key={item.name} to={item.name} params={item.args} className="uix-nav__menu-link" onClick={() => setOpen(false)}>{i18n(item.displayName || item.name)}</Link>)}
       </div>
     </div>
   );
@@ -141,6 +167,7 @@ export function Navigation() {
   const domainTargetRoute = pageRoute === 'market' ? 'market' : pageRoute === 'ejunz_agent' ? 'ejunz_agent' : 'homepage';
   const user = useUserContext();
   const navItems = Array.isArray(ui.navItems) ? ui.navItems as NavItem[] : [];
+  const navDropdown = ui.navDropdown && typeof ui.navDropdown === 'object' ? ui.navDropdown as NavDropdownData : {};
   const brandLogo = ui.navBrandLogo || navLogo;
   const brandUrl = ui.navBrandUrl || '/';
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -173,7 +200,7 @@ export function Navigation() {
             ))}
           </div>
           <div className="uix-nav__secondary">
-            {guest ? <><Link to="user_login" className="uix-nav__item">{i18n('Login')}</Link><Link to="user_register" className="uix-nav__signup">{i18n('Sign Up')}</Link><span className="uix-nav__badge">{i18n('Guest')}</span></> : <><div className="uix-nav__domain-wrap" onMouseEnter={() => setDomainsOpen(true)} onMouseLeave={() => setDomainsOpen(false)}><button type="button" className="uix-nav__domain" onClick={() => setDomainsOpen((value) => !value)} aria-expanded={domainsOpen}><img src={avatarUrl(ui.domain)} alt="" />{ui.domain?.name || currentDomain}<span>⌄</span></button><div className={`uix-nav__domain-dropdown${domainsOpen ? ' is-open' : ''}`}><DomainMenu inline current={currentDomain} domains={domains} targetRoute={domainTargetRoute} onClose={() => setDomainsOpen(false)} /></div></div><UserMenu user={user} domain={ui.domain} /></>}
+            {guest ? <><Link to="user_login" className="uix-nav__item">{i18n('Login')}</Link><Link to="user_register" className="uix-nav__signup">{i18n('Sign Up')}</Link><span className="uix-nav__badge">{i18n('Guest')}</span></> : <><div className="uix-nav__domain-wrap" onMouseEnter={() => setDomainsOpen(true)} onMouseLeave={() => setDomainsOpen(false)}><button type="button" className="uix-nav__domain" onClick={() => setDomainsOpen((value) => !value)} aria-expanded={domainsOpen}><img src={avatarUrl(ui.domain)} alt="" />{ui.domain?.name || currentDomain}<span>⌄</span></button><div className={`uix-nav__domain-dropdown${domainsOpen ? ' is-open' : ''}`}><DomainMenu inline current={currentDomain} domains={domains} targetRoute={domainTargetRoute} onClose={() => setDomainsOpen(false)} /></div></div><UserMenu user={user} domain={ui.domain} /><AdminMenu menu={navDropdown} /></>}
           </div>
           <button type="button" className="uix-nav__mobile-button" onClick={() => { setDomainsOpen(false); setMobileOpen((open) => !open); }} aria-label={i18n('Open')} aria-expanded={mobileOpen}><HamburgerIcon active={mobileOpen} /></button>
         </div>
@@ -190,7 +217,7 @@ export function Navigation() {
         </div>
       </div>
       {(mobileOpen || mobileDomainsOpen) && <button type="button" className="uix-shell-backdrop" onClick={closeDrawers} aria-label={i18n('Close')} />}
-      {mobileOpen ? <aside className="uix-mobile-menu"><button type="button" className="uix-mobile-menu__close" onClick={() => setMobileOpen(false)} aria-label={i18n('Close')}>×</button><div className="uix-mobile-menu__links">{navItems.map((item) => <Link key={item.name} to={item.name} params={item.args} onClick={() => setMobileOpen(false)} className={`uix-nav__item${activeFor(item.name, item.prefix || item.name, name, template) ? ' is-active' : ''}`}>{i18n(item.displayName || item.name)}</Link>)}{guest ? <><Link to="user_login" onClick={() => setMobileOpen(false)} className="uix-nav__item">{i18n('Login')}</Link><Link to="user_register" onClick={() => setMobileOpen(false)} className="uix-nav__item">{i18n('Sign Up')}</Link></> : <UserMenu user={user} domain={ui.domain} />}</div></aside> : null}
+      {mobileOpen ? <aside className="uix-mobile-menu"><button type="button" className="uix-mobile-menu__close" onClick={() => setMobileOpen(false)} aria-label={i18n('Close')}>×</button><div className="uix-mobile-menu__links">{navItems.map((item) => <Link key={item.name} to={item.name} params={item.args} onClick={() => setMobileOpen(false)} className={`uix-nav__item${activeFor(item.name, item.prefix || item.name, name, template) ? ' is-active' : ''}`}>{i18n(item.displayName || item.name)}</Link>)}{guest ? <><Link to="user_login" onClick={() => setMobileOpen(false)} className="uix-nav__item">{i18n('Login')}</Link><Link to="user_register" onClick={() => setMobileOpen(false)} className="uix-nav__item">{i18n('Sign Up')}</Link></> : <UserMenu user={user} domain={ui.domain} navDropdown={navDropdown} mobile />}</div></aside> : null}
       {mobileDomainsOpen && !guest ? <aside className="uix-domain-drawer"><DomainMenu current={currentDomain} domains={domains} mobile inline targetRoute={domainTargetRoute} onClose={() => setMobileDomainsOpen(false)} /></aside> : null}
     </>
   );

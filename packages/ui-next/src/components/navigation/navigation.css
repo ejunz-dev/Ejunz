@@ -10,7 +10,11 @@
 .uix-nav__signup { height: 34px; margin: 0 4px; padding-inline: 16px; border: 1px solid var(--web-link); border-radius: 17px; color: var(--web-link); }
 .uix-nav__signup:hover { background: var(--web-primary); color: var(--web-on-primary); }
 .uix-nav__badge { padding: 3px 7px; border-radius: 3px; background: var(--web-tag-bg); color: var(--web-muted-fg); font-size: 10px; font-weight: 700; letter-spacing: .08em; }
-.uix-nav__domain-wrap, .uix-nav__menu-wrap { position: relative; height: 100%; display: flex; align-items: center; }
+.uix-nav__domain-wrap, .uix-nav__menu-wrap, .uix-nav__admin-wrap { position: relative; height: 100%; display: flex; align-items: center; }
+.uix-nav__admin { display: flex; align-items: center; gap: 4px; height: 100%; padding: 0 8px; border: 0; background: transparent; color: var(--web-fg); cursor: pointer; font: inherit; font-size: 11px; font-weight: 700; }
+.uix-nav__admin:hover, .uix-nav__admin[aria-expanded="true"] { color: var(--web-link); }
+.uix-nav__admin-menu { position: absolute; top: 100%; right: 0; z-index: 35; min-width: 190px; padding: 7px 0; border: 1px solid var(--web-border); border-radius: 4px; background: var(--web-card-bg); box-shadow: 0 8px 25px var(--web-shadow); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-4px); transition: opacity .14s, visibility .14s, transform .14s; }
+.uix-nav__admin-menu.is-open, .uix-nav__admin-wrap:hover > .uix-nav__admin-menu { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0); }
 .uix-nav__domain, .uix-nav__user { height: 100%; display: flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--web-fg); cursor: pointer; font: inherit; font-size: 13px; }
 .uix-nav__domain img, .uix-nav__user img, .uix-domain-menu__item img { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; }
 .uix-nav__menu, .uix-domain-menu { position: absolute; top: 100%; right: 0; z-index: 35; min-width: 190px; padding: 7px 0; border: 1px solid var(--web-border); border-radius: 4px; background: var(--web-card-bg); box-shadow: 0 8px 25px var(--web-shadow); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-4px); transition: opacity .14s, visibility .14s, transform .14s; }

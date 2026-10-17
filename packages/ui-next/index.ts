@@ -6,7 +6,7 @@ import { createServer, type Plugin } from 'vite';
 import { HandlerCommon, serializer } from '@ejunz/framework';
 import {
     Context, Handler, Logger,
-    NotFoundError, param, SettingModel, sha1, size, Types,
+    NotFoundError, param, PERM, PRIV, SettingModel, sha1, size, Types,
 } from 'ejun';
 
 const logger = new Logger('ui-next');
@@ -295,6 +295,23 @@ function buildNavItems(handler: any) {
     });
 }
 
+function buildNavDropdown(handler: any) {
+    const nodes = global.Ejunz?.ui?.getNodes?.('NavDropdown') || [];
+    const badge = handler.user?.hasPriv(PRIV.PRIV_MOD_BADGE)
+        ? 'SU'
+        : handler.user?.hasPerm(PERM.PERM_MOD_BADGE) ? 'MOD' : null;
+    const items = nodes.filter((item: any) => item.checker(handler)).map((item: any) => {
+        const rawArgs = typeof item.args === 'function' ? item.args(handler) : item.args || {};
+        const args = Object.fromEntries(Object.entries(rawArgs).filter(([key, value]) => key !== 'prefix' && key !== 'displayName' && ['string', 'number', 'boolean'].includes(typeof value)));
+        return {
+            name: String(item.name),
+            ...((item.displayName || rawArgs.displayName) ? { displayName: String(item.displayName || rawArgs.displayName) } : {}),
+            args,
+        };
+    });
+    return { badge, items };
+}
+
 export async function apply(ctx: Context) {
     if (process.env.EJUNZ_CLI) return;
 
@@ -348,7 +365,11 @@ export async function apply(ctx: Context) {
                     template: context.handler.response.template || '',
                     args: {
                         UserContext: context.UserContext,
-                        UiContext: { ...context.handler.UiContext, navItems: buildNavItems(context.handler) },
+                        UiContext: {
+                            ...context.handler.UiContext,
+                            navItems: buildNavItems(context.handler),
+                            navDropdown: buildNavDropdown(context.handler),
+                        },
                         ...args,
                     },
                     url: context.handler.context.req.url!,
@@ -395,7 +416,11 @@ export async function apply(ctx: Context) {
                     template: context.handler.response.template || '',
                     args: {
                         UserContext: context.UserContext,
-                        UiContext: { ...context.handler.UiContext, navItems: buildNavItems(context.handler) },
+                        UiContext: {
+                            ...context.handler.UiContext,
+                            navItems: buildNavItems(context.handler),
+                            navDropdown: buildNavDropdown(context.handler),
+                        },
                         ...args,
                     },
                     url: context.handler.context.req.url!,
