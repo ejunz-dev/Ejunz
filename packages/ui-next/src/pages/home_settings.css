@@ -1,0 +1,132 @@
+.uix-home-settings {
+  display: grid;
+  gap: 1rem;
+  width: min(960px, calc(100% - 2rem));
+  margin: 1rem auto 2rem;
+  box-sizing: border-box;
+}
+
+.uix-settings__form {
+  display: grid;
+  gap: 1rem;
+}
+
+.uix-settings__fields {
+  display: grid;
+  gap: 1rem;
+}
+
+.uix-settings__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.uix-settings__label {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.uix-settings__input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
+  border-radius: 6px;
+  background: var(--web-card-bg, #fff);
+  color: inherit;
+  font: inherit;
+}
+
+.uix-settings__input:disabled {
+  opacity: 0.65;
+}
+
+.uix-settings__textarea {
+  min-height: 6rem;
+  resize: vertical;
+  font-family: var(--code-font-family, monospace);
+}
+
+.uix-settings__help,
+.uix-settings__avatar-help {
+  margin: 0;
+  color: var(--web-muted-fg, hsl(0, 0%, 45%));
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.uix-settings__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.uix-settings__choices legend {
+  margin-bottom: 0.4rem;
+}
+
+.uix-settings__choice,
+.uix-settings__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.uix-settings__choice img {
+  width: 2rem;
+  height: 2rem;
+  object-fit: cover;
+}
+
+.uix-settings__check {
+  align-self: flex-start;
+}
+
+.uix-settings__submit {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.uix-settings__avatar-current {
+  margin: 0.75rem 0;
+}
+
+.uix-settings__avatar-current img {
+  display: block;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.uix-settings__avatar-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.uix-settings__avatar-form button {
+  justify-self: start;
+}
+
+.uix-settings__error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--web-error, #b91c1c);
+}
+
+@media (max-width: 640px) {
+  .uix-home-settings {
+    width: calc(100% - 1.5rem);
+  }
+
+  .uix-settings__avatar-form {
+    grid-template-columns: 1fr;
+  }
+}
