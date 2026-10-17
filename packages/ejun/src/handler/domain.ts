@@ -271,6 +271,7 @@ class DomainUserHandler extends ManageHandler {
             const u = {
                 ...dudoc,
                 ...dudoc.user,
+                avatarUrl: dudoc.user.avatar ? avatar(dudoc.user.avatar, 40) : '/img/avatar.png',
             };
             delete u.user;
             return u;
@@ -279,7 +280,10 @@ class DomainUserHandler extends ManageHandler {
         for (const role of roles) rudocs[role._id] = users.filter((udoc) => udoc.role === role._id);
         this.response.template = format === 'raw' ? 'domain_user_raw.html' : 'domain_user.html';
         this.response.body = {
-            roles, rudocs, domain: this.domain,
+            roles,
+            rudocs,
+            domain: this.domain,
+            canForceJoin: this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN),
         };
     }
 

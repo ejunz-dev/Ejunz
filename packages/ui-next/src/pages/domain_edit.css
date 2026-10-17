@@ -1,0 +1,83 @@
+.uix-domain-edit > h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.uix-domain-edit form {
+  display: grid;
+  gap: 1rem;
+}
+
+.uix-domain-edit__fields {
+  display: grid;
+  gap: 1rem;
+}
+
+.uix-domain-edit__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.uix-domain-edit__label {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.uix-domain-edit__input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
+  border-radius: 6px;
+  background: var(--web-card-bg, #fff);
+  color: inherit;
+  font: inherit;
+}
+
+.uix-domain-edit__input:disabled {
+  opacity: 0.65;
+}
+
+.uix-domain-edit__langs {
+  min-height: 12rem;
+}
+
+.uix-domain-edit__textarea {
+  min-height: 8rem;
+  resize: vertical;
+  font-family: var(--code-font-family, monospace);
+}
+
+.uix-domain-edit__help {
+  color: var(--web-muted-fg, hsl(0, 0%, 45%));
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.uix-domain-edit__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.uix-domain-edit__choices legend {
+  margin-bottom: 0.4rem;
+}
+
+.uix-domain-edit__choices label,
+.uix-domain-edit__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.uix-domain-edit__submit {
+  display: flex;
+  justify-content: flex-end;
+}

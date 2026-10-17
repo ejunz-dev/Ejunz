@@ -2,6 +2,7 @@ import MarkdownIt from 'markdown-it';
 import { Button, Card } from '../components';
 import { usePageData, useUserContext } from '../context/page-data';
 import { i18n } from '../i18n';
+import { DomainManageLayout } from './domain-manage-layout';
 import './domain_dashboard.css';
 
 const markdown = new MarkdownIt({ html: false, breaks: true, linkify: true });
@@ -29,7 +30,8 @@ export default function DomainDashboard() {
   const bulletinHtml = bulletin ? markdown.render(bulletin) : '';
 
   return (
-    <div className="uix-domain-dashboard">
+    <DomainManageLayout>
+      <div className="uix-domain-dashboard">
       {bulletinHtml ? (
         <Card title={domain.name || i18n('Domain')}>
           <div className="uix-domain-dashboard__bulletin" dangerouslySetInnerHTML={{ __html: bulletinHtml }} />
@@ -64,6 +66,7 @@ export default function DomainDashboard() {
           </form>
         </Card>
       ) : null}
-    </div>
+      </div>
+    </DomainManageLayout>
   );
 }
