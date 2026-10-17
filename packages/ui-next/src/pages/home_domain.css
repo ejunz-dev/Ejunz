@@ -1,3 +1,9 @@
+.uix-home-domain {
+  width: min(960px, calc(100% - 2rem));
+  margin: 1rem auto 2rem;
+  box-sizing: border-box;
+}
+
 .uix-home-domain__tools {
   display: flex;
   align-items: center;

@@ -1,6 +1,9 @@
 .uix-domain-dashboard {
   display: grid;
   gap: 1rem;
+  width: min(960px, calc(100% - 2rem));
+  margin: 1rem auto 2rem;
+  box-sizing: border-box;
 }
 
 .uix-domain-dashboard__bulletin {
