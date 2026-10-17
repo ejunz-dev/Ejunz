@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { Card } from '../components';
 import { usePageData } from '../context/page-data';
 import { i18n } from '../i18n';
 import './user_sudo.css';
@@ -36,13 +35,14 @@ export default function UserSudoRedirect() {
 
   return (
     <div className="uix-user-sudo uix-user-sudo--redirect">
-      <Card title={i18n('Confirm Access')}>
+      <div className="uix-user-sudo__content">
+        <h1>{i18n('Confirm Access')}</h1>
         <p>{i18n('Redirecting, please wait...')}</p>
         <form ref={formRef} method={method} action={action}>
           {fields.map(([name, value], index) => <input key={`${name}-${index}`} type="hidden" name={name} value={value} />)}
           <button type="submit" className="uix-user-sudo__fallback">{i18n('Continue')}</button>
         </form>
-      </Card>
+      </div>
     </div>
   );
 }

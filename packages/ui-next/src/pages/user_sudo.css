@@ -1,6 +1,31 @@
 .uix-user-sudo {
-  width: min(440px, calc(100% - 2rem));
-  margin: clamp(2rem, 12vh, 7rem) auto 2rem;
+  position: relative;
+  isolation: isolate;
+  display: flow-root;
+  min-height: calc(100vh - 58px);
+  box-sizing: border-box;
+  color: #fff;
+}
+
+.uix-user-sudo::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(140deg, #80b2d5, #416f96 58%, #315b83);
+  content: '';
+}
+
+.uix-user-sudo__content {
+  width: min(270px, calc(100% - 2rem));
+  margin: clamp(1rem, 6vh, 3rem) auto 2rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.uix-user-sudo__content h1 {
+  margin: 2em 0;
+  color: #fff;
+  font-size: 1.5rem;
+  text-align: center;
 }
 
 .uix-user-sudo form {
@@ -11,6 +36,7 @@
 .uix-user-sudo__field {
   display: grid;
   gap: 0.35rem;
+  color: rgba(255, 255, 255, 0.9);
   font-size: 0.875rem;
 }
 
@@ -18,15 +44,17 @@
   width: 100%;
   box-sizing: border-box;
   padding: 0.5rem 0.7rem;
-  border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
-  border-radius: 6px;
-  background: var(--web-card-bg, #fff);
-  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 4px;
+  outline-color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
   font: inherit;
 }
 
 .uix-user-sudo__submit {
   display: flex;
+  justify-content: center;
 }
 
 .uix-user-sudo__submit .uix-button {
@@ -36,7 +64,7 @@
 
 .uix-user-sudo__tip {
   margin-top: 1rem;
-  color: var(--web-muted-fg, hsl(0, 0%, 45%));
+  color: rgba(255, 255, 255, 0.78);
   font-size: 0.8rem;
   line-height: 1.5;
 }
@@ -50,23 +78,26 @@
   gap: 0.5rem;
   margin-top: 1rem;
   padding-top: 0.75rem;
-  border-top: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
+  border-top: 1px solid rgba(255, 255, 255, 0.28);
+  color: rgba(255, 255, 255, 0.86);
   font-size: 0.8rem;
 }
 
-.uix-user-sudo__methods > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem 0.75rem;
+.uix-user-sudo__methods ol {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 1.25rem;
 }
 
 .uix-user-sudo__methods button {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--web-link, #2563eb);
+  color: #fff;
   cursor: pointer;
   font: inherit;
+  text-decoration: underline;
 }
 
 .uix-user-sudo--redirect {
@@ -76,9 +107,15 @@
 .uix-user-sudo__fallback {
   justify-self: center;
   padding: 0.45rem 0.8rem;
-  border: 1px solid var(--web-border, hsl(0, 0%, 89.8%));
-  border-radius: 6px;
-  background: var(--web-card-bg, #fff);
-  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
   cursor: pointer;
+}
+
+@media (max-width: 700px) {
+  .uix-user-sudo {
+    min-height: calc(100vh - 48px);
+  }
 }

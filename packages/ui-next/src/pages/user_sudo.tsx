@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Button, Callout, Card } from '../components';
+import { Button, Callout } from '../components';
 import { useBuildUrl } from '../hooks/use-build-url';
 import { useUserContext } from '../context/page-data';
 import { i18n } from '../i18n';
@@ -51,7 +51,8 @@ export default function UserSudo() {
 
   return (
     <div className="uix-user-sudo">
-      <Card title={i18n('Confirm Access')}>
+      <div className="uix-user-sudo__content">
+        <h1>{i18n('Confirm Access')}</h1>
         {error ? <Callout type="error">{error}</Callout> : null}
         <form
           ref={formRef}
@@ -85,19 +86,19 @@ export default function UserSudo() {
         </form>
         <div className="uix-user-sudo__tip">
           <p><strong>Tip:</strong> {i18n('You are entering sudo mode.')}</p>
-          <p>{i18n("After a sudo-protected action, you'll only need to re-authenticate after an hour of inactivity.")}</p>
+          <p>{i18n("After you've performed a sudo-protected action, you'll only be asked to re-authenticate again after a few hours of inactivity.")}</p>
         </div>
         {user.authn || user.tfa ? (
           <div className="uix-user-sudo__methods">
             <strong>{i18n('Or use other methods:')}</strong>
-            <div>
-              {user.authn && method !== 'authn' ? <button type="button" onClick={() => { setError(''); setMethod('authn'); }}>{i18n('Use Authenticator')}</button> : null}
-              {user.tfa && method !== 'tfa' ? <button type="button" onClick={() => { setError(''); setMethod('tfa'); }}>{i18n('Use TFA Code')}</button> : null}
-              {method !== 'password' ? <button type="button" onClick={() => { setError(''); setMethod('password'); }}>{i18n('Use Password')}</button> : null}
-            </div>
+            <ol>
+              {user.authn && method !== 'authn' ? <li><button type="button" onClick={() => { setError(''); setMethod('authn'); }}>{i18n('Use Authenticator')}</button></li> : null}
+              {user.tfa && method !== 'tfa' ? <li><button type="button" onClick={() => { setError(''); setMethod('tfa'); }}>{i18n('Use TFA Code')}</button></li> : null}
+              {method !== 'password' ? <li><button type="button" onClick={() => { setError(''); setMethod('password'); }}>{i18n('Use Password')}</button></li> : null}
+            </ol>
           </div>
         ) : null}
-      </Card>
+      </div>
     </div>
   );
 }
