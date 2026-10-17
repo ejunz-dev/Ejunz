@@ -182,7 +182,13 @@ class DomainDashboardHandler extends ManageHandler {
     async get() {
         const owner = await user.getById(this.domain._id, this.domain.owner);
         this.response.template = 'domain_dashboard.html';
-        this.response.body = { domain: this.domain, owner };
+        this.response.body = {
+            domain: {
+                ...this.domain,
+                avatarUrl: this.domain.avatar ? avatar(this.domain.avatar, 32) : '/img/team_avatar.png',
+            },
+            owner: owner ? { ...owner, avatarUrl: owner.avatar ? avatar(owner.avatar, 32) : '/img/avatar.png' } : null,
+        };
     }
 
     async postInitDiscussionNode({ domainId }) {

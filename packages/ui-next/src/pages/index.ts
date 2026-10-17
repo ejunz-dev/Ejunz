@@ -2,6 +2,7 @@ import { registerPage } from '../registry/page';
 
 registerPage('homepage', () => import('./homepage'));
 registerPage('home_domain', () => import('./home_domain'));
+registerPage('domain_dashboard', () => import('./domain_dashboard'));
 registerPage('base_domain', () => import('./basedomain'));
 registerPage('user_login', () => import('./login'));
 registerPage('base_detail', () => import('./base_detail'));
