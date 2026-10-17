@@ -11,7 +11,8 @@
   margin-bottom: 1rem;
 }
 
-.uix-domain-group__create label {
+.uix-domain-group__create label,
+.uix-domain-group__autocomplete {
   display: grid;
   gap: 0.35rem;
   min-width: 0;

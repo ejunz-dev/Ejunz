@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
-import { Button, Card, Callout } from '../components';
-import { usePageData, useUserContext } from '../context/page-data';
+import { useCallback, useMemo, useState } from 'react';
+import { AutoComplete, Button, Card, Callout } from '../components';
+import { usePageData, useUiContext, useUserContext } from '../context/page-data';
 import { i18n } from '../i18n';
 import { DomainManageLayout } from './domain-manage-layout';
+import { searchDomainUsers } from './domain-management-api';
 import './domain_user.css';
 
 interface User {
@@ -20,12 +21,15 @@ interface Role {
 export default function DomainUser() {
   const { args } = usePageData();
   const currentUser = useUserContext();
+  const ui = useUiContext();
+  const domainId = String(ui.domainId || 'system');
+  const queryUsers = useCallback((query: string) => searchDomainUsers(domainId, query), [domainId]);
   const roles = Array.isArray(args.roles) ? args.roles as Role[] : [];
   const roleNames = roles.map((role) => role._id).filter((role) => role !== 'guest');
   const groups = args.rudocs && typeof args.rudocs === 'object' ? args.rudocs as Record<string, User[]> : {};
   const [selected, setSelected] = useState<number[]>([]);
   const [assignRole, setAssignRole] = useState(roleNames.find((role) => role !== 'root') || 'default');
-  const [newUids, setNewUids] = useState('');
+  const [newUids, setNewUids] = useState<string[]>([]);
   const [error, setError] = useState('');
   const canForceJoin = Boolean(args.canForceJoin);
   const users = useMemo(() => Object.entries(groups).flatMap(([role, items]) => (Array.isArray(items) ? items : []).map((item) => ({ ...item, role: item.role || role }))), [groups]);
@@ -34,7 +38,7 @@ export default function DomainUser() {
     setSelected((current) => current.includes(uid) ? current.filter((item) => item !== uid) : [...current, uid]);
   }
 
-  const parsedNewUids = [...new Set(newUids.split(/[\s,;]+/).map((id) => Number(id.trim())).filter((id) => Number.isSafeInteger(id) && id > 0))];
+  const parsedNewUids = [...new Set(newUids.map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))];
 
   return (
     <DomainManageLayout>
@@ -46,10 +50,16 @@ export default function DomainUser() {
             <input type="hidden" name="role" value={assignRole} />
             {parsedNewUids.map((uid) => <input key={uid} type="hidden" name="uids" value={uid} />)}
             {canForceJoin ? <input type="hidden" name="join" value="true" /> : null}
-            <label className="uix-domain-user__field">
-              <span>{i18n('Add User IDs')}</span>
-              <input className="uix-domain-user__input" value={newUids} onChange={(event) => setNewUids(event.target.value)} placeholder={i18n('Enter user IDs separated by commas')} />
-            </label>
+            <div className="uix-domain-user__field">
+              <AutoComplete
+                label={i18n('Add User')}
+                selected={newUids}
+                query={queryUsers}
+                placeholder={i18n('Search users by name or ID')}
+                onSelect={(uid) => setNewUids((current) => current.includes(uid) ? current : [...current, uid])}
+                onRemove={(uid) => setNewUids((current) => current.filter((item) => item !== uid))}
+              />
+            </div>
             <label className="uix-domain-user__field">
               <span>{i18n('Role')}</span>
               <select className="uix-domain-user__input" value={assignRole} onChange={(event) => setAssignRole(event.target.value)}>

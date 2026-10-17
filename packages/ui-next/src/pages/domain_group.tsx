@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { Button, Card, Callout } from '../components';
+import { useCallback, useState } from 'react';
+import { AutoComplete, Button, Card, Callout } from '../components';
 import { usePageData, useUiContext } from '../context/page-data';
 import { i18n } from '../i18n';
 import { DomainManageLayout } from './domain-manage-layout';
+import { domainApiPrefix, searchDomainUsers } from './domain-management-api';
 import './domain_group.css';
 
 interface DomainGroup {
@@ -10,26 +11,21 @@ interface DomainGroup {
   uids: number[];
 }
 
-function prefixOf(domainId: string): string {
-  return `/d/${encodeURIComponent(domainId)}`;
-}
-
-function parseUids(value: string): number[] {
-  return [...new Set(value.split(/[\s,;]+/).map((part) => Number(part.trim())).filter((uid) => Number.isSafeInteger(uid) && uid > 0))];
-}
-
 export default function DomainGroup() {
   const { args } = usePageData();
   const { domainId } = useUiContext();
+  const currentDomainId = String(domainId || 'system');
+  const queryUsers = useCallback((query: string) => searchDomainUsers(currentDomainId, query), [currentDomainId]);
   const initialGroups = Array.isArray(args.groups) ? args.groups as DomainGroup[] : [];
   const [groups, setGroups] = useState(() => initialGroups.map((group) => ({ ...group, uids: group.uids || [] })));
   const [selected, setSelected] = useState<string[]>([]);
   const [newName, setNewName] = useState('');
-  const [newUids, setNewUids] = useState('');
+  const [newUids, setNewUids] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const prefix = prefixOf(String(domainId || 'system'));
+  const prefix = domainApiPrefix(currentDomainId);
+  const newUidValues = [...new Set(newUids.map(Number).filter((uid) => Number.isSafeInteger(uid) && uid > 0))];
 
   async function mutate(name: string, uids?: number[]) {
     const response = await fetch(`${prefix}/api/domain.group`, {
@@ -46,15 +42,15 @@ export default function DomainGroup() {
   async function createGroup() {
     const name = newName.trim();
     if (!name) return setError(i18n('Please enter a group name.'));
-    if (!parseUids(newUids).length) return setError(i18n('Please select at least one user.'));
+    if (!newUidValues.length) return setError(i18n('Please select at least one user.'));
     setBusy(true);
     setError('');
     setNotice('');
     try {
-      await mutate(name, parseUids(newUids));
-      setGroups((current) => [...current.filter((group) => group.name !== name), { name, uids: parseUids(newUids) }]);
+      await mutate(name, newUidValues);
+      setGroups((current) => [...current.filter((group) => group.name !== name), { name, uids: newUidValues }]);
       setNewName('');
-      setNewUids('');
+      setNewUids([]);
       setNotice(i18n('Saved.'));
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
@@ -96,8 +92,8 @@ export default function DomainGroup() {
     }
   }
 
-  function setGroupUids(name: string, value: string) {
-    const uids = parseUids(value);
+  function updateGroupUids(name: string, values: string[]) {
+    const uids = [...new Set(values.map(Number).filter((uid) => Number.isSafeInteger(uid) && uid > 0))];
     setGroups((current) => current.map((group) => group.name === name ? { ...group, uids } : group));
   }
 
@@ -109,7 +105,16 @@ export default function DomainGroup() {
         <Card title={i18n('Groups')}>
           <div className="uix-domain-group__create">
             <label><span>{i18n('Group Name')}</span><input className="uix-domain-group__input" value={newName} onChange={(event) => setNewName(event.target.value)} /></label>
-            <label><span>{i18n('Users (IDs)')}</span><input className="uix-domain-group__input" value={newUids} onChange={(event) => setNewUids(event.target.value)} placeholder={i18n('Enter user IDs separated by commas')} /></label>
+            <div className="uix-domain-group__autocomplete">
+              <AutoComplete
+                label={i18n('Users')}
+                selected={newUids}
+                query={queryUsers}
+                placeholder={i18n('Search users by name or ID')}
+                onSelect={(uid) => setNewUids((current) => current.includes(uid) ? current : [...current, uid])}
+                onRemove={(uid) => setNewUids((current) => current.filter((item) => item !== uid))}
+              />
+            </div>
             <Button variant="primary" disabled={busy || !newName.trim()} onClick={() => { void createGroup(); }}>{i18n('Create Group')}</Button>
           </div>
           <div className="uix-domain-group__table-wrap">
@@ -120,7 +125,15 @@ export default function DomainGroup() {
                   <tr key={group.name}>
                     <td><input type="checkbox" checked={selected.includes(group.name)} onChange={() => setSelected((current) => current.includes(group.name) ? current.filter((name) => name !== group.name) : [...current, group.name])} /></td>
                     <td>{group.name}</td>
-                    <td><input className="uix-domain-group__input" aria-label={`${i18n('Users')} ${group.name}`} defaultValue={group.uids.join(', ')} onChange={(event) => setGroupUids(group.name, event.target.value)} /></td>
+                    <td>
+                      <AutoComplete
+                        selected={group.uids.map(String)}
+                        query={queryUsers}
+                        placeholder={i18n('Search users by name or ID')}
+                        onSelect={(uid) => updateGroupUids(group.name, [...group.uids.map(String), uid])}
+                        onRemove={(uid) => updateGroupUids(group.name, group.uids.map(String).filter((item) => item !== uid))}
+                      />
+                    </td>
                   </tr>
                 ))}
                 {!groups.length ? <tr><td colSpan={3} className="uix-domain-group__empty">{i18n('No groups')}</td></tr> : null}
