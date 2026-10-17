@@ -87,7 +87,16 @@ export const AgentUpdateMany = Schema.object({ groupId: Schema.number().step(1).
 export const AgentRemoveMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required() }).description('Delete Agent records by agentIds.');
 export const AgentSessionList = Schema.object({ groupId: Schema.number().step(1).min(1).required(), teamId: Schema.string(), agentId: Schema.string() }).description('List runtime sessions by sessionId, optionally filtered by owning Agent or team.');
 export const AgentSessionGet = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionId: Schema.string().required(), ...conversationRead }).description('Read a runtime session conversation by sessionId.');
-export const AgentSessionCreate = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required(), title: Schema.string(), message: Schema.string() }).description('Create a runtime session for an existing Agent record.');
+export const AgentSessionCreate = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required(), title: Schema.string(), message: Schema.string().required().description('Required non-empty initial prompt sent to the Agent after session creation.') }).description('Create a runtime session for an existing Agent record and immediately send its required initial prompt.');
+const AgentSessionCreateFields = Schema.object({
+    agentId: Schema.string().required().description('Existing Agent id.'),
+    title: Schema.string().description('Optional session title.'),
+    message: Schema.string().required().description('Required non-empty initial prompt sent to the Agent.'),
+});
+export const AgentSessionCreateMany = Schema.object({
+    groupId: Schema.number().step(1).min(1).required().description('Group id.'),
+    sessions: Schema.array(AgentSessionCreateFields).min(1).required(),
+}).description('Create runtime sessions concurrently for existing Agents. Every session requires an initial prompt. Results report successes and failures separately; this batch is not transactional.');
 export const AgentSessionUpdate = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionId: Schema.string().required(), title: Schema.string().required() }).description('Rename a runtime session by sessionId.');
 export const AgentSessionDelete = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionId: Schema.string().required() }).description('Delete a runtime session by sessionId.');
 export const AgentSessionGetMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required(), ...conversationRead }).description('Read runtime sessions by sessionIds.');
@@ -743,14 +752,48 @@ function optionalIds(raw: unknown, label: string, limit: number): string[] {
 }
 
 export async function createAgentSession(ctx: ToolContext, args: ToolArgs) {
- const {groupId}=await requireGroup(ctx,args,'edit'); const agentId=asText(args.agentId);
- if(!agentId||!await AgentModel.getAgent(ctx.domainId,ctx.owner,agentId,groupId)) throw new Error(`Agent not found: ${agentId}`);
- const response=await agentRuntimeHandlerContext.sessionCreate({payload:{agentId}},sessionScope(ctx,groupId));
- if(!response.result?.ok)throw new Error(response.error?.message||'Failed to create session');
- const sessionId=(response.result.value as {sessionId?:string}|undefined)?.sessionId; if(!sessionId)throw new Error('Session creation returned no sessionId');
- const title=asText(args.title); if(title)await renameSessionAgent(ctx,groupId,sessionId,title);
- const message=asText(args.message); if(message){const link=await agentRuntimeHandlerContext.linkForSession(sessionScope(ctx,groupId),sessionId);const sent=await agentRuntimeHandlerContext.callUpstream('session.prompt',{sessionId,mode:'queue',content:[{type:'text',text:message}]},link);if(!sent.body.result?.ok)throw new Error(sent.body.error?.message||'Failed to start session');}
- return {ok:true,groupId,sessionId};
+    const { groupId } = await requireGroup(ctx, args, 'edit');
+    const agentId = asText(args.agentId);
+    if (!agentId || !await AgentModel.getAgent(ctx.domainId, ctx.owner, agentId, groupId)) {
+        throw new Error(`Agent not found: ${agentId}`);
+    }
+    const message = asText(args.message);
+    if (!message) throw new Error('message is required and must not be empty');
+
+    const response = await agentRuntimeHandlerContext.sessionCreate({ payload: { agentId } }, sessionScope(ctx, groupId));
+    if (!response.result?.ok) throw new Error(response.error?.message || 'Failed to create session');
+    const sessionId = (response.result.value as { sessionId?: string } | undefined)?.sessionId;
+    if (!sessionId) throw new Error('Session creation returned no sessionId');
+    const title = asText(args.title);
+    if (title) await renameSessionAgent(ctx, groupId, sessionId, title);
+    const link = await agentRuntimeHandlerContext.linkForSession(sessionScope(ctx, groupId), sessionId);
+    const sent = await agentRuntimeHandlerContext.callUpstream('session.prompt', {
+        sessionId,
+        mode: 'queue',
+        content: [{ type: 'text', text: message }],
+    }, link);
+    if (!sent.body.result?.ok) throw new Error(sent.body.error?.message || 'Failed to start session');
+    return { ok: true, groupId, sessionId };
+}
+
+export async function createAgentSessionsForExistingAgents(ctx: ToolContext, args: ToolArgs) {
+    const { groupId } = await requireGroup(ctx, args, 'edit');
+    const entries = objectEntries(args.sessions, 'sessions');
+    type SessionCreateResult =
+        | { index: number; agentId: string; sessionId: string }
+        | { index: number; agentId?: string; error: string };
+    const results = await Promise.all(entries.map(async (entry, index): Promise<SessionCreateResult> => {
+        const agentId = asText(entry.agentId);
+        try {
+            const result = await createAgentSession(ctx, { ...entry, groupId });
+            return { index, agentId, sessionId: result.sessionId };
+        } catch (error) {
+            return { index, ...(agentId ? { agentId } : {}), error: (error as Error).message };
+        }
+    }));
+    const created = results.filter((result): result is { index: number; agentId: string; sessionId: string } => 'sessionId' in result);
+    const refused = results.filter((result): result is { index: number; agentId?: string; error: string } => 'error' in result);
+    return { ok: refused.length === 0, groupId, sessionCount: created.length, sessions: created, refusedSessions: refused };
 }
 
 export async function updateAgentSession(ctx: ToolContext,args:ToolArgs) { const {groupId}=await requireGroup(ctx,args,'edit');const sessionId=asText(args.sessionId),title=asText(args.title);if(!sessionId||!title)throw new Error('sessionId and title are required');await renameSessionAgent(ctx,groupId,sessionId,title);return {ok:true,groupId,sessionId,title}; }
@@ -1061,6 +1104,7 @@ export function apply(ctx: Context) {
     ctx.Tool('agent', 'agent_session_list', listAgentSessions, AgentSessionList, read, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_session_get', getAgentSession, AgentSessionGet, read, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_session_create', createAgentSession, AgentSessionCreate, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_session_create_many', createAgentSessionsForExistingAgents, AgentSessionCreateMany, write, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_session_update', updateAgentSession, AgentSessionUpdate, write, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_session_delete', removeAgentSession, AgentSessionDelete, write, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_session_get_many', getAgentSessions, AgentSessionGetMany, read, PRIV.PRIV_USER_PROFILE);
