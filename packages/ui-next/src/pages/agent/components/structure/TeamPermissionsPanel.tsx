@@ -38,10 +38,10 @@ function defaultAcl(catalog: PermissionOption[]): AgentTeamAcl {
     };
 }
 
-function permissionCatalog(addons: readonly AgentAddonView[]): PermissionOption[] {
+function permissionCatalog(addons: readonly AgentAddonView[], mounted: ReadonlySet<string>): PermissionOption[] {
     return [
         ...CORE_PERMISSIONS,
-        ...addons.filter((addon) => addon.installed).flatMap((addon) => (addon.permissions || []).map((permission) => ({
+        ...addons.filter((addon) => addon.installed && mounted.has(addon.addonId)).flatMap((addon) => (addon.permissions || []).map((permission) => ({
             id: `${addon.addonId}:${permission.id}`,
             name: permission.name,
             family: addon.displayName,
@@ -83,7 +83,8 @@ function newRoleId(name: string, roles: AgentTeamRole[]): string {
 }
 
 export function TeamPermissionsPanel({ team, addons, section, saving, onSave }: Props) {
-    const catalog = useMemo(() => permissionCatalog(addons), [addons]);
+    const mounted = useMemo(() => mountedAddonIds(team, addons), [addons, team.config?.addons, team.teamId]);
+    const catalog = useMemo(() => permissionCatalog(addons, mounted), [addons, mounted]);
     const permissionFamilies = useMemo(() => {
         const families = new Map<string, PermissionOption[]>();
         for (const permission of catalog) {
@@ -98,7 +99,6 @@ export function TeamPermissionsPanel({ team, addons, section, saving, onSave }: 
     const [error, setError] = useState('');
     const [notice, setNotice] = useState('');
     const [dirty, setDirty] = useState(false);
-    const mounted = useMemo(() => mountedAddonIds(team, addons), [addons, team.config?.addons, team.teamId]);
     const activeRole = acl.roles.find((role) => role.roleId === acl.activeRoleId) ?? acl.roles[0];
     const autoGranted = useMemo(() => new Set(catalog.filter((permission) => (
         permission.addonId

@@ -1135,6 +1135,16 @@ export class AgentSessionModel {
         return await teamsCollection.find(teamFilter(domainId, userId, groupId)).sort({ order: 1, createdAt: 1 }).toArray() as AgentTeamDoc[];
     }
 
+    static async listGroupRootTeams(domainId: string, groupId?: number | null, userId?: number): Promise<AgentTeamDoc[]> {
+        const filter = {
+            domainId,
+            isRootTeam: true,
+            ...(groupId === undefined ? {} : groupId === null ? { groupId: { $in: [null] } } : { groupId }),
+            ...(userId === undefined ? {} : { userId }),
+        };
+        return await teamsCollection.find(filter).toArray() as AgentTeamDoc[];
+    }
+
     static async getTeam(domainId: string, userId: number, teamId: string, groupId?: number | null): Promise<AgentTeamDoc | null> {
         return await teamsCollection.findOne(teamFilter(domainId, userId, groupId, teamId)) as AgentTeamDoc | null;
     }

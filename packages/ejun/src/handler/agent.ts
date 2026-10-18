@@ -8,7 +8,8 @@ import type { AgentStorageDescriptor } from '../model/agent';
 import type { RuntimeHelloFrame, RuntimeInboundFrame, RuntimeLinkPollFrame, RuntimeStream } from '../service/runtime';
 import { agentRuntimeHandlerContext as service } from '../service/runtime';
 import { listAgentAddons } from '../service/addons';
-import { addonAgentPermissionId, defaultAgentAcl, DEFAULT_AGENT_ROLE_ID, normalizeAgentAcl, permissionsForAgentAcl } from '../service/agent-permissions';
+import type { AgentAddonStateChange } from '../service/bus';
+import { addonAgentPermissionId, AGENT_CORE_PERMISSIONS, defaultAgentAcl, DEFAULT_AGENT_ROLE_ID, normalizeAgentAcl, permissionsForAgentAcl } from '../service/agent-permissions';
 
 interface RpcEnvelope {
     type?: string;
@@ -160,16 +161,44 @@ async function permissionsForSession(
     const acl = await agentAclForScope({ domainId: session.domainId, userId: session.userId, groupId: session.groupId }, session.teamId);
     const permissions = permissionsForAgentAcl(acl);
     const activeRoleId = acl?.activeRoleId || DEFAULT_AGENT_ROLE_ID;
-    if (activeRoleId !== 'guest') {
-        for (const addon of listAgentAddons()) {
-            if (!mountedAddons.has(addon.addonId)) continue;
-            for (const permission of addon.permissions || []) {
+    const corePermissionIds = new Set(AGENT_CORE_PERMISSIONS.map((permission) => permission.id));
+    for (const permissionId of [...permissions]) {
+        if (corePermissionIds.has(permissionId)) continue;
+        const addonId = permissionId.split(':', 1)[0];
+        if (!mountedAddons.has(addonId)) permissions.delete(permissionId);
+    }
+    for (const addon of listAgentAddons()) {
+        if (!mountedAddons.has(addon.addonId)) continue;
+        for (const permission of addon.permissions || []) {
             if (activeRoleId === 'guest' && permission.id !== 'read') continue;
             permissions.add(addonAgentPermissionId(addon.addonId, permission.id));
         }
-        }
     }
     return permissions;
+}
+
+async function syncAddonPermissionsToRootTeams(change: AgentAddonStateChange): Promise<void> {
+    const addon = listAgentAddons().find((item) => item.addonId === change.addonId);
+    if (!addon?.permissions?.length) return;
+    const permissionIds = addon.permissions.map((permission) => addonAgentPermissionId(addon.addonId, permission.id));
+    const userId = change.teamId ? change.userId : undefined;
+    const roots = await AgentSessionModel.listGroupRootTeams(change.domainId, change.groupId, userId);
+    for (const root of roots) {
+        const acl = normalizeAgentAcl(root.config?.acl || defaultAgentAcl());
+        let changed = false;
+        const roles = acl.roles.map((role) => {
+            const granted = change.enabled && (role.roleId !== 'guest' || addon.permissions?.some((permission) => permission.id === 'read'))
+                ? permissionIds.filter((id) => role.roleId !== 'guest' || id.endsWith(':read'))
+                : [];
+            const permissions = change.enabled
+                ? [...new Set([...role.permissions, ...granted])].sort()
+                : role.permissions.filter((id) => !permissionIds.includes(id));
+            if (permissions.length !== role.permissions.length || permissions.some((id, index) => id !== role.permissions[index])) changed = true;
+            return { ...role, permissions };
+        });
+        if (!changed) continue;
+        await AgentSessionModel.updateTeamConfig(change.domainId, root.userId, root.teamId, { ...(root.config || {}), acl: { ...acl, roles } }, root.groupId);
+    }
 }
 
 async function mountedAddonsForSession(session: { domainId: string; userId: number; sessionId: string; groupId?: number; teamId?: string }): Promise<Set<string>> {
@@ -1261,6 +1290,13 @@ export class EjunzAgentRuntimeConnectionHandler extends ConnectionHandler<Contex
 
 
 export async function apply(ctx: Context): Promise<void> {
+    ctx.on('agent/addon-state', async (change: AgentAddonStateChange) => {
+        try {
+            await syncAddonPermissionsToRootTeams(change);
+        } catch (error) {
+            logger.warn('[agent-acl] add-on permission sync failed domain=%s addon=%s error=%s', change.domainId, change.addonId, error instanceof Error ? error.message : String(error));
+        }
+    });
     ctx.Route('agent_domain', '/corp', EjunzAgentPageHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
     ctx.Route('agent_chat', '/corp/chat', EjunzAgentChatPageHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
     ctx.Route('agent_market', '/market', EjunzAgentMarketPageHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
