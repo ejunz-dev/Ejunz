@@ -978,6 +978,11 @@ Delete a user: 删除用户
 Delete discussion replies of own discussion: 删除自己讨论中的回复
 Delete discussion replies: 删除讨论回复
 Delete discussions: 删除讨论
+Configure Agent add-ons and domain settings: 配置 Agent 插件与域级设置
+Create Agents and groups: 创建 Agent 与分组
+Delete shared Agent groups: 删除共享 Agent 分组
+Edit shared Agent groups: 编辑共享 Agent 分组
+View Agent groups and workspace: 查看 Agent 分组与工作区
 Delete own discussion replies: 删除讨论中自己的回复
 Delete own discussions: 删除自己的讨论
 Delete Selected Roles: 删除所选角色
@@ -1412,6 +1417,7 @@ Path {0} not found.: 路径 {0} 不存在。
 Peak Memory: 峰值内存
 perm_contest: 比赛
 perm_discussion: 讨论
+perm_agent: Agent
 perm_general: 一般
 Permission: 权限
 Permissions: 权限

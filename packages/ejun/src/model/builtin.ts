@@ -30,6 +30,11 @@ export const PERMS = [
     Permission('perm_discussion', PERM.PERM_DELETE_DISCUSSION_REPLY, 'Delete discussion replies'),
     Permission('perm_discussion', PERM.PERM_DELETE_DISCUSSION_REPLY_SELF, 'Delete own discussion replies'),
     Permission('perm_discussion', PERM.PERM_DELETE_DISCUSSION_REPLY_SELF_DISCUSSION, 'Delete discussion replies of own discussion'),
+    Permission('perm_agent', PERM.PERM_VIEW_AGENT, 'View Agent groups and workspace'),
+    Permission('perm_agent', PERM.PERM_CREATE_AGENT, 'Create Agents and groups'),
+    Permission('perm_agent', PERM.PERM_EDIT_AGENT, 'Edit shared Agent groups'),
+    Permission('perm_agent', PERM.PERM_DELETE_AGENT, 'Delete shared Agent groups'),
+    Permission('perm_agent', PERM.PERM_CONFIGURE_AGENT, 'Configure Agent add-ons and domain settings'),
     Permission('perm_ranking', PERM.PERM_VIEW_RANKING, 'View ranking'),
 ];
 

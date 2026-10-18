@@ -497,6 +497,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             return;
         }
         if (method === 'group.create') {
+            this.checkPerm(PERM.PERM_CREATE_AGENT);
             const title = typeof envelope.payload?.title === 'string' ? envelope.payload.title.trim() : '';
             const content = typeof envelope.payload?.content === 'string' ? envelope.payload.content : '';
             if (!title || title.length > 256 || content.length > 100000) {
@@ -524,7 +525,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
                 return;
             }
             if (!this.user.own(agent)) {
-                this.checkPerm(method === 'group.delete' ? PERM.PERM_DELETE_DISCUSSION : PERM.PERM_EDIT_DISCUSSION);
+                this.checkPerm(method === 'group.delete' ? PERM.PERM_DELETE_AGENT : PERM.PERM_EDIT_AGENT);
             }
             if (method === 'group.delete') {
                 await AgentSessionModel.detachGroup(scope.domainId, groupId);
@@ -559,6 +560,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             return;
         }
         if (method === 'agent.addons.install' || method === 'agent.addons.uninstall') {
+            this.checkPerm(PERM.PERM_CONFIGURE_AGENT);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await setAgentAddonInstalled(
                 envelope,
@@ -569,6 +571,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             return;
         }
         if (method === 'agent.addons.set') {
+            this.checkPerm(PERM.PERM_CONFIGURE_AGENT);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await agentAddonSet(
                 envelope,
@@ -578,11 +581,13 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             return;
         }
         if (method === 'settings.describe' || method === 'settings.update' || method === 'settings.replace' || method === 'settings.mutate') {
+            if (method !== 'settings.describe') this.checkPerm(PERM.PERM_CONFIGURE_AGENT);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await domainSettingsRpc(envelope, scope));
             return;
         }
         if (method === 'credentials.describe' || method === 'credentials.set' || method === 'credentials.unset') {
+            if (method !== 'credentials.describe') this.checkPerm(PERM.PERM_CONFIGURE_AGENT);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await domainCredentialsRpc(envelope, scope));
             return;
@@ -609,6 +614,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             this.response.body = JSON.stringify(await saveAgentConfig(envelope, scope, this.ctx));
             return;
         }
+        if (method === 'agent.create') this.checkPerm(PERM.PERM_CREATE_AGENT);
         if (method.startsWith('agent.')) {
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await agentRpc(envelope, scope));
@@ -673,6 +679,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             return;
         }
         if (method === 'link.approve') {
+            this.checkPerm(PERM.PERM_CONFIGURE_AGENT);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await linkApprove(envelope, scope));
             return;
@@ -683,11 +690,13 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             return;
         }
         if (method === 'host.label') {
+            this.checkPerm(PERM.PERM_CONFIGURE_AGENT);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await runtimeRelabel(envelope));
             return;
         }
         if (method === 'host.remove') {
+            this.checkPerm(PERM.PERM_CONFIGURE_AGENT);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await runtimeRemove(envelope));
             return;
@@ -1211,16 +1220,16 @@ export class EjunzAgentRuntimeConnectionHandler extends ConnectionHandler<Contex
 
 
 export async function apply(ctx: Context): Promise<void> {
-    ctx.Route('agent_domain', '/corp', EjunzAgentPageHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('agent_chat', '/corp/chat', EjunzAgentChatPageHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('agent_market', '/market', EjunzAgentMarketPageHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('ejunz_agent_status', '/agent/status', EjunzAgentStatusPageHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('ejunz_agent_link', '/agent-link/:code', EjunzAgentLinkPageHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('agent_workspace', '/corp/group/:groupId', EjunzAgentWorkspacePageHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('agent_domain', '/corp', EjunzAgentPageHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
+    ctx.Route('agent_chat', '/corp/chat', EjunzAgentChatPageHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
+    ctx.Route('agent_market', '/market', EjunzAgentMarketPageHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
+    ctx.Route('ejunz_agent_status', '/agent/status', EjunzAgentStatusPageHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
+    ctx.Route('ejunz_agent_link', '/agent-link/:code', EjunzAgentLinkPageHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_CONFIGURE_AGENT);
+    ctx.Route('agent_workspace', '/corp/group/:groupId', EjunzAgentWorkspacePageHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
     ctx.Route('ejunz_agent_data', '/api/ejunz-agent/data/*method', EjunzAgentDataHandler);
-    ctx.Route('ejunz_agent_rpc', '/api/ejunz-agent/rpc/*method', EjunzAgentRpcHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('ejunz_agent_response', '/api/ejunz-agent/respond', EjunzAgentResponseHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('ejunz_agent_sse', '/api/ejunz-agent/sse/plugins/events', EjunzAgentSseHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Connection('ejunz_agent_events', '/api/ejunz-agent/events/:stream', EjunzAgentEventsConnectionHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('ejunz_agent_rpc', '/api/ejunz-agent/rpc/*method', EjunzAgentRpcHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
+    ctx.Route('ejunz_agent_response', '/api/ejunz-agent/respond', EjunzAgentResponseHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
+    ctx.Route('ejunz_agent_sse', '/api/ejunz-agent/sse/plugins/events', EjunzAgentSseHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
+    ctx.Connection('ejunz_agent_events', '/api/ejunz-agent/events/:stream', EjunzAgentEventsConnectionHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
     ctx.Connection('ejunz_agent_runtime', '/api/ejunz-agent/runtime', EjunzAgentRuntimeConnectionHandler);
 }
