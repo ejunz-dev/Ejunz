@@ -44,6 +44,14 @@ export interface ChatMessage {
     pendingSessionId?: string;
 }
 
+export interface AgentPermissionView {
+    id: string;
+    name: string;
+    family: string;
+    description?: string;
+    addonId?: string;
+}
+
 export interface AgentAddonPermissionView {
     id: string;
     name: string;

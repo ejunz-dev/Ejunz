@@ -1,55 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Callout } from '@ejunz/ui-next';
 import type { AgentTeam, AgentTeamAcl, AgentTeamRole } from '../../runtime/session';
-import type { AgentAddonView } from '../types';
+import type { AgentAddonView, AgentPermissionView } from '../types';
 import { i18n } from '@/i18n';
 import styles from './TeamPermissionsPanel.module.css';
-
-interface PermissionOption {
-    id: string;
-    name: string;
-    family: string;
-    description?: string;
-    addonId?: string;
-}
 
 interface Props {
     team: AgentTeam;
     teams: readonly AgentTeam[];
     addons: readonly AgentAddonView[];
+    permissions: readonly AgentPermissionView[];
     section: 'roles' | 'permissions';
     saving: boolean;
     onSave: (acl: AgentTeamAcl) => Promise<void>;
 }
 
-const CORE_PERMISSIONS: PermissionOption[] = [
-    { id: 'agent:read', name: 'Read Agent workspace', family: 'Agent', description: 'View Agents, Teams, sessions, and their history.' },
-    { id: 'agent:manage', name: 'Manage Agent workspace', family: 'Agent', description: 'Create, update, and delete Agents, Teams, and sessions.' },
-];
-
-function defaultAcl(catalog: PermissionOption[]): AgentTeamAcl {
-    const allPermissions = catalog.map(({ id }) => id);
-    return {
-        activeRoleId: 'default',
-        roles: [
-            { roleId: 'root', name: 'Root', permissions: allPermissions },
-            { roleId: 'default', name: 'Default', permissions: CORE_PERMISSIONS.map(({ id }) => id) },
-            { roleId: 'guest', name: 'Guest', permissions: ['agent:read'] },
-        ],
-    };
-}
-
-function permissionCatalog(addons: readonly AgentAddonView[], mounted: ReadonlySet<string>): PermissionOption[] {
-    return [
-        ...CORE_PERMISSIONS,
-        ...addons.filter((addon) => addon.installed && mounted.has(addon.addonId)).flatMap((addon) => (addon.permissions || []).map((permission) => ({
-            id: `${addon.addonId}:${permission.id}`,
-            name: permission.name,
-            family: addon.displayName,
-            ...(permission.description ? { description: permission.description } : {}),
-            addonId: addon.addonId,
-        }))),
-    ];
+function mountedPermissionCatalog(permissions: readonly AgentPermissionView[], mounted: ReadonlySet<string>): AgentPermissionView[] {
+    return permissions.filter((permission) => !permission.addonId || mounted.has(permission.addonId));
 }
 
 function mountedAddonIds(team: AgentTeam, teams: readonly AgentTeam[], addons: readonly AgentAddonView[]): Set<string> {
@@ -60,20 +27,14 @@ function mountedAddonIds(team: AgentTeam, teams: readonly AgentTeam[], addons: r
     ))).map((addon) => addon.addonId));
 }
 
-function normalizeAcl(value: AgentTeamAcl | undefined, catalog: PermissionOption[]): AgentTeamAcl {
-    const roles = value?.roles?.length ? value.roles.map((role) => ({
-        roleId: String(role.roleId),
-        name: String(role.name),
-        permissions: [...new Set(Array.isArray(role.permissions) ? role.permissions : [])],
-    })) : defaultAcl(catalog).roles;
-    const builtinRoles = defaultAcl(catalog).roles;
-    for (const builtin of builtinRoles) {
-        const existing = roles.find((role) => role.roleId === builtin.roleId);
-        if (!existing) roles.push(builtin);
-        else if (builtin.roleId === 'root') existing.permissions = builtin.permissions;
-    }
-    const activeRoleId = roles.some((role) => role.roleId === value?.activeRoleId) ? value!.activeRoleId : 'default';
-    return { activeRoleId, roles };
+function normalizeAcl(value: AgentTeamAcl | undefined): AgentTeamAcl {
+    return {
+        roles: Array.isArray(value?.roles) ? value.roles.map((role) => ({
+            roleId: String(role.roleId),
+            name: String(role.name),
+            permissions: [...new Set(Array.isArray(role.permissions) ? role.permissions : [])],
+        })) : [],
+    };
 }
 
 function newRoleId(name: string, roles: AgentTeamRole[]): string {
@@ -84,11 +45,11 @@ function newRoleId(name: string, roles: AgentTeamRole[]): string {
     return candidate;
 }
 
-export function TeamPermissionsPanel({ team, teams, addons, section, saving, onSave }: Props) {
+export function TeamPermissionsPanel({ team, teams, addons, permissions, section, saving, onSave }: Props) {
     const mounted = useMemo(() => mountedAddonIds(team, teams, addons), [addons, team.config?.addons, team.groupId, team.teamId, teams]);
-    const catalog = useMemo(() => permissionCatalog(addons, mounted), [addons, mounted]);
+    const catalog = useMemo(() => mountedPermissionCatalog(permissions, mounted), [mounted, permissions]);
     const permissionFamilies = useMemo(() => {
-        const families = new Map<string, PermissionOption[]>();
+        const families = new Map<string, AgentPermissionView[]>();
         for (const permission of catalog) {
             const items = families.get(permission.family) ?? [];
             items.push(permission);
@@ -96,27 +57,19 @@ export function TeamPermissionsPanel({ team, teams, addons, section, saving, onS
         }
         return [...families.entries()];
     }, [catalog]);
-    const [acl, setAcl] = useState(() => normalizeAcl(team.config?.acl, catalog));
+    const [acl, setAcl] = useState(() => normalizeAcl(team.config?.acl));
     const [newRoleName, setNewRoleName] = useState('');
+    const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
     const [error, setError] = useState('');
     const [notice, setNotice] = useState('');
     const [dirty, setDirty] = useState(false);
-    const activeRole = acl.roles.find((role) => role.roleId === acl.activeRoleId) ?? acl.roles[0];
 
     useEffect(() => {
-        setAcl(normalizeAcl(team.config?.acl, catalog));
+        setAcl(normalizeAcl(team.config?.acl));
+        setSelectedRoleIds([]);
         setDirty(false);
         setError('');
     }, [catalog, team.teamId, team.config?.acl]);
-
-    function updateActiveRole(update: (role: AgentTeamRole) => AgentTeamRole) {
-        setAcl((current) => ({
-            ...current,
-            roles: current.roles.map((role) => role.roleId === current.activeRoleId ? update(role) : role),
-        }));
-        setDirty(true);
-        setNotice('');
-    }
 
     function addRole() {
         const name = newRoleName.trim();
@@ -124,24 +77,32 @@ export function TeamPermissionsPanel({ team, teams, addons, section, saving, onS
         if (!name) return setError(i18n('Enter a role name.'));
         if (name.length > 64) return setError(i18n('Role name must be 64 characters or fewer.'));
         const roleId = newRoleId(name, acl.roles);
-        const role: AgentTeamRole = {
-            roleId,
-            name,
-            permissions: activeRole.roleId === 'root' ? catalog.map((permission) => permission.id) : [...activeRole.permissions],
-        };
-        setAcl((current) => ({ ...current, activeRoleId: roleId, roles: [...current.roles, role] }));
+        const defaultRole = acl.roles.find((role) => role.roleId === 'default');
+        const role: AgentTeamRole = { roleId, name, permissions: [...(defaultRole?.permissions || [])] };
+        setAcl((current) => ({ ...current, roles: [...current.roles, role] }));
         setNewRoleName('');
         setDirty(true);
         setError('');
         setNotice('');
     }
 
-    function removeRole() {
-        if (acl.roles.length <= 3 || ['root', 'default', 'guest'].includes(activeRole.roleId)) return;
-        const roles = acl.roles.filter((role) => role.roleId !== activeRole.roleId);
-        setAcl((current) => ({ ...current, activeRoleId: roles[0].roleId, roles }));
+    function removeSelectedRoles() {
+        const removable = selectedRoleIds.filter((roleId) => !['root', 'default', 'guest'].includes(roleId));
+        if (!removable.length) {
+            setError(i18n('Select at least one custom role to delete.'));
+            return;
+        }
+        if (!window.confirm(i18n('Confirm deleting the selected roles? Agents assigned to them will inherit the Default role.'))) return;
+        setAcl((current) => ({ ...current, roles: current.roles.filter((role) => !removable.includes(role.roleId)) }));
+        setSelectedRoleIds([]);
         setDirty(true);
+        setError('');
         setNotice('');
+    }
+
+    function toggleRoleSelection(roleId: string) {
+        if (['root', 'default', 'guest'].includes(roleId)) return;
+        setSelectedRoleIds((current) => current.includes(roleId) ? current.filter((id) => id !== roleId) : [...current, roleId]);
     }
 
     function togglePermission(roleId: string, permissionId: string) {
@@ -186,35 +147,38 @@ export function TeamPermissionsPanel({ team, teams, addons, section, saving, onS
                 {section === 'roles' ? (
                     <section className={styles.section}>
                         <h3>{i18n('Roles')}</h3>
-                        <p className={styles.hint}>{i18n('The selected role applies to Agent sessions in this Group.')}</p>
-                        <div className={styles.roleHeader}>
-                            <label className={styles.roleSelect}>
-                                <span>{i18n('Active role')}</span>
-                                <select value={acl.activeRoleId} disabled={saving} onChange={(event) => {
-                                    setAcl((current) => ({ ...current, activeRoleId: event.target.value }));
-                                    setDirty(true);
-                                    setNotice('');
-                                }}>
-                                    {acl.roles.map((role) => <option key={role.roleId} value={role.roleId}>{i18n(role.name)}</option>)}
-                                </select>
-                            </label>
-                            <button type="button" className={styles.removeRole} disabled={saving || acl.roles.length <= 3 || ['root', 'default', 'guest'].includes(activeRole.roleId)} onClick={removeRole}>{i18n('Delete role')}</button>
+                        <p className={styles.hint}>{i18n('Assign a role to each Agent from the Agents tab. Agents without an assigned role use Default.')}</p>
+                        <div className={styles.tableWrap}>
+                            <table className={styles.permissionTable}>
+                                <thead><tr><th>{i18n('Select')}</th><th>{i18n('Role')}</th><th>{i18n('Permissions')}</th></tr></thead>
+                                <tbody>
+                                    {acl.roles.map((role) => {
+                                        const builtin = ['root', 'default', 'guest'].includes(role.roleId);
+                                        return <tr key={role.roleId}>
+                                            <td><input type="checkbox" checked={selectedRoleIds.includes(role.roleId)} disabled={saving || builtin} onChange={() => setSelectedRoleIds((current) => current.includes(role.roleId) ? current.filter((id) => id !== role.roleId) : [...current, role.roleId])} /></td>
+                                            <td>{i18n(role.name)}{builtin ? <small> · {i18n('Built-in')}</small> : null}</td>
+                                            <td>{role.roleId === 'root' ? i18n('All permissions') : role.permissions.length}</td>
+                                        </tr>;
+                                    })}
+                                </tbody>
+                            </table>
                         </div>
                         <div className={styles.addRole}>
                             <input value={newRoleName} disabled={saving} onChange={(event) => setNewRoleName(event.target.value)} placeholder={i18n('New role name')} />
                             <button type="button" disabled={saving || !newRoleName.trim()} onClick={addRole}>{i18n('Add role')}</button>
+                            <button type="button" className={styles.removeRole} disabled={saving || !selectedRoleIds.some((roleId) => !['root', 'default', 'guest'].includes(roleId))} onClick={removeSelectedRoles}>{i18n('Delete Selected Roles')}</button>
                         </div>
                     </section>
                 ) : (
                     <section className={styles.section}>
                         <h3>{i18n('Permissions')}</h3>
-                        <p className={styles.hint}>{i18n('Mounted add-ons automatically grant their declared permissions to the active role.')}</p>
+                        <p className={styles.hint}>{i18n('Only permissions from mounted add-ons are listed. Assign each permission to a role independently.')}</p>
                         <div className={styles.tableWrap}>
                             <table className={styles.permissionTable}>
                                 <thead>
                                     <tr>
                                         <th>{i18n('Permission')}</th>
-                                        {acl.roles.map((role) => <th key={role.roleId} className={role.roleId === acl.activeRoleId ? styles.activeRole : undefined}>{i18n(role.name)}</th>)}
+                                        {acl.roles.map((role) => <th key={role.roleId}>{i18n(role.name)}</th>)}
                                     </tr>
                                 </thead>
                                 {permissionFamilies.map(([family, permissions]) => (
@@ -229,7 +193,7 @@ export function TeamPermissionsPanel({ team, teams, addons, section, saving, onS
                                                 {acl.roles.map((role) => {
                                                     const isRoot = role.roleId === 'root';
                                                     const checked = isRoot || role.permissions.includes(permission.id);
-                                                    return <td key={role.roleId} className={role.roleId === acl.activeRoleId ? styles.activeRole : undefined}>
+                                                    return <td key={role.roleId}>
                                                         <input
                                                             type="checkbox"
                                                             aria-label={`${role.name}: ${permission.name}`}

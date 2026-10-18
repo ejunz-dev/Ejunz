@@ -40,7 +40,7 @@ import { ToolsSection } from './components/settings/ToolsSection';
 import { DeepSeekOnboarding } from './components/settings/DeepSeekOnboarding';
 import { SettingsDocumentAction } from './components/settings/SettingsDocumentAction';
 import { SettingsRoot } from './components/settings/SettingsRoot';
-import type { AgentAddonView, ChatMessage, PendingApproval, PendingQuestion, QueueItem, SessionModels } from './components/types';
+import type { AgentAddonView, AgentPermissionView, ChatMessage, PendingApproval, PendingQuestion, QueueItem, SessionModels } from './components/types';
 import { domainPrefix, useAgentRpc } from './runtime/rpc';
 import { notifyAgentPluginDisabled, registerAgentPluginUiLoader, setEnabledAgentPluginSlots } from './runtime/agent-plugin-slots';
 import { useAgentTheme } from './runtime/theme';
@@ -479,6 +479,7 @@ export default function AgentPage() {
     const [activeTreeTeamId, setActiveTreeTeamId] = useState<string | null>(() => readAgentSelection().teamId ?? pageRootTeamId);
     const [bases, setBases] = useState<BaseView[]>([]);
     const [agentAddons, setAgentAddons] = useState<AgentAddonView[]>([]);
+    const [agentPermissions, setAgentPermissions] = useState<AgentPermissionView[]>([]);
     const [enabledAgentAddonIds, setEnabledAgentAddonIds] = useState<Set<string>>(new Set());
     const [draftBaseId, setDraftBaseId] = useState<number | undefined>();
     const [draftTeamId, setDraftTeamId] = useState<string | undefined>();
@@ -711,15 +712,17 @@ export default function AgentPage() {
 
     const loadAgentAddons = useCallback(async () => {
         try {
-            const value = await rpc('agent.addons.list', {}) as { addons?: AgentAddonView[] };
+            const value = await rpc('agent.addons.list', {}) as { addons?: AgentAddonView[]; permissions?: AgentPermissionView[] };
             const addons = value.addons ?? [];
             const enabled = new Set(addons.filter((addon) => addon.enabled).map((addon) => addon.addonId));
             setAgentAddons(addons);
+            setAgentPermissions(Array.isArray(value.permissions) ? value.permissions : []);
             setEnabledAgentAddonIds(enabled);
             void setEnabledAgentPluginSlots(enabled);
         } catch {
             const disabled = new Set<string>();
             setAgentAddons([]);
+            setAgentPermissions([]);
             setEnabledAgentAddonIds(disabled);
             void setEnabledAgentPluginSlots(disabled);
         }
@@ -2399,11 +2402,7 @@ export default function AgentPage() {
                                     team={teamSettingsTeam}
                                     teams={teams}
                                     agents={agents}
-                                    roles={teamSettingsTeam.config?.acl?.roles ?? [
-                                        { roleId: 'root', name: 'Root', permissions: ['agent:read', 'agent:manage'] },
-                                        { roleId: 'default', name: 'Default', permissions: ['agent:read', 'agent:manage'] },
-                                        { roleId: 'guest', name: 'Guest', permissions: ['agent:read'] },
-                                    ]}
+                                    roles={teamSettingsTeam.config?.acl?.roles ?? []}
                                     savingAgentId={savingAgentRoleId}
                                     onCreateAgent={() => { setTeamSettingsId(null); void prepareNewSession(undefined, undefined, true); }}
                                     onRoleChange={async (agentId, roleId) => {
@@ -2420,6 +2419,7 @@ export default function AgentPage() {
                                     team={teamSettingsTeam}
                                     teams={teams}
                                     addons={agentAddons}
+                                    permissions={agentPermissions}
                                     section={teamSettingsTab === 'role' ? 'roles' : 'permissions'}
                                     saving={teamConfigSaving}
                                     onSave={async (acl: AgentTeamAcl) => {

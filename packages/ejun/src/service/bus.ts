@@ -53,7 +53,7 @@ export interface AgentAclChange {
     userId: number;
     groupId?: number | null;
     teamId: string;
-    acl: { activeRoleId: string; roles: { roleId: string; name: string; permissions: string[] }[] };
+    acl: { roles: { roleId: string; name: string; permissions: string[] }[] };
 }
 
 export interface AgentContextChange {

@@ -1,16 +1,19 @@
-import type { AgentTeamAcl } from '../model/agent';
+import { BUILTIN_AGENT_ROLES, defaultAgentAcl, type AgentTeamAcl } from '../model/agent';
+
+export { defaultAgentAcl };
 import { listAgentAddons } from './addons';
 
 export interface AgentPermissionInfo {
     id: string;
     name: string;
+    family: string;
     description?: string;
     addonId?: string;
 }
 
 export const AGENT_CORE_PERMISSIONS: readonly AgentPermissionInfo[] = [
-    { id: 'agent:read', name: 'Read Agent workspace', description: 'View Agents, Teams, sessions, and their history.' },
-    { id: 'agent:manage', name: 'Manage Agent workspace', description: 'Create, update, and delete Agents, Teams, and sessions.' },
+    { id: 'agent:read', name: 'Read Agent workspace', family: 'Agent', description: 'View Agents, Teams, sessions, and their history.' },
+    { id: 'agent:manage', name: 'Manage Agent workspace', family: 'Agent', description: 'Create, update, and delete Agents, Teams, and sessions.' },
 ];
 
 export const DEFAULT_AGENT_ROLE_ID = 'default';
@@ -25,22 +28,11 @@ export function agentPermissionCatalog(): AgentPermissionInfo[] {
         ...listAgentAddons().flatMap((addon) => (addon.permissions || []).map((permission) => ({
             id: addonAgentPermissionId(addon.addonId, permission.id),
             name: permission.name,
+            family: addon.displayName,
             ...(permission.description ? { description: permission.description } : {}),
             addonId: addon.addonId,
         }))),
     ];
-}
-
-export function defaultAgentAcl(): AgentTeamAcl {
-    const corePermissions = AGENT_CORE_PERMISSIONS.map((permission) => permission.id);
-    return {
-        activeRoleId: DEFAULT_AGENT_ROLE_ID,
-        roles: [
-            { roleId: 'root', name: 'Root', permissions: corePermissions },
-            { roleId: DEFAULT_AGENT_ROLE_ID, name: 'Default', permissions: corePermissions },
-            { roleId: 'guest', name: 'Guest', permissions: ['agent:read'] },
-        ],
-    };
 }
 
 export function normalizeAgentAcl(value: unknown): AgentTeamAcl {
@@ -65,26 +57,19 @@ export function normalizeAgentAcl(value: unknown): AgentTeamAcl {
         }
         return { roleId, name, permissions: [...new Set(permissions as string[])].sort() };
     });
-    const corePermissions = AGENT_CORE_PERMISSIONS.map((permission) => permission.id);
-    const builtins: AgentTeamRole[] = [
-        { roleId: 'root', name: 'Root', permissions: corePermissions },
-        { roleId: DEFAULT_AGENT_ROLE_ID, name: 'Default', permissions: AGENT_CORE_PERMISSIONS.map((permission) => permission.id) },
-        { roleId: 'guest', name: 'Guest', permissions: ['agent:read'] },
-    ];
+    const builtins = BUILTIN_AGENT_ROLES.map((role) => ({ ...role, permissions: [...role.permissions] }));
     for (const builtin of builtins) {
         const existing = roles.find((role) => role.roleId === builtin.roleId);
-        if (builtin.roleId === 'root' && existing) existing.permissions = corePermissions;
+        if (builtin.roleId === 'root' && existing) existing.permissions = [...builtin.permissions];
         else if (!existing) roles.push(builtin);
     }
     if (roles.length > 32) throw new Error('Agent ACL can contain at most 32 roles.');
-    const activeRoleId = typeof input.activeRoleId === 'string' && roles.some((role) => role.roleId === input.activeRoleId)
-        ? input.activeRoleId
-        : DEFAULT_AGENT_ROLE_ID;
-    return { activeRoleId, roles };
+    return { roles };
 }
 
-export function permissionsForAgentAcl(acl: AgentTeamAcl | undefined): Set<string> {
+export function permissionsForAgentAcl(acl: AgentTeamAcl | undefined, roleId = DEFAULT_AGENT_ROLE_ID): Set<string> {
     const resolved = acl || defaultAgentAcl();
-    const role = resolved.roles.find((item) => item.roleId === resolved.activeRoleId);
+    const role = resolved.roles.find((item) => item.roleId === roleId)
+        || resolved.roles.find((item) => item.roleId === DEFAULT_AGENT_ROLE_ID);
     return new Set(role?.permissions || []);
 }

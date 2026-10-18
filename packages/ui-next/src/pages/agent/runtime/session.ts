@@ -7,7 +7,6 @@ export interface AgentTeamRole {
 }
 
 export interface AgentTeamAcl {
-    activeRoleId: string;
     roles: AgentTeamRole[];
 }
 

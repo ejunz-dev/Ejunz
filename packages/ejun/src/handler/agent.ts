@@ -9,7 +9,7 @@ import type { RuntimeHelloFrame, RuntimeInboundFrame, RuntimeLinkPollFrame, Runt
 import { agentRuntimeHandlerContext as service } from '../service/runtime';
 import { listAgentAddons } from '../service/addons';
 import type { AgentAddonStateChange } from '../service/bus';
-import { addonAgentPermissionId, AGENT_CORE_PERMISSIONS, defaultAgentAcl, DEFAULT_AGENT_ROLE_ID, normalizeAgentAcl, permissionsForAgentAcl } from '../service/agent-permissions';
+import { addonAgentPermissionId, AGENT_CORE_PERMISSIONS, agentPermissionCatalog, defaultAgentAcl, DEFAULT_AGENT_ROLE_ID, normalizeAgentAcl, permissionsForAgentAcl } from '../service/agent-permissions';
 
 interface RpcEnvelope {
     type?: string;
@@ -168,20 +168,19 @@ async function permissionsForSession(
     mountedAddons: ReadonlySet<string>,
 ): Promise<Set<string>> {
     const scope = { domainId: session.domainId, userId: session.userId, groupId: session.groupId };
-    const rootAcl = await agentAclForScope(scope, session.teamId);
+    const acl = await agentAclForScope(scope, session.teamId);
     const agent = session.agentId ? await AgentModel.getAgent(session.domainId, session.userId, session.agentId, session.groupId) : null;
-    const acl = agent?.settings?.roleId && rootAcl?.roles.some((role) => role.roleId === agent.settings.roleId)
-        ? { ...rootAcl, activeRoleId: agent.settings.roleId }
-        : rootAcl;
-    const permissions = permissionsForAgentAcl(acl);
-    const activeRoleId = acl?.activeRoleId || DEFAULT_AGENT_ROLE_ID;
+    const roleId = agent?.settings?.roleId && acl?.roles.some((role) => role.roleId === agent.settings.roleId)
+        ? agent.settings.roleId
+        : DEFAULT_AGENT_ROLE_ID;
+    const permissions = permissionsForAgentAcl(acl, roleId);
     const corePermissionIds = new Set(AGENT_CORE_PERMISSIONS.map((permission) => permission.id));
     for (const permissionId of [...permissions]) {
         if (corePermissionIds.has(permissionId)) continue;
         const addonId = permissionId.split(':', 1)[0];
         if (!mountedAddons.has(addonId)) permissions.delete(permissionId);
     }
-    if (activeRoleId === 'root') {
+    if (roleId === 'root') {
         for (const addon of listAgentAddons()) {
             if (!mountedAddons.has(addon.addonId)) continue;
             for (const permission of addon.permissions || []) permissions.add(addonAgentPermissionId(addon.addonId, permission.id));
@@ -638,8 +637,12 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             return;
         }
         if (method === 'agent.addons.list') {
+            const result = await agentAddonsList(envelope, scope);
+            const value = result.result?.ok ? result.result.value as Record<string, unknown> : undefined;
             this.response.type = 'application/json';
-            this.response.body = JSON.stringify(await agentAddonsList(envelope, scope));
+            this.response.body = JSON.stringify(value
+                ? rpcOk(envelope.rpcId, { ...value, permissions: agentPermissionCatalog() })
+                : result);
             return;
         }
         if (method === 'agent.addons.market.list') {

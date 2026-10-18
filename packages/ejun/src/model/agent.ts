@@ -581,8 +581,17 @@ export interface AgentTeamRole {
 }
 
 export interface AgentTeamAcl {
-    activeRoleId: string;
     roles: AgentTeamRole[];
+}
+
+export const BUILTIN_AGENT_ROLES: readonly AgentTeamRole[] = [
+    { roleId: 'root', name: 'Root', permissions: ['agent:read', 'agent:manage'] },
+    { roleId: 'default', name: 'Default', permissions: ['agent:read', 'agent:manage'] },
+    { roleId: 'guest', name: 'Guest', permissions: ['agent:read'] },
+];
+
+export function defaultAgentAcl(): AgentTeamAcl {
+    return { roles: BUILTIN_AGENT_ROLES.map((role) => ({ ...role, permissions: [...role.permissions] })) };
 }
 
 export interface AgentTeamConfig {
@@ -1057,8 +1066,10 @@ export class AgentSessionModel {
         const now = new Date();
         const existing = await teamsCollection.findOne(filter) as AgentTeamDoc | null;
         if (existing) {
+            const $set: Record<string, unknown> = { text: title, order: -1, updatedAt: now };
+            if (!existing.config?.acl) $set.config = { ...(existing.config || {}), acl: defaultAgentAcl() };
             await teamsCollection.updateOne(filter, {
-                $set: { text: title, order: -1, updatedAt: now },
+                $set,
                 $unset: { parentTeamId: 1 },
             });
             return await teamsCollection.findOne(filter) as AgentTeamDoc;
@@ -1074,6 +1085,7 @@ export class AgentSessionModel {
             isRootTeam: true,
             text: title,
             order: -1,
+            config: { acl: defaultAgentAcl() },
             createdAt: now,
             updatedAt: now,
         };

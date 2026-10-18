@@ -18,7 +18,7 @@ export function TeamAgentsPanel({ team, teams, agents, roles, savingAgentId, onC
     const [error, setError] = useState('');
     const groupAgents = useMemo(() => agents.filter((agent) => agent.groupId === team.groupId), [agents, team.groupId]);
     const teamNames = useMemo(() => new Map(teams.map((item) => [item.teamId, item.text])), [teams]);
-    const defaultRole = team.config?.acl?.roles.find((role) => role.roleId === team.config?.acl?.activeRoleId)?.name || i18n('Default');
+    const defaultRole = team.config?.acl?.roles.find((role) => role.roleId === 'default')?.name || i18n('Default');
 
     return (
         <div className={styles.panel}>
