@@ -84,6 +84,15 @@ async function saveTeamConfig(envelope: RpcEnvelope, scope: AgentScope, ctx: Con
 
     const updated = await AgentSessionModel.updateTeamConfig(scope.domainId, scope.userId, teamId, { ...config, ...patch }, scope.groupId);
     if (!updated) return rpcError(envelope.rpcId, 'team not found');
+    if (patch.acl) {
+        await ctx.broadcast('agent/acl-update', {
+            domainId: scope.domainId,
+            userId: scope.userId,
+            ...(scope.groupId === undefined ? {} : { groupId: scope.groupId }),
+            teamId,
+            acl: patch.acl,
+        });
+    }
 
     if (Object.prototype.hasOwnProperty.call(patch, 'addons')) {
         for (const addon of listAgentAddons()) {
@@ -167,11 +176,10 @@ async function permissionsForSession(
         const addonId = permissionId.split(':', 1)[0];
         if (!mountedAddons.has(addonId)) permissions.delete(permissionId);
     }
-    for (const addon of listAgentAddons()) {
-        if (!mountedAddons.has(addon.addonId)) continue;
-        for (const permission of addon.permissions || []) {
-            if (activeRoleId === 'guest' && permission.id !== 'read') continue;
-            permissions.add(addonAgentPermissionId(addon.addonId, permission.id));
+    if (activeRoleId === 'root') {
+        for (const addon of listAgentAddons()) {
+            if (!mountedAddons.has(addon.addonId)) continue;
+            for (const permission of addon.permissions || []) permissions.add(addonAgentPermissionId(addon.addonId, permission.id));
         }
     }
     return permissions;
@@ -181,19 +189,24 @@ async function syncAddonPermissionsToRootTeams(change: AgentAddonStateChange): P
     const addon = listAgentAddons().find((item) => item.addonId === change.addonId);
     if (!addon?.permissions?.length) return;
     const permissionIds = addon.permissions.map((permission) => addonAgentPermissionId(addon.addonId, permission.id));
+    if (change.enabled) return;
     const userId = change.teamId ? change.userId : undefined;
+    if (change.teamId && typeof change.groupId === 'number') {
+        const [teams, domainEnabled] = await Promise.all([
+            AgentSessionModel.listTeams(change.domainId, change.userId, change.groupId),
+            enabledAgentAddonIds(change.domainId, change.groupId),
+        ]);
+        const stillMounted = teams.some((team) => domainEnabled.has(addon.addonId)
+            && (team.config?.addons === undefined || team.config.addons[addon.addonId] === true));
+        if (stillMounted) return;
+    }
     const roots = await AgentSessionModel.listGroupRootTeams(change.domainId, change.groupId, userId);
     for (const root of roots) {
         const acl = normalizeAgentAcl(root.config?.acl || defaultAgentAcl());
         let changed = false;
         const roles = acl.roles.map((role) => {
-            const granted = change.enabled && (role.roleId !== 'guest' || addon.permissions?.some((permission) => permission.id === 'read'))
-                ? permissionIds.filter((id) => role.roleId !== 'guest' || id.endsWith(':read'))
-                : [];
-            const permissions = change.enabled
-                ? [...new Set([...role.permissions, ...granted])].sort()
-                : role.permissions.filter((id) => !permissionIds.includes(id));
-            if (permissions.length !== role.permissions.length || permissions.some((id, index) => id !== role.permissions[index])) changed = true;
+            const permissions = role.permissions.filter((id) => !permissionIds.includes(id));
+            if (permissions.length !== role.permissions.length) changed = true;
             return { ...role, permissions };
         });
         if (!changed) continue;

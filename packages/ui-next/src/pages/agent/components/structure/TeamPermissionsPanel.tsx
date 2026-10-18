@@ -15,6 +15,7 @@ interface PermissionOption {
 
 interface Props {
     team: AgentTeam;
+    teams: readonly AgentTeam[];
     addons: readonly AgentAddonView[];
     section: 'roles' | 'permissions';
     saving: boolean;
@@ -51,11 +52,12 @@ function permissionCatalog(addons: readonly AgentAddonView[], mounted: ReadonlyS
     ];
 }
 
-function mountedAddonIds(team: AgentTeam, addons: readonly AgentAddonView[]): Set<string> {
-    return new Set(addons.filter((addon) => {
-        if (!addon.installed || !addon.enabled) return false;
-        return team.config?.addons === undefined ? true : team.config.addons[addon.addonId] === true;
-    }).map((addon) => addon.addonId));
+function mountedAddonIds(team: AgentTeam, teams: readonly AgentTeam[], addons: readonly AgentAddonView[]): Set<string> {
+    const groupTeams = teams.filter((item) => item.groupId === team.groupId);
+    const scopedTeams = groupTeams.length ? groupTeams : [team];
+    return new Set(addons.filter((addon) => addon.installed && addon.enabled && scopedTeams.some((item) => (
+        item.config?.addons === undefined ? true : item.config.addons[addon.addonId] === true
+    ))).map((addon) => addon.addonId));
 }
 
 function normalizeAcl(value: AgentTeamAcl | undefined, catalog: PermissionOption[]): AgentTeamAcl {
@@ -82,8 +84,8 @@ function newRoleId(name: string, roles: AgentTeamRole[]): string {
     return candidate;
 }
 
-export function TeamPermissionsPanel({ team, addons, section, saving, onSave }: Props) {
-    const mounted = useMemo(() => mountedAddonIds(team, addons), [addons, team.config?.addons, team.teamId]);
+export function TeamPermissionsPanel({ team, teams, addons, section, saving, onSave }: Props) {
+    const mounted = useMemo(() => mountedAddonIds(team, teams, addons), [addons, team.config?.addons, team.groupId, team.teamId, teams]);
     const catalog = useMemo(() => permissionCatalog(addons, mounted), [addons, mounted]);
     const permissionFamilies = useMemo(() => {
         const families = new Map<string, PermissionOption[]>();
@@ -100,11 +102,6 @@ export function TeamPermissionsPanel({ team, addons, section, saving, onSave }: 
     const [notice, setNotice] = useState('');
     const [dirty, setDirty] = useState(false);
     const activeRole = acl.roles.find((role) => role.roleId === acl.activeRoleId) ?? acl.roles[0];
-    const autoGranted = useMemo(() => new Set(catalog.filter((permission) => (
-        permission.addonId
-        && mounted.has(permission.addonId)
-        && (activeRole.roleId !== 'guest' || permission.id.endsWith(':read'))
-    )).map((permission) => permission.id)), [activeRole.roleId, catalog, mounted]);
 
     useEffect(() => {
         setAcl(normalizeAcl(team.config?.acl, catalog));
@@ -127,7 +124,11 @@ export function TeamPermissionsPanel({ team, addons, section, saving, onSave }: 
         if (!name) return setError(i18n('Enter a role name.'));
         if (name.length > 64) return setError(i18n('Role name must be 64 characters or fewer.'));
         const roleId = newRoleId(name, acl.roles);
-        const role: AgentTeamRole = { roleId, name, permissions: [...autoGranted] };
+        const role: AgentTeamRole = {
+            roleId,
+            name,
+            permissions: activeRole.roleId === 'root' ? catalog.map((permission) => permission.id) : [...activeRole.permissions],
+        };
         setAcl((current) => ({ ...current, activeRoleId: roleId, roles: [...current.roles, role] }));
         setNewRoleName('');
         setDirty(true);
@@ -145,7 +146,7 @@ export function TeamPermissionsPanel({ team, addons, section, saving, onSave }: 
 
     function togglePermission(roleId: string, permissionId: string) {
         const role = acl.roles.find((item) => item.roleId === roleId);
-        if (!role || roleId === 'root' || (roleId === acl.activeRoleId && autoGranted.has(permissionId))) return;
+        if (!role || roleId === 'root') return;
         setAcl((current) => ({
             ...current,
             roles: current.roles.map((item) => item.roleId !== roleId ? item : {
@@ -165,9 +166,7 @@ export function TeamPermissionsPanel({ team, addons, section, saving, onSave }: 
         setNotice('');
         const nextAcl: AgentTeamAcl = {
             ...acl,
-            roles: acl.roles.map((role) => role.roleId === acl.activeRoleId
-                ? { ...role, permissions: [...new Set([...role.permissions, ...autoGranted])].sort() }
-                : role),
+            roles: acl.roles.map((role) => ({ ...role, permissions: [...new Set(role.permissions)].sort() })),
         };
         try {
             await onSave(nextAcl);
@@ -224,19 +223,18 @@ export function TeamPermissionsPanel({ team, addons, section, saving, onSave }: 
                                         {permissions.map((permission) => (
                                             <tr key={permission.id}>
                                                 <td>
-                                                    <span>{i18n(permission.name)}{autoGranted.has(permission.id) ? <small>{i18n(' · Add-on mounted')}</small> : null}</span>
+                                                    <span>{i18n(permission.name)}</span>
                                                     {permission.description ? <small>{i18n(permission.description)}</small> : null}
                                                 </td>
                                                 {acl.roles.map((role) => {
                                                     const isRoot = role.roleId === 'root';
-                                                    const isAuto = role.roleId === acl.activeRoleId && autoGranted.has(permission.id);
-                                                    const checked = isRoot || isAuto || role.permissions.includes(permission.id);
+                                                    const checked = isRoot || role.permissions.includes(permission.id);
                                                     return <td key={role.roleId} className={role.roleId === acl.activeRoleId ? styles.activeRole : undefined}>
                                                         <input
                                                             type="checkbox"
                                                             aria-label={`${role.name}: ${permission.name}`}
                                                             checked={checked}
-                                                            disabled={saving || isRoot || isAuto}
+                                                            disabled={saving || isRoot}
                                                             onChange={() => togglePermission(role.roleId, permission.id)}
                                                         />
                                                     </td>;

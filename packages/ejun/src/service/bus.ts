@@ -48,6 +48,14 @@ export interface AgentTeamContextChange {
     teamId: string;
 }
 
+export interface AgentAclChange {
+    domainId: string;
+    userId: number;
+    groupId?: number | null;
+    teamId: string;
+    acl: { activeRoleId: string; roles: { roleId: string; name: string; permissions: string[] }[] };
+}
+
 export interface AgentContextChange {
     domainId: string;
     userId: number;
@@ -78,6 +86,7 @@ export interface EventMap {
     'system/setting': (args: Record<string, any>) => VoidReturn;
     'system/setting-loaded': () => VoidReturn;
     'agent/addon-state': (change: AgentAddonStateChange) => VoidReturn;
+    'agent/acl-update': (change: AgentAclChange) => VoidReturn;
     'agent/team-context': (change: AgentTeamContextChange) => VoidReturn;
     'agent/agent-context': (change: AgentContextChange) => VoidReturn;
     'bus/broadcast': (event: keyof EventMap, payload: any, trace?: string) => VoidReturn;

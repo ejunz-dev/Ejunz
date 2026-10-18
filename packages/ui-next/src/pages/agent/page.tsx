@@ -2388,6 +2388,7 @@ export default function AgentPage() {
                             />
                             : <TeamPermissionsPanel
                                 team={teamSettingsTeam}
+                                teams={teams}
                                 addons={agentAddons}
                                 section={teamSettingsTab === 'role' ? 'roles' : 'permissions'}
                                 saving={teamConfigSaving}
