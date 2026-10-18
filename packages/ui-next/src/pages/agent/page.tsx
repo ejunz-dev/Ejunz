@@ -487,7 +487,7 @@ export default function AgentPage() {
     const [modelMenuOpen, setModelMenuOpen] = useState(false);
     const [detailsOpen, setDetailsOpen] = useState(false);
     const [teamSettingsId, setTeamSettingsId] = useState<string | null>(null);
-    const [teamSettingsTab, setTeamSettingsTab] = useState<'context' | 'addons' | 'permissions'>('context');
+    const [teamSettingsTab, setTeamSettingsTab] = useState<'context' | 'role' | 'permissions' | 'addons'>('context');
     const [teamContextEditing, setTeamContextEditing] = useState(false);
     const [teamConfigSaving, setTeamConfigSaving] = useState(false);
     const [selectedAgentSettingsId, setSelectedAgentSettingsId] = useState<string | null>(() => readAgentSelection().agentId);
@@ -1360,7 +1360,7 @@ export default function AgentPage() {
             };
             let agentId = existingSession?.agentId ?? agentIdOverride ?? draftAgentId;
             if (!agentId) {
-                const createdAgent = await createAgentRecord(title, selectedTeamId ?? rootTeamId, settings);
+                const createdAgent = await createAgentRecord(title, selectedTeamId ?? rootTeamId ?? undefined, settings);
                 agentId = createdAgent.agentId;
                 createdAgentId = agentId;
                 setAgents((items) => [createdAgent, ...items.filter((item) => item.agentId !== createdAgent.agentId)]);
@@ -1483,7 +1483,7 @@ export default function AgentPage() {
                 await startSession('', agentPresetChoice, draftBaseId, title, selectedDraftModel, undefined, draftAgentId);
                 return;
             }
-            const teamId = draftTeamId ?? rootTeamId;
+            const teamId = draftTeamId ?? rootTeamId ?? undefined;
             const agent = await createAgentRecord(title, teamId, {
                 ...(draftHostId === '' ? {} : { runtimeId: draftHostId }),
                 ...(draftBaseId === undefined ? {} : { baseDocId: String(draftBaseId) }),
@@ -2137,7 +2137,7 @@ export default function AgentPage() {
         setSelectedTool(null);
         const selectedTeam = teams.find((team) => team.teamId === teamId);
         setTeamSettingsId(selectedTeam ? teamId : null);
-        setTeamSettingsTab(selectedTeam?.isRootTeam ? 'permissions' : 'context');
+        setTeamSettingsTab('context');
         setTeamContextEditing(false);
         updateAgentSelectionUrl({ teamId, agentId: null });
     }, [teams]);
@@ -2353,8 +2353,11 @@ export default function AgentPage() {
                     view="model"
                     title={teamSettingsTeam.text}
                     headerTabs={[
-                        ...(teamSettingsTeam.isRootTeam ? [{ id: 'permissions', label: i18n('Role & permissions'), active: teamSettingsTab === 'permissions', onSelect: () => { setTeamSettingsTab('permissions'); setTeamContextEditing(false); } }] : []),
                         { id: 'context', label: i18n('Context'), active: teamSettingsTab === 'context', onSelect: () => { setTeamSettingsTab('context'); setTeamContextEditing(false); } },
+                        ...(teamSettingsTeam.isRootTeam ? [
+                            { id: 'role', label: i18n('Role'), active: teamSettingsTab === 'role', onSelect: () => { setTeamSettingsTab('role'); setTeamContextEditing(false); } },
+                            { id: 'permissions', label: i18n('Permissions'), active: teamSettingsTab === 'permissions', onSelect: () => { setTeamSettingsTab('permissions'); setTeamContextEditing(false); } },
+                        ] : []),
                         { id: 'addons', label: i18n('Add-ons'), active: teamSettingsTab === 'addons', onSelect: () => { setTeamSettingsTab('addons'); setTeamContextEditing(false); } },
                     ]}
                     headerActions={teamSettingsTab === 'context' ? <button type="button" className="bd-drawer__edit" onClick={() => setTeamContextEditing(true)} disabled={teamConfigSaving}>{i18n('Edit')}</button> : undefined}
@@ -2386,6 +2389,7 @@ export default function AgentPage() {
                             : <TeamPermissionsPanel
                                 team={teamSettingsTeam}
                                 addons={agentAddons}
+                                section={teamSettingsTab === 'role' ? 'roles' : 'permissions'}
                                 saving={teamConfigSaving}
                                 onSave={async (acl: AgentTeamAcl) => {
                                     await saveTeamConfig(teamSettingsTeam.teamId, { acl });

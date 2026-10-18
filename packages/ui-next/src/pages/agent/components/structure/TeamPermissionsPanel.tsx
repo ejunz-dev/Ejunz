@@ -15,6 +15,7 @@ interface PermissionOption {
 interface Props {
     team: AgentTeam;
     addons: readonly AgentAddonView[];
+    section: 'roles' | 'permissions';
     saving: boolean;
     onSave: (acl: AgentTeamAcl) => Promise<void>;
 }
@@ -69,7 +70,7 @@ function newRoleId(name: string, roles: AgentTeamRole[]): string {
     return candidate;
 }
 
-export function TeamPermissionsPanel({ team, addons, saving, onSave }: Props) {
+export function TeamPermissionsPanel({ team, addons, section, saving, onSave }: Props) {
     const initialAcl = normalizeAcl(team.config?.acl);
     const [acl, setAcl] = useState(initialAcl);
     const [newRoleName, setNewRoleName] = useState('');
@@ -152,10 +153,32 @@ export function TeamPermissionsPanel({ team, addons, saving, onSave }: Props) {
             <div className={styles.body}>
                 {error ? <Callout type="error">{error}</Callout> : null}
                 {notice ? <Callout type="info">{notice}</Callout> : null}
-                <section className={styles.section}>
-                    <div className={styles.roleHeader}>
+                {section === 'roles' ? (
+                    <section className={styles.section}>
+                        <h3>{i18n('Roles')}</h3>
+                        <p className={styles.hint}>{i18n('The selected role applies to Agent sessions in this Group.')}</p>
+                        <div className={styles.roleHeader}>
+                            <label className={styles.roleSelect}>
+                                <span>{i18n('Active role')}</span>
+                                <select value={acl.activeRoleId} disabled={saving} onChange={(event) => {
+                                    setAcl((current) => ({ ...current, activeRoleId: event.target.value }));
+                                    setDirty(true);
+                                    setNotice('');
+                                }}>
+                                    {acl.roles.map((role) => <option key={role.roleId} value={role.roleId}>{role.name}</option>)}
+                                </select>
+                            </label>
+                            <button type="button" className={styles.removeRole} disabled={saving || acl.roles.length <= 1 || activeRole.roleId === 'default'} onClick={removeRole}>{i18n('Delete role')}</button>
+                        </div>
+                        <div className={styles.addRole}>
+                            <input value={newRoleName} disabled={saving} onChange={(event) => setNewRoleName(event.target.value)} placeholder={i18n('New role name')} />
+                            <button type="button" disabled={saving || !newRoleName.trim()} onClick={addRole}>{i18n('Add role')}</button>
+                        </div>
+                    </section>
+                ) : (
+                    <section className={styles.section}>
                         <label className={styles.roleSelect}>
-                            <span>{i18n('Role')}</span>
+                            <span>{i18n('Permissions for role')}</span>
                             <select value={acl.activeRoleId} disabled={saving} onChange={(event) => {
                                 setAcl((current) => ({ ...current, activeRoleId: event.target.value }));
                                 setDirty(true);
@@ -164,35 +187,28 @@ export function TeamPermissionsPanel({ team, addons, saving, onSave }: Props) {
                                 {acl.roles.map((role) => <option key={role.roleId} value={role.roleId}>{role.name}</option>)}
                             </select>
                         </label>
-                        <button type="button" className={styles.removeRole} disabled={saving || acl.roles.length <= 1 || activeRole.roleId === 'default'} onClick={removeRole}>{i18n('Delete role')}</button>
-                    </div>
-                    <div className={styles.addRole}>
-                        <input value={newRoleName} disabled={saving} onChange={(event) => setNewRoleName(event.target.value)} placeholder={i18n('New role name')} />
-                        <button type="button" disabled={saving || !newRoleName.trim()} onClick={addRole}>{i18n('Add role')}</button>
-                    </div>
-                </section>
-                <section className={styles.section}>
-                    <h3>{i18n('Permissions')}</h3>
-                    <p className={styles.hint}>{i18n('Mounted add-ons automatically grant their declared permissions to this Agent role.')}</p>
-                    <div className={styles.permissionList}>
-                        {catalog.map((permission) => {
-                            const isAuto = autoGranted.has(permission.id);
-                            const checked = isAuto || activeRole.permissions.includes(permission.id);
-                            return <label className={styles.permission} key={permission.id}>
-                                <input type="checkbox" checked={checked} disabled={saving || isAuto} onChange={() => togglePermission(permission.id)} />
-                                <span className={styles.permissionCopy}>
-                                    <span>{i18n(permission.name)}{isAuto ? <small>{i18n(' · Add-on mounted')}</small> : null}</span>
-                                    {permission.description ? <small>{i18n(permission.description)}</small> : null}
-                                </span>
-                            </label>;
-                        })}
-                        {!catalog.length ? <span className={styles.hint}>{i18n('No Agent permissions are registered.')}</span> : null}
-                    </div>
-                </section>
+                        <h3>{i18n('Permissions')}</h3>
+                        <p className={styles.hint}>{i18n('Mounted add-ons automatically grant their declared permissions to this Agent role.')}</p>
+                        <div className={styles.permissionList}>
+                            {catalog.map((permission) => {
+                                const isAuto = autoGranted.has(permission.id);
+                                const checked = isAuto || activeRole.permissions.includes(permission.id);
+                                return <label className={styles.permission} key={permission.id}>
+                                    <input type="checkbox" checked={checked} disabled={saving || isAuto} onChange={() => togglePermission(permission.id)} />
+                                    <span className={styles.permissionCopy}>
+                                        <span>{i18n(permission.name)}{isAuto ? <small>{i18n(' · Add-on mounted')}</small> : null}</span>
+                                        {permission.description ? <small>{i18n(permission.description)}</small> : null}
+                                    </span>
+                                </label>;
+                            })}
+                            {!catalog.length ? <span className={styles.hint}>{i18n('No Agent permissions are registered.')}</span> : null}
+                        </div>
+                    </section>
+                )}
             </div>
             <footer className={styles.footer}>
                 <span className={styles.hint}>{saving ? i18n('Saving...') : dirty ? i18n('Unsaved changes') : ''}</span>
-                <Button variant="primary" disabled={!dirty || saving} onClick={() => { void save(); }}>{i18n('Save permissions')}</Button>
+                <Button variant="primary" disabled={!dirty || saving} onClick={() => { void save(); }}>{section === 'roles' ? i18n('Save role') : i18n('Save permissions')}</Button>
             </footer>
         </div>
     );
