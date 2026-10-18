@@ -1079,8 +1079,8 @@ export function apply(ctx: Context) {
         defaultEnabled: true,
     });
     ctx.effect(() => unregister);
-    const read = { source: 'agent', bindBase: 'none' as const };
-    const write = { ...read, mutating: true };
+    const read = { source: 'agent', bindBase: 'none' as const, agentPermissions: ['agent:read'] };
+    const write = { ...read, mutating: true, agentPermissions: ['agent:manage'] };
     ctx.Tool('agent', 'agent_group_list', listGroups, GroupList, read, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_group_search', searchGroups, GroupSearch, read, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_group_get', getGroup, GroupGet, read, PRIV.PRIV_USER_PROFILE);

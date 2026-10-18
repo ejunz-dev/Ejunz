@@ -58,6 +58,10 @@ export function apply(ctx: Context) {
         addonId: 'base',
         displayName: 'Ejunz Base',
         description: '选择一个 Ejunz Base 作为会话上下文，并使用 Base 工具处理其中的内容。',
+        permissions: [
+            { id: 'read', name: 'Read Base data', description: 'Read Base structure, cards, files, and records.' },
+            { id: 'write', name: 'Change Base data', description: 'Create, update, or delete Base content and files.' },
+        ],
         toolPrefixes: ['base_'],
         contextSources: ['ejunz-base-selector'],
         defaultEnabled: true,

@@ -44,12 +44,19 @@ export interface ChatMessage {
     pendingSessionId?: string;
 }
 
+export interface AgentAddonPermissionView {
+    id: string;
+    name: string;
+    description?: string;
+}
+
 export interface AgentAddonView {
     addonId: string;
     displayName: string;
     description: string;
     installed: boolean;
     enabled: boolean;
+    permissions?: readonly AgentAddonPermissionView[];
     toolPrefixes?: readonly string[];
     contextSources?: readonly string[];
     tools?: { name: string; description: string }[];

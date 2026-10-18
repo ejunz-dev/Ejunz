@@ -88,7 +88,7 @@ export * as StorageService from './service/storage';
 export { EventMap } from './service/bus';
 export { default as ToolService } from './service/registry';
 export { registerAgentAddon, listAgentAddons } from './service/addons';
-export type { AgentAddonDescriptor } from './service/addons';
+export type { AgentAddonDescriptor, AgentAddonPermission } from './service/addons';
 export { registerAgentContextPlugin } from './service/agent-context-plugins';
 export type { AgentContextPluginDescriptor } from './service/agent-context-plugins';
 export { createProvider } from './service/provider';

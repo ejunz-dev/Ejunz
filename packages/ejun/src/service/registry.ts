@@ -6,6 +6,7 @@ import { PermissionError, PrivilegeError } from 'ejun/src/error';
 import { isSchema, schemaDescription, schemaToJsonSchema, validateToolArgs } from '../lib/tool-schema';
 import type { ToolArgs, ToolBaseSelectPayload, ToolCalledPayload, ToolContext, ToolSpec } from '../lib/tool-types';
 import type { VoidReturn } from 'ejun/src/service/bus';
+import { listAgentAddons } from './addons';
 
 const logger = new Logger('tools/registry');
 
@@ -14,6 +15,7 @@ export interface ToolDeclaration {
     name: string;
     description: string;
     inputSchema: Record<string, any>;
+    agentPermissions?: readonly string[];
     mutating?: boolean;
     execute(context: ToolContext, args: ToolArgs): Promise<unknown>;
 }
@@ -31,6 +33,7 @@ export interface RegisteredTool extends ToolSpec {
     addonId: string;
     source: string;
     mutating: boolean;
+    agentPermissions?: readonly string[];
 }
 
 export type ToolExecute = (context: ToolContext, args: ToolArgs) => Promise<unknown>;
@@ -46,6 +49,8 @@ export interface ToolRegisterOptions {
     bindBase?: ToolBindBase;
     domains?: readonly string[] | (() => readonly string[] | undefined);
     enabled?: boolean | (() => boolean);
+    /** Permission IDs the active Agent role must have to expose and invoke this tool. */
+    agentPermissions?: readonly string[];
     instructions?: (context: ToolInstructionsContext) => string | Promise<string>;
 }
 
@@ -55,6 +60,7 @@ export interface ToolAccess {
     priv?: number;
     perm?: bigint;
     scope?: bigint;
+    agentPermissions?: ReadonlySet<string>;
 }
 
 type StoredTool = ToolDeclaration & {
@@ -63,6 +69,7 @@ type StoredTool = ToolDeclaration & {
     priv?: number | number[];
     perm?: bigint | bigint[];
     checker?: (context: ToolContext) => void;
+    agentPermissions?: readonly string[];
 };
 
 interface StoredSource {
@@ -74,6 +81,16 @@ interface StoredSource {
 
 function readFlag<T>(value: T | (() => T) | undefined): T | undefined {
     return typeof value === 'function' ? (value as () => T)() : value;
+}
+
+function agentPermissionsForTool(tool: StoredTool): readonly string[] {
+    if (tool.agentPermissions !== undefined) return tool.agentPermissions;
+    const addon = listAgentAddons().find((item) => item.addonId === tool.addonId);
+    if (!addon?.permissions?.length) return [];
+    const categorizedId = tool.mutating ? 'write' : 'read';
+    const permission = addon.permissions.find((item) => item.id === categorizedId)
+        || (addon.permissions.length === 1 ? addon.permissions[0] : undefined);
+    return permission ? [`${tool.addonId}:${permission.id}`] : [];
 }
 
 function toolEnabled(tool: StoredTool): boolean {
@@ -107,6 +124,7 @@ function hasPerm(access: ToolAccess | undefined, required: bigint | bigint[]): b
 function canAccess(tool: StoredTool, access: ToolAccess | undefined): boolean {
     if (tool.priv !== undefined && !hasPriv(access, tool.priv)) return false;
     if (tool.perm !== undefined && !hasPerm(access, tool.perm)) return false;
+    if (agentPermissionsForTool(tool).some((permission) => !access?.agentPermissions?.has(permission))) return false;
     return true;
 }
 
@@ -155,17 +173,19 @@ function parseChecker(args: unknown[]) {
 
 async function resolveAccess(context: ToolContext): Promise<ToolAccess | undefined> {
     if (context.priv !== undefined || context.perm !== undefined) {
-        return { priv: context.priv, perm: context.perm, scope: context.scope ?? context.perm };
+        return { priv: context.priv, perm: context.perm, scope: context.scope ?? context.perm, agentPermissions: context.agentPermissions };
     }
     const owner = Number(context.owner);
-    if (!context.domainId || !Number.isSafeInteger(owner) || owner <= 0) return undefined;
+    if (!context.domainId || !Number.isSafeInteger(owner) || owner <= 0) {
+        return context.agentPermissions === undefined ? undefined : { agentPermissions: context.agentPermissions };
+    }
     try {
         const UserModel = require('ejun/src/model/user').default as {
             getById(domainId: string, uid: number): Promise<{ priv: number; perm: bigint; scope: bigint } | null>;
         };
         const user = await UserModel.getById(context.domainId, owner);
         if (!user) return undefined;
-        return { priv: user.priv, perm: user.perm, scope: user.scope };
+        return { priv: user.priv, perm: user.perm, scope: user.scope, agentPermissions: context.agentPermissions };
     } catch {
         return undefined;
     }
@@ -179,6 +199,10 @@ function assertAccess(tool: StoredTool, access: ToolAccess | undefined): void {
     if (tool.perm !== undefined && !hasPerm(access, tool.perm)) {
         const flags = Array.isArray(tool.perm) ? tool.perm : [tool.perm];
         throw new PermissionError(...flags);
+    }
+    const missingAgentPermissions = agentPermissionsForTool(tool).filter((permission) => !access?.agentPermissions?.has(permission));
+    if (missingAgentPermissions.length) {
+        throw new Error(`Agent role is missing permission(s): ${missingAgentPermissions.join(', ')}`);
     }
 }
 
@@ -217,8 +241,12 @@ export default class ToolService extends Service {
         const schema = parsed.schema ?? options.schema ?? fromDefinition?.schema;
         const description = options.description ?? fromDefinition?.description ?? schemaDescription(schema);
         const inputSchema = options.inputSchema ?? fromDefinition?.inputSchema ?? (schema ? schemaToJsonSchema(schema) : undefined);
+        const agentPermissions = options.agentPermissions ?? fromDefinition?.agentPermissions;
         if (!description) throw new Error(`tool ${name} is missing a description.`);
         if (!inputSchema) throw new Error(`tool ${name} is missing an inputSchema.`);
+        if (agentPermissions?.some((permission) => typeof permission !== 'string' || permission.trim().length === 0)) {
+            throw new Error(`tool ${name} has an invalid Agent permission requirement.`);
+        }
         const source = options.source ?? fromDefinition?.source ?? addonId;
         const stored: StoredTool = {
             addonId,
@@ -226,6 +254,7 @@ export default class ToolService extends Service {
             description,
             inputSchema,
             mutating: options.mutating ?? fromDefinition?.mutating,
+            agentPermissions: agentPermissions === undefined ? undefined : [...agentPermissions],
             execute: wrapBindBase(execute, options.bindBase ?? fromDefinition?.bindBase),
             config: options,
             ...(schema ? { schema } : {}),
@@ -287,7 +316,7 @@ export default class ToolService extends Service {
                 if (!toolEnabled(tool)) continue;
                 if (!inDomain(toolDomains(entry, tool), domainId)) continue;
                 if (mountedAddons !== undefined && !mountedAddons.has(tool.addonId)) continue;
-                if (access && !canAccess(tool, access)) continue;
+                if (access ? !canAccess(tool, access) : agentPermissionsForTool(tool).length > 0) continue;
                 rows.push({ source: entry, tool });
             }
         }
@@ -307,6 +336,7 @@ export default class ToolService extends Service {
             inputSchema: tool.inputSchema,
             source: entry.source,
             mutating: tool.mutating === true,
+            ...(agentPermissionsForTool(tool).length ? { agentPermissions: [...agentPermissionsForTool(tool)] } : {}),
         }));
     }
 

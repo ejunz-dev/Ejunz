@@ -19,6 +19,7 @@ import { AgentContextSettingsPanel } from './components/structure/AgentContextSe
 import { SessionDrawer } from './components/structure/SessionDrawer';
 import { TeamAddonSettingsPanel } from './components/structure/TeamAddonSettingsPanel';
 import { TeamContextSettingsPanel } from './components/structure/TeamContextSettingsPanel';
+import { TeamPermissionsPanel } from './components/structure/TeamPermissionsPanel';
 import { TeamTree } from './components/structure/TeamTree';
 import type { HostOption } from './components/structure/HostPicker';
 import { ActionDialog } from './components/primitives/ActionDialog';
@@ -45,7 +46,7 @@ import { useAgentTheme } from './runtime/theme';
 import { usePageData } from '../../context/page-data';
 import { applyEvent, asObject, assistantStreamKey, eventFailureMessage, eventMessage, eventsToMessages, fileInjectionsAfterUser, flattenToolTree, foldToolTree, latestHistoryError, queueItems, settleRunningMessages } from './runtime/conversation';
 import type { HistoryEntry } from './runtime/conversation';
-import type { AgentSummary, AgentTeam, BaseView, HostFrame, MuxFrame, SessionSummary } from './runtime/session';
+import type { AgentSummary, AgentTeam, AgentTeamAcl, BaseView, HostFrame, MuxFrame, SessionSummary } from './runtime/session';
 import { useDraftAttachments } from './components/attachment/useDraftAttachments';
 import { FILE_INJECTION_PLUGIN, FILE_INJECTION_SECTION, fileInjectionText, type DraftAttachment, type UploadedFileMeta } from './runtime/uploads';
 import { Notification, useBuildUrl, useUiContext, useUserContext } from '@ejunz/ui-next';
@@ -486,7 +487,7 @@ export default function AgentPage() {
     const [modelMenuOpen, setModelMenuOpen] = useState(false);
     const [detailsOpen, setDetailsOpen] = useState(false);
     const [teamSettingsId, setTeamSettingsId] = useState<string | null>(null);
-    const [teamSettingsTab, setTeamSettingsTab] = useState<'context' | 'addons'>('context');
+    const [teamSettingsTab, setTeamSettingsTab] = useState<'context' | 'addons' | 'permissions'>('context');
     const [teamContextEditing, setTeamContextEditing] = useState(false);
     const [teamConfigSaving, setTeamConfigSaving] = useState(false);
     const [selectedAgentSettingsId, setSelectedAgentSettingsId] = useState<string | null>(() => readAgentSelection().agentId);
@@ -2134,8 +2135,9 @@ export default function AgentPage() {
         setCurrent(null);
         setDetailsOpen(false);
         setSelectedTool(null);
-        setTeamSettingsId(teams.some((team) => team.teamId === teamId) ? teamId : null);
-        setTeamSettingsTab('context');
+        const selectedTeam = teams.find((team) => team.teamId === teamId);
+        setTeamSettingsId(selectedTeam ? teamId : null);
+        setTeamSettingsTab(selectedTeam?.isRootTeam ? 'permissions' : 'context');
         setTeamContextEditing(false);
         updateAgentSelectionUrl({ teamId, agentId: null });
     }, [teams]);
@@ -2351,6 +2353,7 @@ export default function AgentPage() {
                     view="model"
                     title={teamSettingsTeam.text}
                     headerTabs={[
+                        ...(teamSettingsTeam.isRootTeam ? [{ id: 'permissions', label: i18n('Role & permissions'), active: teamSettingsTab === 'permissions', onSelect: () => { setTeamSettingsTab('permissions'); setTeamContextEditing(false); } }] : []),
                         { id: 'context', label: i18n('Context'), active: teamSettingsTab === 'context', onSelect: () => { setTeamSettingsTab('context'); setTeamContextEditing(false); } },
                         { id: 'addons', label: i18n('Add-ons'), active: teamSettingsTab === 'addons', onSelect: () => { setTeamSettingsTab('addons'); setTeamContextEditing(false); } },
                     ]}
@@ -2370,15 +2373,25 @@ export default function AgentPage() {
                                 await Notification.success(i18n('Team context saved. Existing agents will receive it in the background.'));
                             }}
                         />
-                        : <TeamAddonSettingsPanel
-                            team={teamSettingsTeam}
-                            addons={agentAddons}
-                            saving={teamConfigSaving}
-                            onSave={async (addonIds) => {
-                                await saveTeamConfig(teamSettingsTeam.teamId, { addonIds });
-                                await Notification.success(i18n('Team add-on settings saved. Existing agents will sync in the background.'));
-                            }}
-                        />}
+                        : teamSettingsTab === 'addons'
+                            ? <TeamAddonSettingsPanel
+                                team={teamSettingsTeam}
+                                addons={agentAddons}
+                                saving={teamConfigSaving}
+                                onSave={async (addonIds) => {
+                                    await saveTeamConfig(teamSettingsTeam.teamId, { addonIds });
+                                    await Notification.success(i18n('Team add-on settings saved. Existing agents will sync in the background.'));
+                                }}
+                            />
+                            : <TeamPermissionsPanel
+                                team={teamSettingsTeam}
+                                addons={agentAddons}
+                                saving={teamConfigSaving}
+                                onSave={async (acl: AgentTeamAcl) => {
+                                    await saveTeamConfig(teamSettingsTeam.teamId, { acl });
+                                    await Notification.success(i18n('Agent role permissions saved.'));
+                                }}
+                            />}
                 </SessionDrawer>}
                 {selectedAgentSettings && <SessionDrawer
                     loading={false}

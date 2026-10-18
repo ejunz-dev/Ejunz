@@ -14,6 +14,7 @@ export interface ProviderScope {
     readonly perm?: bigint;
     readonly scope?: bigint;
     readonly mountedAddons?: ReadonlySet<string>;
+    readonly agentPermissions?: ReadonlySet<string>;
 }
 
 export interface Provider {
@@ -34,8 +35,8 @@ export function createProvider(
         return tools;
     };
     const access = (): ToolAccess | undefined => (
-        scope.priv === undefined && scope.perm === undefined ? undefined
-            : { priv: scope.priv, perm: scope.perm, scope: scope.scope ?? scope.perm }
+        scope.priv === undefined && scope.perm === undefined && scope.agentPermissions === undefined ? undefined
+            : { priv: scope.priv, perm: scope.perm, scope: scope.scope ?? scope.perm, agentPermissions: scope.agentPermissions }
     );
     const toolContext = (): ToolContext => ({
         domainId: scope.domainId,
@@ -46,6 +47,7 @@ export function createProvider(
         ...(scope.perm !== undefined ? { perm: scope.perm } : {}),
         ...(scope.scope !== undefined ? { scope: scope.scope } : {}),
         ...(scope.mountedAddons !== undefined ? { mountedAddons: scope.mountedAddons } : {}),
+        ...(scope.agentPermissions !== undefined ? { agentPermissions: scope.agentPermissions } : {}),
         ...(typeof ctx.broadcast === 'function' ? { broadcastAgentEvent: (event, payload) => (ctx.broadcast as any)(event, payload) } : {}),
         setting: get('setting'),
     });

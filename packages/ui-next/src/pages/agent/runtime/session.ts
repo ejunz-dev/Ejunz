@@ -1,8 +1,20 @@
 import type { SessionEvent } from './conversation';
 
+export interface AgentTeamRole {
+    roleId: string;
+    name: string;
+    permissions: string[];
+}
+
+export interface AgentTeamAcl {
+    activeRoleId: string;
+    roles: AgentTeamRole[];
+}
+
 export interface AgentTeamConfig {
     addons?: Record<string, boolean>;
     context?: string;
+    acl?: AgentTeamAcl;
 }
 
 export interface AgentTeam {

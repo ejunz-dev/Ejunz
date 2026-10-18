@@ -8,6 +8,7 @@ import type { AgentStorageDescriptor } from '../model/agent';
 import type { RuntimeHelloFrame, RuntimeInboundFrame, RuntimeLinkPollFrame, RuntimeStream } from '../service/runtime';
 import { agentRuntimeHandlerContext as service } from '../service/runtime';
 import { listAgentAddons } from '../service/addons';
+import { addonAgentPermissionId, defaultAgentAcl, normalizeAgentAcl, permissionsForAgentAcl } from '../service/agent-permissions';
 
 interface RpcEnvelope {
     type?: string;
@@ -48,10 +49,7 @@ async function saveTeamConfig(envelope: RpcEnvelope, scope: AgentScope, ctx: Con
     const team = await AgentSessionModel.getTeam(scope.domainId, scope.userId, teamId, scope.groupId);
     if (!team) return rpcError(envelope.rpcId, 'team not found');
 
-    const config: AgentTeamConfig = {
-        ...(team.config?.addons === undefined ? {} : { addons: team.config.addons }),
-        ...(team.config?.context === undefined ? {} : { context: team.config.context }),
-    };
+    const config: AgentTeamConfig = { ...(team.config ?? {}) };
     const patch: Partial<AgentTeamConfig> = {};
     if (Object.prototype.hasOwnProperty.call(rawPatch, 'addonIds')) {
         if (!Array.isArray(rawPatch.addonIds) || rawPatch.addonIds.some((id) => typeof id !== 'string')) {
@@ -72,6 +70,14 @@ async function saveTeamConfig(envelope: RpcEnvelope, scope: AgentScope, ctx: Con
         if (typeof rawPatch.context !== 'string') return rpcError(envelope.rpcId, 'context must be a string');
         if (rawPatch.context.length > 20_000) return rpcError(envelope.rpcId, 'context must not exceed 20000 characters');
         patch.context = rawPatch.context;
+    }
+    if (Object.prototype.hasOwnProperty.call(rawPatch, 'acl')) {
+        if (!team.isRootTeam) return rpcError(envelope.rpcId, 'Agent roles can only be managed on the Group root Team');
+        try {
+            patch.acl = normalizeAgentAcl(rawPatch.acl);
+        } catch (error) {
+            return rpcError(envelope.rpcId, error instanceof Error ? error.message : String(error));
+        }
     }
     if (Object.keys(patch).length === 0) return rpcError(envelope.rpcId, 'team config patch is empty');
 
@@ -134,6 +140,25 @@ async function saveAgentConfig(envelope: RpcEnvelope, scope: AgentScope, ctx: Co
         logger.warn('[agent] Cordis context event failed agent=%s error=%s', agentId, error instanceof Error ? error.message : String(error));
     }
     return rpcOk(envelope.rpcId, { agentId, config: updated.config ?? config, syncScheduled: true });
+}
+
+async function agentRolePermissions(scope: AgentScope, teamId?: string): Promise<Set<string>> {
+    const teams = await AgentSessionModel.listTeams(scope.domainId, scope.userId, scope.groupId);
+    const root = typeof scope.groupId === 'number' ? teams.find((team) => team.isRootTeam) : undefined;
+    const selectedTeam = teamId ? teams.find((team) => team.teamId === teamId) : undefined;
+    return permissionsForAgentAcl(root?.config?.acl || selectedTeam?.config?.acl);
+}
+
+async function permissionsForSession(
+    session: { domainId: string; userId: number; sessionId: string; groupId?: number; teamId?: string },
+    mountedAddons: ReadonlySet<string>,
+): Promise<Set<string>> {
+    const permissions = await agentRolePermissions({ domainId: session.domainId, userId: session.userId, groupId: session.groupId }, session.teamId);
+    for (const addon of listAgentAddons()) {
+        if (!mountedAddons.has(addon.addonId)) continue;
+        for (const permission of addon.permissions || []) permissions.add(addonAgentPermissionId(addon.addonId, permission.id));
+    }
+    return permissions;
 }
 
 async function mountedAddonsForSession(session: { domainId: string; userId: number; sessionId: string; groupId?: number; teamId?: string }): Promise<Set<string>> {
@@ -232,17 +257,20 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                 const mountedAddons = sessionId && resolved.session
                     ? await mountedAddonsForSession(resolved.session)
                     : new Set<string>();
+                const agentPermissions = resolved.session
+                    ? await permissionsForSession(resolved.session, mountedAddons)
+                    : permissionsForAgentAcl(undefined);
                 const tools = toolRegistry();
                 const context = {
                     domainId: scope?.domain || '',
                     baseDocId: scope?.baseId || 0,
                     ...(sessionId ? { sessionId } : {}),
                 };
-                let access: { priv: number; perm: bigint; scope: bigint } | undefined;
+                let access: { priv?: number; perm?: bigint; scope?: bigint; agentPermissions: ReadonlySet<string> } = { agentPermissions };
                 if (scope?.owner && scope.domain) {
                     const UserModel = (global as any).Ejunz?.model?.user;
                     const user = UserModel ? await UserModel.getById(scope.domain, scope.owner) : null;
-                    if (user) access = { priv: user.priv, perm: user.perm, scope: user.scope };
+                    if (user) access = { priv: user.priv, perm: user.perm, scope: user.scope, agentPermissions };
                 }
                 const addonGuidance = listAgentAddons()
                     .filter((addon) => mountedAddons.has(addon.addonId))
@@ -265,6 +293,7 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                 const args = body.args;
                 if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('args must be an object');
                 const mountedAddons = await mountedAddonsForSession(resolved.session);
+                const agentPermissions = await permissionsForSession(resolved.session, mountedAddons);
                 const registration = toolRegistry().get(name);
                 if (!registration || !mountedAddons.has(registration.addonId)) {
                     throw new Error(`Addon for tool ${name} is not mounted in this session.`);
@@ -280,6 +309,7 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                         baseDocId: scope.baseId,
                         sessionId,
                         mountedAddons,
+                        agentPermissions,
                     });
                     const result = await provider.call(name, args as Record<string, unknown>, new AbortController().signal);
                     logger.info('[agent-tools] call done session=%s name=%s addon=%s domain=%s baseId=%d durationMs=%d', sessionId, name, registration.addonId, scope.domain, scope.baseId, Date.now() - startedAt);

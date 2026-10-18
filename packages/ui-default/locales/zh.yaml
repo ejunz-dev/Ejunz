@@ -1519,6 +1519,34 @@ Role Assignment: 角色分配
 Role has been updated to {0} for selected users.: 所选用户角色已更新为 {0}。
 Role has been updated to {0}.: 角色已更新为 {0}。
 Role name can only contains numbers, letters and underscores.: 角色名称只能包含数字、字母和下划线。
+Role & permissions: 角色与权限
+New role name: 新角色名称
+Add role: 添加角色
+Delete role: 删除角色
+Save permissions: 保存权限
+Unsaved changes: 有未保存的更改
+Agent role permissions saved.: Agent 角色权限已保存。
+Mounted add-ons automatically grant their declared permissions to this Agent role.: 挂载的插件会自动将其声明的权限授予此 Agent 角色。
+No Agent permissions are registered.: 尚未注册 Agent 权限。
+Enter a role name.: 请输入角色名称。
+Role name must be 64 characters or fewer.: 角色名称不能超过 64 个字符。
+Add-on mounted: 插件已挂载
+Read Agent workspace: 查看 Agent 工作区
+Manage Agent workspace: 管理 Agent 工作区
+Read Agent data: 读取 Agent 数据
+Manage Agent data: 管理 Agent 数据
+Read Base data: 读取 Base 数据
+Change Base data: 修改 Base 数据
+Read scheduled sessions: 查看定时会话
+Manage scheduled sessions: 管理定时会话
+Read membership data: 查看成员数据
+Manage memberships: 管理成员关系
+Read Edge integrations: 查看 Edge 集成
+Manage Edge integrations: 管理 Edge 集成
+Check bot delivery status: 查看机器人消息状态
+Send bot notifications: 发送机器人通知
+View Agent hosts and sessions: 查看 Agent 主机与会话
+Manage Agent hosts and sessions: 管理 Agent 主机与会话
 Role: 角色
 Revert AI operations: 撤销
 Reverted: 已撤销
