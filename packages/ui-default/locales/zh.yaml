@@ -1520,6 +1520,8 @@ Role has been updated to {0} for selected users.: 所选用户角色已更新为
 Role has been updated to {0}.: 角色已更新为 {0}。
 Role name can only contains numbers, letters and underscores.: 角色名称只能包含数字、字母和下划线。
 Role & permissions: 角色与权限
+Root: 根角色
+Guest: 访客
 Active role: 当前角色
 Permissions for role: 角色权限
 The selected role applies to Agent sessions in this Group.: 所选角色将应用于此分组中的 Agent 会话。

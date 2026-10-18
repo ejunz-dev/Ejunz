@@ -32,13 +32,14 @@ export function agentPermissionCatalog(): AgentPermissionInfo[] {
 }
 
 export function defaultAgentAcl(): AgentTeamAcl {
+    const allPermissions = agentPermissionCatalog().map((permission) => permission.id);
     return {
         activeRoleId: DEFAULT_AGENT_ROLE_ID,
-        roles: [{
-            roleId: DEFAULT_AGENT_ROLE_ID,
-            name: 'Default',
-            permissions: AGENT_CORE_PERMISSIONS.map((permission) => permission.id),
-        }],
+        roles: [
+            { roleId: 'root', name: 'Root', permissions: allPermissions },
+            { roleId: DEFAULT_AGENT_ROLE_ID, name: 'Default', permissions: AGENT_CORE_PERMISSIONS.map((permission) => permission.id) },
+            { roleId: 'guest', name: 'Guest', permissions: ['agent:read'] },
+        ],
     };
 }
 
@@ -64,12 +65,27 @@ export function normalizeAgentAcl(value: unknown): AgentTeamAcl {
         }
         return { roleId, name, permissions: [...new Set(permissions as string[])].sort() };
     });
-    const activeRoleId = typeof input.activeRoleId === 'string' ? input.activeRoleId : '';
-    if (!roleIds.has(activeRoleId)) throw new Error('The selected Agent role does not exist.');
+    const allPermissions = agentPermissionCatalog().map((permission) => permission.id);
+    const builtins: AgentTeamRole[] = [
+        { roleId: 'root', name: 'Root', permissions: allPermissions },
+        { roleId: DEFAULT_AGENT_ROLE_ID, name: 'Default', permissions: AGENT_CORE_PERMISSIONS.map((permission) => permission.id) },
+        { roleId: 'guest', name: 'Guest', permissions: ['agent:read'] },
+    ];
+    for (const builtin of builtins) {
+        const existing = roles.find((role) => role.roleId === builtin.roleId);
+        if (builtin.roleId === 'root' && existing) existing.permissions = allPermissions;
+        else if (!existing) roles.push(builtin);
+    }
+    if (roles.length > 32) throw new Error('Agent ACL can contain at most 32 roles.');
+    const activeRoleId = typeof input.activeRoleId === 'string' && roles.some((role) => role.roleId === input.activeRoleId)
+        ? input.activeRoleId
+        : DEFAULT_AGENT_ROLE_ID;
     return { activeRoleId, roles };
 }
 
 export function permissionsForAgentAcl(acl: AgentTeamAcl | undefined): Set<string> {
     const resolved = acl || defaultAgentAcl();
-    return new Set(resolved.roles.find((role) => role.roleId === resolved.activeRoleId)?.permissions || []);
+    const role = resolved.roles.find((item) => item.roleId === resolved.activeRoleId);
+    if (role?.roleId === 'root') return new Set(agentPermissionCatalog().map((permission) => permission.id));
+    return new Set(role?.permissions || []);
 }

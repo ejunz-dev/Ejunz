@@ -8,7 +8,7 @@ import type { AgentStorageDescriptor } from '../model/agent';
 import type { RuntimeHelloFrame, RuntimeInboundFrame, RuntimeLinkPollFrame, RuntimeStream } from '../service/runtime';
 import { agentRuntimeHandlerContext as service } from '../service/runtime';
 import { listAgentAddons } from '../service/addons';
-import { addonAgentPermissionId, defaultAgentAcl, normalizeAgentAcl, permissionsForAgentAcl } from '../service/agent-permissions';
+import { addonAgentPermissionId, defaultAgentAcl, DEFAULT_AGENT_ROLE_ID, normalizeAgentAcl, permissionsForAgentAcl } from '../service/agent-permissions';
 
 interface RpcEnvelope {
     type?: string;
@@ -142,21 +142,32 @@ async function saveAgentConfig(envelope: RpcEnvelope, scope: AgentScope, ctx: Co
     return rpcOk(envelope.rpcId, { agentId, config: updated.config ?? config, syncScheduled: true });
 }
 
-async function agentRolePermissions(scope: AgentScope, teamId?: string): Promise<Set<string>> {
+async function agentAclForScope(scope: AgentScope, teamId?: string) {
     const teams = await AgentSessionModel.listTeams(scope.domainId, scope.userId, scope.groupId);
     const root = typeof scope.groupId === 'number' ? teams.find((team) => team.isRootTeam) : undefined;
     const selectedTeam = teamId ? teams.find((team) => team.teamId === teamId) : undefined;
-    return permissionsForAgentAcl(root?.config?.acl || selectedTeam?.config?.acl);
+    return root?.config?.acl || selectedTeam?.config?.acl;
+}
+
+async function agentRolePermissions(scope: AgentScope, teamId?: string): Promise<Set<string>> {
+    return permissionsForAgentAcl(await agentAclForScope(scope, teamId));
 }
 
 async function permissionsForSession(
     session: { domainId: string; userId: number; sessionId: string; groupId?: number; teamId?: string },
     mountedAddons: ReadonlySet<string>,
 ): Promise<Set<string>> {
-    const permissions = await agentRolePermissions({ domainId: session.domainId, userId: session.userId, groupId: session.groupId }, session.teamId);
-    for (const addon of listAgentAddons()) {
-        if (!mountedAddons.has(addon.addonId)) continue;
-        for (const permission of addon.permissions || []) permissions.add(addonAgentPermissionId(addon.addonId, permission.id));
+    const acl = await agentAclForScope({ domainId: session.domainId, userId: session.userId, groupId: session.groupId }, session.teamId);
+    const permissions = permissionsForAgentAcl(acl);
+    const activeRoleId = acl?.activeRoleId || DEFAULT_AGENT_ROLE_ID;
+    if (activeRoleId !== 'guest') {
+        for (const addon of listAgentAddons()) {
+            if (!mountedAddons.has(addon.addonId)) continue;
+            for (const permission of addon.permissions || []) {
+            if (activeRoleId === 'guest' && permission.id !== 'read') continue;
+            permissions.add(addonAgentPermissionId(addon.addonId, permission.id));
+        }
+        }
     }
     return permissions;
 }

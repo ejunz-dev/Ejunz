@@ -25,10 +25,15 @@ const CORE_PERMISSIONS: PermissionOption[] = [
     { id: 'agent:manage', name: 'Manage Agent workspace', description: 'Create, update, and delete Agents, Teams, and sessions.' },
 ];
 
-function defaultAcl(): AgentTeamAcl {
+function defaultAcl(catalog: PermissionOption[]): AgentTeamAcl {
+    const allPermissions = catalog.map(({ id }) => id);
     return {
         activeRoleId: 'default',
-        roles: [{ roleId: 'default', name: 'Default', permissions: CORE_PERMISSIONS.map(({ id }) => id) }],
+        roles: [
+            { roleId: 'root', name: 'Root', permissions: allPermissions },
+            { roleId: 'default', name: 'Default', permissions: CORE_PERMISSIONS.map(({ id }) => id) },
+            { roleId: 'guest', name: 'Guest', permissions: ['agent:read'] },
+        ],
     };
 }
 
@@ -51,14 +56,19 @@ function mountedAddonIds(team: AgentTeam, addons: readonly AgentAddonView[]): Se
     }).map((addon) => addon.addonId));
 }
 
-function normalizeAcl(value: AgentTeamAcl | undefined): AgentTeamAcl {
-    if (!value?.roles?.length) return defaultAcl();
-    const roles = value.roles.map((role) => ({
+function normalizeAcl(value: AgentTeamAcl | undefined, catalog: PermissionOption[]): AgentTeamAcl {
+    const roles = value?.roles?.length ? value.roles.map((role) => ({
         roleId: String(role.roleId),
         name: String(role.name),
         permissions: [...new Set(Array.isArray(role.permissions) ? role.permissions : [])],
-    }));
-    const activeRoleId = roles.some((role) => role.roleId === value.activeRoleId) ? value.activeRoleId : roles[0].roleId;
+    })) : defaultAcl(catalog).roles;
+    const builtinRoles = defaultAcl(catalog).roles;
+    for (const builtin of builtinRoles) {
+        const existing = roles.find((role) => role.roleId === builtin.roleId);
+        if (!existing) roles.push(builtin);
+        else if (builtin.roleId === 'root') existing.permissions = builtin.permissions;
+    }
+    const activeRoleId = roles.some((role) => role.roleId === value?.activeRoleId) ? value!.activeRoleId : 'default';
     return { activeRoleId, roles };
 }
 
@@ -71,22 +81,25 @@ function newRoleId(name: string, roles: AgentTeamRole[]): string {
 }
 
 export function TeamPermissionsPanel({ team, addons, section, saving, onSave }: Props) {
-    const initialAcl = normalizeAcl(team.config?.acl);
-    const [acl, setAcl] = useState(initialAcl);
+    const catalog = useMemo(() => permissionCatalog(addons), [addons]);
+    const [acl, setAcl] = useState(() => normalizeAcl(team.config?.acl, catalog));
     const [newRoleName, setNewRoleName] = useState('');
     const [error, setError] = useState('');
     const [notice, setNotice] = useState('');
     const [dirty, setDirty] = useState(false);
-    const catalog = useMemo(() => permissionCatalog(addons), [addons]);
     const mounted = useMemo(() => mountedAddonIds(team, addons), [addons, team.config?.addons, team.teamId]);
-    const autoGranted = useMemo(() => new Set(catalog.filter((permission) => permission.addonId && mounted.has(permission.addonId)).map((permission) => permission.id)), [catalog, mounted]);
     const activeRole = acl.roles.find((role) => role.roleId === acl.activeRoleId) ?? acl.roles[0];
+    const autoGranted = useMemo(() => new Set(catalog.filter((permission) => (
+        permission.addonId
+        && mounted.has(permission.addonId)
+        && (activeRole.roleId !== 'guest' || permission.id.endsWith(':read'))
+    )).map((permission) => permission.id)), [activeRole.roleId, catalog, mounted]);
 
     useEffect(() => {
-        setAcl(normalizeAcl(team.config?.acl));
+        setAcl(normalizeAcl(team.config?.acl, catalog));
         setDirty(false);
         setError('');
-    }, [team.teamId, team.config?.acl]);
+    }, [catalog, team.teamId, team.config?.acl]);
 
     function updateActiveRole(update: (role: AgentTeamRole) => AgentTeamRole) {
         setAcl((current) => ({
@@ -99,6 +112,7 @@ export function TeamPermissionsPanel({ team, addons, section, saving, onSave }: 
 
     function addRole() {
         const name = newRoleName.trim();
+        if (acl.roles.length >= 32) return setError(i18n('A Group can have at most 32 roles.'));
         if (!name) return setError(i18n('Enter a role name.'));
         if (name.length > 64) return setError(i18n('Role name must be 64 characters or fewer.'));
         const roleId = newRoleId(name, acl.roles);
@@ -111,7 +125,7 @@ export function TeamPermissionsPanel({ team, addons, section, saving, onSave }: 
     }
 
     function removeRole() {
-        if (acl.roles.length <= 1 || activeRole.roleId === 'default') return;
+        if (acl.roles.length <= 3 || ['root', 'default', 'guest'].includes(activeRole.roleId)) return;
         const roles = acl.roles.filter((role) => role.roleId !== activeRole.roleId);
         setAcl((current) => ({ ...current, activeRoleId: roles[0].roleId, roles }));
         setDirty(true);
@@ -119,7 +133,7 @@ export function TeamPermissionsPanel({ team, addons, section, saving, onSave }: 
     }
 
     function togglePermission(permissionId: string) {
-        if (autoGranted.has(permissionId)) return;
+        if (activeRole.roleId === 'root' || autoGranted.has(permissionId)) return;
         updateActiveRole((role) => ({
             ...role,
             permissions: role.permissions.includes(permissionId)
@@ -165,7 +179,7 @@ export function TeamPermissionsPanel({ team, addons, section, saving, onSave }: 
                                     setDirty(true);
                                     setNotice('');
                                 }}>
-                                    {acl.roles.map((role) => <option key={role.roleId} value={role.roleId}>{role.name}</option>)}
+                                    {acl.roles.map((role) => <option key={role.roleId} value={role.roleId}>{i18n(role.name)}</option>)}
                                 </select>
                             </label>
                             <button type="button" className={styles.removeRole} disabled={saving || acl.roles.length <= 1 || activeRole.roleId === 'default'} onClick={removeRole}>{i18n('Delete role')}</button>
@@ -184,7 +198,7 @@ export function TeamPermissionsPanel({ team, addons, section, saving, onSave }: 
                                 setDirty(true);
                                 setNotice('');
                             }}>
-                                {acl.roles.map((role) => <option key={role.roleId} value={role.roleId}>{role.name}</option>)}
+                                {acl.roles.map((role) => <option key={role.roleId} value={role.roleId}>{i18n(role.name)}</option>)}
                             </select>
                         </label>
                         <h3>{i18n('Permissions')}</h3>
@@ -192,9 +206,9 @@ export function TeamPermissionsPanel({ team, addons, section, saving, onSave }: 
                         <div className={styles.permissionList}>
                             {catalog.map((permission) => {
                                 const isAuto = autoGranted.has(permission.id);
-                                const checked = isAuto || activeRole.permissions.includes(permission.id);
+                                const checked = activeRole.roleId === 'root' || isAuto || activeRole.permissions.includes(permission.id);
                                 return <label className={styles.permission} key={permission.id}>
-                                    <input type="checkbox" checked={checked} disabled={saving || isAuto} onChange={() => togglePermission(permission.id)} />
+                                    <input type="checkbox" checked={checked} disabled={saving || activeRole.roleId === 'root' || isAuto} onChange={() => togglePermission(permission.id)} />
                                     <span className={styles.permissionCopy}>
                                         <span>{i18n(permission.name)}{isAuto ? <small>{i18n(' · Add-on mounted')}</small> : null}</span>
                                         {permission.description ? <small>{i18n(permission.description)}</small> : null}
