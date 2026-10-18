@@ -1521,7 +1521,6 @@ Role has been updated to {0}.: 角色已更新为 {0}。
 Role name can only contains numbers, letters and underscores.: 角色名称只能包含数字、字母和下划线。
 Role & permissions: 角色与权限
 Agents: 智能体
-Agent: 智能体
 Team: 团队
 Create Agent: 创建智能体
 Manage Agents in this Group and assign each one a role.: 管理此分组中的智能体并为每个智能体分配角色。
