@@ -83,14 +83,18 @@ function readFlag<T>(value: T | (() => T) | undefined): T | undefined {
     return typeof value === 'function' ? (value as () => T)() : value;
 }
 
-function agentPermissionsForTool(tool: StoredTool): readonly string[] {
-    if (tool.agentPermissions !== undefined) return tool.agentPermissions;
-    const addon = listAgentAddons().find((item) => item.addonId === tool.addonId);
+function resolveAgentPermissions(addonId: string, mutating: boolean, explicit?: readonly string[]): readonly string[] {
+    if (explicit !== undefined) return [...explicit];
+    const addon = listAgentAddons().find((item) => item.addonId === addonId);
     if (!addon?.permissions?.length) return [];
-    const categorizedId = tool.mutating ? 'write' : 'read';
+    const categorizedId = mutating ? 'write' : 'read';
     const permission = addon.permissions.find((item) => item.id === categorizedId)
         || (addon.permissions.length === 1 ? addon.permissions[0] : undefined);
-    return permission ? [`${tool.addonId}:${permission.id}`] : [];
+    return permission ? [`${addonId}:${permission.id}`] : [];
+}
+
+function agentPermissionsForTool(tool: StoredTool): readonly string[] {
+    return tool.agentPermissions || [];
 }
 
 function toolEnabled(tool: StoredTool): boolean {
@@ -241,7 +245,9 @@ export default class ToolService extends Service {
         const schema = parsed.schema ?? options.schema ?? fromDefinition?.schema;
         const description = options.description ?? fromDefinition?.description ?? schemaDescription(schema);
         const inputSchema = options.inputSchema ?? fromDefinition?.inputSchema ?? (schema ? schemaToJsonSchema(schema) : undefined);
-        const agentPermissions = options.agentPermissions ?? fromDefinition?.agentPermissions;
+        const mutating = options.mutating ?? fromDefinition?.mutating === true;
+        const explicitAgentPermissions = options.agentPermissions ?? fromDefinition?.agentPermissions;
+        const agentPermissions = resolveAgentPermissions(addonId, mutating, explicitAgentPermissions);
         if (!description) throw new Error(`tool ${name} is missing a description.`);
         if (!inputSchema) throw new Error(`tool ${name} is missing an inputSchema.`);
         if (agentPermissions?.some((permission) => typeof permission !== 'string' || permission.trim().length === 0)) {
@@ -253,8 +259,8 @@ export default class ToolService extends Service {
             name,
             description,
             inputSchema,
-            mutating: options.mutating ?? fromDefinition?.mutating,
-            agentPermissions: agentPermissions === undefined ? undefined : [...agentPermissions],
+            mutating,
+            agentPermissions: [...agentPermissions],
             execute: wrapBindBase(execute, options.bindBase ?? fromDefinition?.bindBase),
             config: options,
             ...(schema ? { schema } : {}),

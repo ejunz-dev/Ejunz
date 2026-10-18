@@ -88,6 +88,74 @@
   line-height: 1.5;
 }
 
+.tableWrap {
+  max-height: min(60vh, 42rem);
+  overflow: auto;
+  border: 1px solid var(--dsw-alias-line, #343a40);
+  border-radius: 7px;
+}
+
+.permissionTable {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: collapse;
+  color: var(--dsw-alias-label-primary, #e7eaee);
+  font-size: 0.78rem;
+  text-align: left;
+}
+
+.permissionTable th,
+.permissionTable td {
+  padding: 0.5rem 0.65rem;
+  border-bottom: 1px solid var(--dsw-alias-line, #343a40);
+}
+
+.permissionTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--dsw-alias-surface, #1e2228);
+}
+
+.permissionTable th:not(:first-child),
+.permissionTable td:not(:first-child) {
+  min-width: 4rem;
+  text-align: center;
+}
+
+.permissionTable td:first-child {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 13rem;
+}
+
+.permissionTable td:first-child small {
+  color: var(--dsw-alias-label-secondary, #87909c);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.familyRow th {
+  background: var(--dsw-alias-surface, #1e2228);
+  color: var(--dsw-alias-label-secondary, #87909c);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.activeRole {
+  background: color-mix(in srgb, var(--dsw-alias-brand, #8ba6ff) 8%, transparent);
+}
+
+.permissionTable input {
+  accent-color: var(--dsw-alias-brand, #8ba6ff);
+}
+
+.permissionTable input:disabled {
+  cursor: default;
+}
+
 .permissionList {
   display: grid;
   gap: 0.45rem;
