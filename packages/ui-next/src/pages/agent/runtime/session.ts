@@ -35,7 +35,7 @@ export interface AgentSummary {
     teamId: string;
     title: string;
     order: number;
-    settings: { runtimeId?: string; model?: { provider: string; model: string }; baseDocId?: string; agentPreset?: string };
+    settings: { runtimeId?: string; model?: { provider: string; model: string }; baseDocId?: string; agentPreset?: string; roleId?: string };
     config?: { context?: string };
     createdAt: string;
     updatedAt: string;

@@ -600,6 +600,7 @@ export interface AgentSettings {
     model?: { provider: string; model: string };
     baseDocId?: string;
     agentPreset?: string;
+    roleId?: string;
 }
 
 export interface AgentDoc {

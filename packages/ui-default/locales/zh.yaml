@@ -1520,6 +1520,14 @@ Role has been updated to {0} for selected users.: 所选用户角色已更新为
 Role has been updated to {0}.: 角色已更新为 {0}。
 Role name can only contains numbers, letters and underscores.: 角色名称只能包含数字、字母和下划线。
 Role & permissions: 角色与权限
+Agents: 智能体
+Agent: 智能体
+Team: 团队
+Create Agent: 创建智能体
+Manage Agents in this Group and assign each one a role.: 管理此分组中的智能体并为每个智能体分配角色。
+"Inherit group role: {0}": 继承分组角色：{0}
+Agent role updated.: Agent 角色已更新。
+No Agents in this Group yet.: 此分组中还没有智能体。
 Root: 根角色
 Guest: 访客
 Active role: 当前角色

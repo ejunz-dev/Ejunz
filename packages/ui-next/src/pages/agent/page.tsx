@@ -20,6 +20,7 @@ import { SessionDrawer } from './components/structure/SessionDrawer';
 import { TeamAddonSettingsPanel } from './components/structure/TeamAddonSettingsPanel';
 import { TeamContextSettingsPanel } from './components/structure/TeamContextSettingsPanel';
 import { TeamPermissionsPanel } from './components/structure/TeamPermissionsPanel';
+import { TeamAgentsPanel } from './components/structure/TeamAgentsPanel';
 import { TeamTree } from './components/structure/TeamTree';
 import type { HostOption } from './components/structure/HostPicker';
 import { ActionDialog } from './components/primitives/ActionDialog';
@@ -153,6 +154,7 @@ type AgentSettingsPatch = {
     runtimeId?: string;
     model?: { provider: string; model: string };
     baseDocId?: string | number | null;
+    roleId?: string | null;
 };
 
 function readyFiles(attachments: DraftAttachment[]): UploadedFileMeta[] {
@@ -487,9 +489,10 @@ export default function AgentPage() {
     const [modelMenuOpen, setModelMenuOpen] = useState(false);
     const [detailsOpen, setDetailsOpen] = useState(false);
     const [teamSettingsId, setTeamSettingsId] = useState<string | null>(null);
-    const [teamSettingsTab, setTeamSettingsTab] = useState<'context' | 'role' | 'permissions' | 'addons'>('context');
+    const [teamSettingsTab, setTeamSettingsTab] = useState<'context' | 'agents' | 'role' | 'permissions' | 'addons'>('context');
     const [teamContextEditing, setTeamContextEditing] = useState(false);
     const [teamConfigSaving, setTeamConfigSaving] = useState(false);
+    const [savingAgentRoleId, setSavingAgentRoleId] = useState<string | null>(null);
     const [selectedAgentSettingsId, setSelectedAgentSettingsId] = useState<string | null>(() => readAgentSelection().agentId);
     const [agentSettingsSection, setAgentSettingsSection] = useState<'model' | 'context' | 'host'>('context');
     const [agentContextEditing, setAgentContextEditing] = useState(false);
@@ -658,6 +661,10 @@ export default function AgentPage() {
             else settings.baseDocId = String(patch.baseDocId);
         }
         if (patch.agentPreset !== undefined) settings.agentPreset = patch.agentPreset;
+        if (Object.prototype.hasOwnProperty.call(patch, 'roleId')) {
+            if (patch.roleId == null) delete settings.roleId;
+            else settings.roleId = patch.roleId;
+        }
         await rpc('agent.update', { agentId, settings });
         setAgents((items) => items.map((item) => item.agentId === agentId
             ? { ...item, settings, updatedAt: new Date().toISOString() }
@@ -2355,6 +2362,7 @@ export default function AgentPage() {
                     headerTabs={[
                         { id: 'context', label: i18n('Context'), active: teamSettingsTab === 'context', onSelect: () => { setTeamSettingsTab('context'); setTeamContextEditing(false); } },
                         ...(teamSettingsTeam.isRootTeam ? [
+                            { id: 'agents', label: i18n('Agents'), active: teamSettingsTab === 'agents', onSelect: () => { setTeamSettingsTab('agents'); setTeamContextEditing(false); } },
                             { id: 'role', label: i18n('Role'), active: teamSettingsTab === 'role', onSelect: () => { setTeamSettingsTab('role'); setTeamContextEditing(false); } },
                             { id: 'permissions', label: i18n('Permissions'), active: teamSettingsTab === 'permissions', onSelect: () => { setTeamSettingsTab('permissions'); setTeamContextEditing(false); } },
                         ] : []),
@@ -2386,17 +2394,39 @@ export default function AgentPage() {
                                     await Notification.success(i18n('Team add-on settings saved. Existing agents will sync in the background.'));
                                 }}
                             />
-                            : <TeamPermissionsPanel
-                                team={teamSettingsTeam}
-                                teams={teams}
-                                addons={agentAddons}
-                                section={teamSettingsTab === 'role' ? 'roles' : 'permissions'}
-                                saving={teamConfigSaving}
-                                onSave={async (acl: AgentTeamAcl) => {
-                                    await saveTeamConfig(teamSettingsTeam.teamId, { acl });
-                                    await Notification.success(i18n('Agent role permissions saved.'));
-                                }}
-                            />}
+                            : teamSettingsTab === 'agents'
+                                ? <TeamAgentsPanel
+                                    team={teamSettingsTeam}
+                                    teams={teams}
+                                    agents={agents}
+                                    roles={teamSettingsTeam.config?.acl?.roles ?? [
+                                        { roleId: 'root', name: 'Root', permissions: ['agent:read', 'agent:manage'] },
+                                        { roleId: 'default', name: 'Default', permissions: ['agent:read', 'agent:manage'] },
+                                        { roleId: 'guest', name: 'Guest', permissions: ['agent:read'] },
+                                    ]}
+                                    savingAgentId={savingAgentRoleId}
+                                    onCreateAgent={() => { setTeamSettingsId(null); void prepareNewSession(undefined, undefined, true); }}
+                                    onRoleChange={async (agentId, roleId) => {
+                                        setSavingAgentRoleId(agentId);
+                                        try {
+                                            await saveAgentSettings(agentId, { roleId });
+                                            await Notification.success(i18n('Agent role updated.'));
+                                        } finally {
+                                            setSavingAgentRoleId(null);
+                                        }
+                                    }}
+                                />
+                                : <TeamPermissionsPanel
+                                    team={teamSettingsTeam}
+                                    teams={teams}
+                                    addons={agentAddons}
+                                    section={teamSettingsTab === 'role' ? 'roles' : 'permissions'}
+                                    saving={teamConfigSaving}
+                                    onSave={async (acl: AgentTeamAcl) => {
+                                        await saveTeamConfig(teamSettingsTeam.teamId, { acl });
+                                        await Notification.success(i18n('Agent role permissions saved.'));
+                                    }}
+                                />}
                 </SessionDrawer>}
                 {selectedAgentSettings && <SessionDrawer
                     loading={false}

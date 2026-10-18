@@ -164,10 +164,15 @@ async function agentRolePermissions(scope: AgentScope, teamId?: string): Promise
 }
 
 async function permissionsForSession(
-    session: { domainId: string; userId: number; sessionId: string; groupId?: number; teamId?: string },
+    session: { domainId: string; userId: number; sessionId: string; groupId?: number; teamId?: string; agentId?: string },
     mountedAddons: ReadonlySet<string>,
 ): Promise<Set<string>> {
-    const acl = await agentAclForScope({ domainId: session.domainId, userId: session.userId, groupId: session.groupId }, session.teamId);
+    const scope = { domainId: session.domainId, userId: session.userId, groupId: session.groupId };
+    const rootAcl = await agentAclForScope(scope, session.teamId);
+    const agent = session.agentId ? await AgentModel.getAgent(session.domainId, session.userId, session.agentId, session.groupId) : null;
+    const acl = agent?.settings?.roleId && rootAcl?.roles.some((role) => role.roleId === agent.settings.roleId)
+        ? { ...rootAcl, activeRoleId: agent.settings.roleId }
+        : rootAcl;
     const permissions = permissionsForAgentAcl(acl);
     const activeRoleId = acl?.activeRoleId || DEFAULT_AGENT_ROLE_ID;
     const corePermissionIds = new Set(AGENT_CORE_PERMISSIONS.map((permission) => permission.id));

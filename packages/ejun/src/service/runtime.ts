@@ -1044,6 +1044,7 @@ function parseAgentSettings(raw: unknown): AgentSettings {
         settings.baseDocId = baseDocId;
     }
     if (typeof value.agentPreset === 'string' && value.agentPreset.trim()) settings.agentPreset = value.agentPreset.trim();
+    if (typeof value.roleId === 'string' && value.roleId.trim()) settings.roleId = value.roleId.trim();
     return settings;
 }
 
