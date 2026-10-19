@@ -6,6 +6,7 @@ import { PermissionError, PrivilegeError } from 'ejun/src/error';
 import { isSchema, schemaDescription, schemaToJsonSchema, validateToolArgs } from '../lib/tool-schema';
 import type { ToolArgs, ToolBaseSelectPayload, ToolCalledPayload, ToolContext, ToolSpec } from '../lib/tool-types';
 import type { VoidReturn } from 'ejun/src/service/bus';
+import type { ExecutorClass } from '@ejunz/framework';
 import { listAgentAddons } from './addons';
 
 const logger = new Logger('tools/registry');
@@ -16,6 +17,7 @@ export interface ToolDeclaration {
     description: string;
     inputSchema: Record<string, any>;
     agentPermissions?: readonly string[];
+    executorClass?: ExecutorClass;
     mutating?: boolean;
     execute(context: ToolContext, args: ToolArgs): Promise<unknown>;
 }
@@ -51,7 +53,7 @@ export interface ToolRegisterOptions {
     enabled?: boolean | (() => boolean);
     /** Permission IDs supplied by mounted add-ons. */
     agentPermissions?: readonly string[];
-    /** PERM flags the active Agent role must have to expose and invoke this tool. */
+    executorClass?: ExecutorClass;
     instructions?: (context: ToolInstructionsContext) => string | Promise<string>;
 }
 
@@ -249,6 +251,7 @@ export default class ToolService extends Service {
         const mutating = options.mutating ?? fromDefinition?.mutating === true;
         const explicitAgentPermissions = options.agentPermissions ?? fromDefinition?.agentPermissions;
         const agentPermissions = resolveAgentPermissions(addonId, mutating, explicitAgentPermissions);
+        const executorClass = options.executorClass ?? fromDefinition?.executorClass;
         if (!description) throw new Error(`tool ${name} is missing a description.`);
         if (!inputSchema) throw new Error(`tool ${name} is missing an inputSchema.`);
         if (agentPermissions?.some((permission) => typeof permission !== 'string' || permission.trim().length === 0)) {
@@ -262,6 +265,7 @@ export default class ToolService extends Service {
             inputSchema,
             mutating,
             agentPermissions: [...agentPermissions],
+            ...(executorClass ? { executorClass } : {}),
             execute: wrapBindBase(execute, options.bindBase ?? fromDefinition?.bindBase),
             config: options,
             ...(schema ? { schema } : {}),
@@ -294,6 +298,7 @@ export default class ToolService extends Service {
         if (options.instructions && !entry.instructions) entry.instructions = options.instructions;
         entry.tools.push(tool);
         this.owners.set(tool.name, source);
+        if (tool.executorClass) void (this.ctx.parallel as any)(`executor/register/${tool.name}`, tool.executorClass);
     }
 
     private removeTool(source: string, name: string): void {
@@ -368,6 +373,12 @@ export default class ToolService extends Service {
             source: found.source.source,
             mutating: found.tool.mutating === true,
         };
+    }
+
+    withExecutorClass(name: string, callback: (ExecutorClass: ExecutorClass) => unknown): void {
+        const executorClass = this.lookup(name)?.tool.executorClass;
+        if (executorClass) callback(executorClass);
+        (this.ctx.on as any)(`executor/register/${name}`, callback);
     }
 
     has(id: string): boolean {

@@ -303,7 +303,7 @@ export abstract class Executor<C = unknown, A = unknown, R = unknown> {
         }
     }
 
-    static wrap<C, A, R>(execute: (context: C, args: A) => R | Promise<R>) {
+    static wrap<C, A, R>(execute: (context: C, args: A) => R | Promise<R>): ExecutorClass<C, A, R> {
         return class WrappedExecutor extends Executor<C, A, R> {
             execute() {
                 return execute(this.context, this.args);
@@ -311,6 +311,8 @@ export abstract class Executor<C = unknown, A = unknown, R = unknown> {
         };
     }
 }
+
+export type ExecutorClass<C = unknown, A = unknown, R = unknown> = new(context: C, args: A) => Executor<C, A, R>;
 
 export class ConnectionHandler<C> extends HandlerCommon<C> {
     static [kHandler] = 'ConnectionHandler';
@@ -425,7 +427,7 @@ export class WebService<C extends CordisContext = CordisContext> extends Service
 
     constructor(ctx: C, public config: ReturnType<typeof WebService.Config>) {
         super(ctx, 'server');
-        ctx.mixin('server', ['Route', 'Connection', 'withHandlerClass', 'Tool']);
+        ctx.mixin('server', ['Route', 'Connection', 'withHandlerClass', 'withExecutorClass', 'Tool']);
         this.server.keys = this.config.keys;
         this.server.proxy = this.config.proxy;
         const corsAllowHeaders = 'x-requested-with, accept, origin, content-type, upgrade-insecure-requests, x-ejunz-inject';
@@ -846,11 +848,19 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
         } | undefined;
         if (!tools) throw new Error('Tool service is unavailable.');
         if (typeof execute === 'function' && execute.prototype instanceof Executor) {
-            const ExecutorClass = execute as new(context: unknown, args: unknown) => Executor<unknown, unknown, unknown>;
+            const ExecutorClass = execute as ExecutorClass<unknown, unknown, unknown>;
             const invoke = (context: unknown, toolArgs: unknown) => new ExecutorClass(context, toolArgs).run();
-            return tools.Tool(addonId, name, invoke, ...args);
+            return tools.Tool(addonId, name, { execute: invoke, executorClass: ExecutorClass }, ...args);
         }
         return tools.Tool(addonId, name, execute, ...args);
+    }
+
+    public withExecutorClass(name: string, callback: (ExecutorClass: ExecutorClass) => any) {
+        const tools = this.ctx.get('tools') as {
+            withExecutorClass?(name: string, callback: (ExecutorClass: ExecutorClass) => any): unknown;
+        } | undefined;
+        if (!tools?.withExecutorClass) throw new Error('Tool registry does not support Executor hooks.');
+        return tools.withExecutorClass(name, callback);
     }
 
     public withHandlerClass<T extends string>(
@@ -966,6 +976,7 @@ declare module 'cordis' {
         Route: WebService<this>['Route'];
         Connection: WebService<this>['Connection'];
         withHandlerClass: WebService<this>['withHandlerClass'];
+        withExecutorClass: WebService<this>['withExecutorClass'];
         Tool: WebService<this>['Tool'];
     }
 }
