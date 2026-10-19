@@ -18,7 +18,6 @@ export function TeamAgentsPanel({ team, teams, agents, roles, savingAgentId, onC
     const [error, setError] = useState('');
     const groupAgents = useMemo(() => agents.filter((agent) => agent.groupId === team.groupId), [agents, team.groupId]);
     const teamNames = useMemo(() => new Map(teams.map((item) => [item.teamId, item.text])), [teams]);
-    const defaultRole = team.config?.acl?.roles.find((role) => role.roleId === 'default')?.name || i18n('Default');
 
     return (
         <div className={styles.panel}>
@@ -35,7 +34,9 @@ export function TeamAgentsPanel({ team, teams, agents, roles, savingAgentId, onC
                     <thead><tr><th>{i18n('Agent')}</th><th>{i18n('Team')}</th><th>{i18n('Role')}</th></tr></thead>
                     <tbody>
                         {groupAgents.map((agent) => {
-                            const assignedRoleId = roles.some((role) => role.roleId === agent.settings.roleId) ? agent.settings.roleId || '' : '';
+                            const assignedRoleId = agent.settings.roleId !== 'default' && roles.some((role) => role.roleId === agent.settings.roleId)
+                                ? agent.settings.roleId || ''
+                                : '';
                             return <tr key={agent.agentId}>
                                 <td>
                                     <strong>{agent.title}</strong>
@@ -54,8 +55,8 @@ export function TeamAgentsPanel({ team, teams, agents, roles, savingAgentId, onC
                                             });
                                         }}
                                     >
-                                        <option value="">{i18n('Inherit group role: {0}', defaultRole)}</option>
-                                        {roles.map((role) => <option key={role.roleId} value={role.roleId}>{i18n(role.name)}</option>)}
+                                        <option value="">{i18n('Default')}</option>
+                                        {roles.filter((role) => role.roleId !== 'default').map((role) => <option key={role.roleId} value={role.roleId}>{i18n(role.name)}</option>)}
                                     </select>
                                 </td>
                             </tr>;
