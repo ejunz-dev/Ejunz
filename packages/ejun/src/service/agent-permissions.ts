@@ -13,7 +13,7 @@ export interface AgentPermissionInfo {
 
 export const AGENT_CORE_PERMISSIONS: readonly AgentPermissionInfo[] = [
     { id: 'agent:read', name: 'Read Agent workspace', family: 'Agent', description: 'View Agents, Teams, sessions, and their history.' },
-    { id: 'agent:manage', name: 'Manage Agent workspace', family: 'Agent', description: 'Create, update, and delete Agents, Teams, and sessions.' },
+    { id: 'agent:manage', name: 'Manage Agent workspace', family: 'Agent', description: 'Create, update, and delete Groups, Teams, Agents, and sessions; assign roles and configure Team Addons.' },
 ];
 
 export const DEFAULT_AGENT_ROLE_ID = 'default';

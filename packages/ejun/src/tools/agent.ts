@@ -6,8 +6,10 @@ import UserModel from 'ejun/src/model/user';
 import { MAX_AGENTS_PER_CALL, MAX_FILE_CONTENT_CHARS, MAX_FILE_CONTENT_CHARS_LIMIT, MAX_TEAMS_PER_CALL } from '../lib/tool-limits';
 import { asText, idList } from '../lib/tool-shared';
 import { agentRuntimeHandlerContext } from '../service/runtime';
-import { listAgentAddons, registerAgentAddon } from '../service/addons';
-import type { AgentConfig, AgentSettings, AgentTeamConfig, AgentTeamDoc, AgentSessionSummary, AgentSessionView } from 'ejun/src/model/agent';
+import { listAgentAddons as listRegisteredAgentAddons, registerAgentAddon } from '../service/addons';
+import type { AgentConfig, AgentSettings, AgentTeamAcl, AgentTeamConfig, AgentTeamDoc, AgentSessionSummary, AgentSessionView } from 'ejun/src/model/agent';
+import { defaultAgentAcl } from 'ejun/src/model/agent';
+import { agentPermissionCatalog, normalizeAgentAcl } from '../service/agent-permissions';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import type {} from '../service/registry';
 
@@ -70,6 +72,34 @@ export const TeamRemove = Schema.object({
     teamId: Schema.string().required().description('Team id.'),
 }).description('Delete a workspace team belonging to an Agent. Its child teams and session agents move to its parent. The root team cannot be deleted.');
 
+export const AgentRoleList = Schema.object({ groupId: Schema.number().step(1).min(1).required() }).description('List roles configured on the Group root Team, including available Agent permissions.');
+export const AgentRoleGet = Schema.object({ groupId: Schema.number().step(1).min(1).required(), roleId: Schema.string().required() }).description('Read one Agent role and its permissions.');
+export const AgentRoleCreate = Schema.object({
+    groupId: Schema.number().step(1).min(1).required(),
+    roleId: Schema.string().required().description('Unique lowercase role id (1–32 characters; letters, digits, dots, underscores, and hyphens).'),
+    name: Schema.string().required().description('Role name, 1–64 characters.'),
+    permissions: Schema.array(Schema.string()).description('Permission IDs from agent_permission_list; defaults to no permissions.'),
+}).description('Create a custom role on the Group root Team. Built-in role ids are reserved.');
+export const AgentRoleUpdate = Schema.object({
+    groupId: Schema.number().step(1).min(1).required(),
+    roleId: Schema.string().required(),
+    name: Schema.string().description('New role name (custom roles only).'),
+    permissions: Schema.array(Schema.string()).description('Replace the role permission list. Root permissions are fixed.'),
+}).description('Rename a custom role and/or replace its permission list. Built-in roles cannot be renamed; Root permissions cannot be changed.');
+export const AgentRoleRemove = Schema.object({ groupId: Schema.number().step(1).min(1).required(), roleId: Schema.string().required() }).description('Delete a custom role. Built-in roles cannot be deleted. Agents assigned to a deleted role fall back to Default.');
+export const AgentPermissionList = Schema.object({}).description('List the fixed Agent permission catalog, including permissions contributed by registered Addons.');
+export const AgentPermissionGet = Schema.object({ permissionId: Schema.string().required() }).description('Read one permission from the Agent permission catalog.');
+
+export const AgentAddonList = Schema.object({ groupId: Schema.number().step(1).min(1).required() }).description('List registered Addons and their installed and Group-enabled status. Read Team-specific selections from the Team config.');
+export const AgentAddonGet = Schema.object({ groupId: Schema.number().step(1).min(1).required(), addonId: Schema.string().required() }).description('Read one registered Addon and its tools and permissions.');
+export const AgentAddonInstall = Schema.object({ addonId: Schema.string().required() }).description('Install a registered Addon for the current domain. Requires Agent configuration permission.');
+export const AgentAddonUninstall = Schema.object({ addonId: Schema.string().required() }).description('Uninstall a registered Addon from the current domain. This disables it for all Groups and removes its role permissions. Requires Agent configuration permission.');
+export const AgentAddonUpdate = Schema.object({
+    groupId: Schema.number().step(1).min(1).required(),
+    addonId: Schema.string().required(),
+    enabled: Schema.boolean().required(),
+}).description('Enable or disable an installed Addon for one Group. This does not change domain installation. Requires Agent configuration permission.');
+
 const conversationRead = {
     beforeSeq: Schema.number().step(1).min(0).description('Return turns before this event seq.'),
     maxMessages: Schema.number().step(1).min(1).max(500).description('Maximum turns to read (default 50).'),
@@ -77,13 +107,13 @@ const conversationRead = {
 };
 export const AgentList = Schema.object({ groupId: Schema.number().step(1).min(1).required(), teamId: Schema.string().description('Optional team filter.') }).description('List persisted Agent records, including agentId, teamId, title, and settings.');
 export const AgentGet = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required().description('Persisted Agent id.') }).description('Read one persisted Agent record by agentId.');
-export const AgentCreate = Schema.object({ groupId: Schema.number().step(1).min(1).required(), teamId: Schema.string(), title: Schema.string().required(), provider: Schema.string(), model: Schema.string(), baseDocId: Schema.number().step(1).min(1), runtimeId: Schema.string(), agentPreset: Schema.string(), context: Schema.string() }).description('Create a persistent Agent record with teamId, title, settings, and optional context; does not create a session.');
-export const AgentUpdate = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required(), title: Schema.string(), teamId: Schema.string(), provider: Schema.string(), model: Schema.string(), baseDocId: Schema.number().step(1).min(1), runtimeId: Schema.string(), agentPreset: Schema.string(), context: Schema.string() }).description('Update an Agent record, its settings, or its persistent context by agentId.');
+export const AgentCreate = Schema.object({ groupId: Schema.number().step(1).min(1).required(), teamId: Schema.string(), title: Schema.string().required(), provider: Schema.string(), model: Schema.string(), baseDocId: Schema.number().step(1).min(1), runtimeId: Schema.string(), agentPreset: Schema.string(), roleId: Schema.string().description('Optional Group role id; requires Agent configuration permission. Omit or pass an empty string to use Default.'), context: Schema.string() }).description('Create a persistent Agent record with teamId, title, settings, and optional role and context; does not create a session.');
+export const AgentUpdate = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required(), title: Schema.string(), teamId: Schema.string(), provider: Schema.string(), model: Schema.string(), baseDocId: Schema.number().step(1).min(1), runtimeId: Schema.string(), agentPreset: Schema.string(), roleId: Schema.string().description('Set a Group role id (requires Agent configuration permission); pass an empty string to return to Default.'), context: Schema.string() }).description('Update an Agent record, its settings, role assignment, or persistent context by agentId.');
 export const AgentRemove = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required() }).description('Delete an Agent record by agentId.');
-const AgentCreateFields = Schema.object({ teamId: Schema.string(), title: Schema.string().required(), provider: Schema.string(), model: Schema.string(), baseDocId: Schema.number().step(1).min(1), runtimeId: Schema.string(), agentPreset: Schema.string(), context: Schema.string() });
+const AgentCreateFields = Schema.object({ teamId: Schema.string(), title: Schema.string().required(), provider: Schema.string(), model: Schema.string(), baseDocId: Schema.number().step(1).min(1), runtimeId: Schema.string(), agentPreset: Schema.string(), roleId: Schema.string(), context: Schema.string() });
 export const AgentCreateMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agents: Schema.array(AgentCreateFields).min(1).max(MAX_AGENTS_PER_CALL).required() }).description('Create persisted Agent records.');
 export const AgentGetMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required() }).description('Read Agent records by agentIds.');
-export const AgentUpdateMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), entries: Schema.array(Schema.object({ agentId: Schema.string().required(), title: Schema.string(), teamId: Schema.string(), context: Schema.string() })).min(1).max(MAX_AGENTS_PER_CALL).required() }).description('Update Agent records by agentId.');
+export const AgentUpdateMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), entries: Schema.array(Schema.object({ agentId: Schema.string().required(), title: Schema.string(), teamId: Schema.string(), roleId: Schema.string(), context: Schema.string() })).min(1).max(MAX_AGENTS_PER_CALL).required() }).description('Update Agent records by agentId.');
 export const AgentRemoveMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required() }).description('Delete Agent records by agentIds.');
 export const AgentSessionList = Schema.object({ groupId: Schema.number().step(1).min(1).required(), teamId: Schema.string(), agentId: Schema.string() }).description('List runtime sessions by sessionId, optionally filtered by owning Agent or team.');
 export const AgentSessionGet = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionId: Schema.string().required(), ...conversationRead }).description('Read a runtime session conversation by sessionId.');
@@ -111,6 +141,7 @@ const TeamAgentCreateFields = Schema.object({
     baseDocId: Schema.number().step(1).min(1).description('Optional Base to attach as this agent’s context.'),
     runtimeId: Schema.string().description('Optional host id.'),
     agentPreset: Schema.string().description('Optional Agent preset id.'),
+    roleId: Schema.string().description('Optional Group role id; requires Agent configuration permission. Omit to use Default.'),
 });
 
 export const TeamCreateMany = Schema.object({
@@ -144,7 +175,8 @@ export const TeamUpdateMany = Schema.object({
         agentId: Schema.string().required().description('Agent id.'),
         title: Schema.string().description('New agent title.'),
         teamId: Schema.string().description('Move to this existing team.'),
-    })).max(MAX_AGENTS_PER_CALL).description('Agent title and team changes.'),
+        roleId: Schema.string().description('Assign a Group role; pass an empty string to use Default.'),
+    })).max(MAX_AGENTS_PER_CALL).description('Agent title, team, and role changes.'),
 }).description('Update multiple teams and agents for one Group. Team and agent results report successes and refusals separately; this batch is not transactional.');
 
 export const TeamDeleteMany = Schema.object({
@@ -436,7 +468,7 @@ export async function updateTeam(ctx: ToolContext, args: ToolArgs) {
         if (!updated) throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
         resultTeam = teamView(updated);
         if (hasAddonIds) {
-            for (const addon of listAgentAddons()) {
+            for (const addon of listRegisteredAgentAddons()) {
                 await ctx.broadcastAgentEvent('agent/addon-state', {
                     domainId: ctx.domainId,
                     userId: ctx.owner,
@@ -472,8 +504,174 @@ export async function removeTeam(ctx: ToolContext, args: ToolArgs) {
     return { ok: true, groupId, teamId, ...value };
 }
 
+export async function listAgentRoles(ctx: ToolContext, args: ToolArgs) {
+    const { groupId, group } = await requireGroup(ctx, args);
+    const { acl } = await groupRootAcl(ctx, groupId, group.title);
+    return { ok: true, groupId, roles: acl.roles, permissions: agentPermissionCatalog() };
+}
+
+export async function getAgentRole(ctx: ToolContext, args: ToolArgs) {
+    const { groupId, group } = await requireGroup(ctx, args);
+    const roleId = asText(args.roleId);
+    const { acl } = await groupRootAcl(ctx, groupId, group.title);
+    const role = acl.roles.find((item) => item.roleId === roleId);
+    if (!role) throw new Error(`Agent role not found: ${roleId}`);
+    return { ok: true, groupId, role };
+}
+
+export async function createAgentRole(ctx: ToolContext, args: ToolArgs) {
+    await requireAgentConfigurationPermission(ctx);
+    const { groupId, group } = await requireGroup(ctx, args, 'edit');
+    const roleId = asText(args.roleId);
+    const name = asText(args.name);
+    if (!/^[a-z][a-z0-9._-]{0,31}$/.test(roleId)) throw new Error('roleId must be 1–32 lowercase letters, digits, dots, underscores, or hyphens and start with a letter');
+    if (['root', 'default', 'guest'].includes(roleId)) throw new Error(`Built-in role id is reserved: ${roleId}`);
+    if (!name || name.length > 64) throw new Error('name must be between 1 and 64 characters');
+    const { root, acl } = await groupRootAcl(ctx, groupId, group.title);
+    if (acl.roles.some((role) => role.roleId === roleId)) throw new Error(`Agent role already exists: ${roleId}`);
+    acl.roles.push({ roleId, name, permissions: args.permissions === undefined ? [] : validateRolePermissions(args.permissions) });
+    const updated = await saveGroupRootAcl(ctx, groupId, root, normalizeAgentAcl(acl));
+    return { ok: true, groupId, role: updated.config?.acl?.roles.find((role) => role.roleId === roleId) };
+}
+
+export async function updateAgentRole(ctx: ToolContext, args: ToolArgs) {
+    await requireAgentConfigurationPermission(ctx);
+    const { groupId, group } = await requireGroup(ctx, args, 'edit');
+    const roleId = asText(args.roleId);
+    const hasName = Object.prototype.hasOwnProperty.call(args, 'name');
+    const hasPermissions = Object.prototype.hasOwnProperty.call(args, 'permissions');
+    if (!hasName && !hasPermissions) throw new Error('Nothing to update');
+    const { root, acl } = await groupRootAcl(ctx, groupId, group.title);
+    const role = acl.roles.find((item) => item.roleId === roleId);
+    if (!role) throw new Error(`Agent role not found: ${roleId}`);
+    if (roleId === 'root') throw new Error('The Root role is fixed and cannot be updated');
+    if (hasName) {
+        const name = asText(args.name);
+        if (['default', 'guest'].includes(roleId)) throw new Error(`Built-in role name cannot be changed: ${roleId}`);
+        if (!name || name.length > 64) throw new Error('name must be between 1 and 64 characters');
+        role.name = name;
+    }
+    if (hasPermissions) role.permissions = validateRolePermissions(args.permissions);
+    const updated = await saveGroupRootAcl(ctx, groupId, root, normalizeAgentAcl(acl));
+    return { ok: true, groupId, role: updated.config?.acl?.roles.find((item) => item.roleId === roleId) };
+}
+
+export async function removeAgentRole(ctx: ToolContext, args: ToolArgs) {
+    await requireAgentConfigurationPermission(ctx);
+    const { groupId, group } = await requireGroup(ctx, args, 'edit');
+    const roleId = asText(args.roleId);
+    if (['root', 'default', 'guest'].includes(roleId)) throw new Error(`Built-in role cannot be deleted: ${roleId}`);
+    const { root, acl } = await groupRootAcl(ctx, groupId, group.title);
+    if (!acl.roles.some((role) => role.roleId === roleId)) throw new Error(`Agent role not found: ${roleId}`);
+    acl.roles = acl.roles.filter((role) => role.roleId !== roleId);
+    await saveGroupRootAcl(ctx, groupId, root, normalizeAgentAcl(acl));
+    return { ok: true, groupId, roleId, deleted: true };
+}
+
+export async function listAgentPermissions(_ctx: ToolContext, _args: ToolArgs) {
+    const permissions = agentPermissionCatalog();
+    return { ok: true, count: permissions.length, permissions };
+}
+
+export async function getAgentPermission(_ctx: ToolContext, args: ToolArgs) {
+    const permissionId = asText(args.permissionId);
+    const permission = agentPermissionCatalog().find((item) => item.id === permissionId);
+    if (!permission) throw new Error(`Agent permission not found: ${permissionId}`);
+    return { ok: true, permission };
+}
+
+async function addonRpcValue(response: { result?: { ok?: boolean; value?: unknown }; error?: { message?: string } }, label: string) {
+    if (!response.result?.ok) throw new Error(response.error?.message || label);
+    return response.result.value;
+}
+
+export async function listAgentAddons(ctx: ToolContext, args: ToolArgs) {
+    const { groupId } = await requireGroup(ctx, args);
+    const result = await agentRuntimeHandlerContext.agentAddonsList({ rpcId: 'agent_addons_list', method: 'agent.addons.list' }, sessionScope(ctx, groupId));
+    const value = await addonRpcValue(result, 'Failed to list Agent Addons') as { addons?: unknown[] };
+    return { ok: true, groupId, addons: value.addons ?? [], permissions: agentPermissionCatalog() };
+}
+
+export async function getAgentAddon(ctx: ToolContext, args: ToolArgs) {
+    const { groupId } = await requireGroup(ctx, args);
+    const addonId = asText(args.addonId);
+    const result = await agentRuntimeHandlerContext.agentAddonsList({ rpcId: 'agent_addons_get', method: 'agent.addons.list' }, sessionScope(ctx, groupId));
+    const value = await addonRpcValue(result, 'Failed to read Agent Addon') as { addons?: { addonId: string }[] };
+    const addon = value.addons?.find((item) => item.addonId === addonId);
+    if (!addon) throw new Error(`Agent Addon not found: ${addonId}`);
+    return { ok: true, groupId, addon };
+}
+
+export async function installAgentAddon(ctx: ToolContext, args: ToolArgs) {
+    await requireAgentConfigurationPermission(ctx);
+    const addonId = asText(args.addonId);
+    const result = await agentRuntimeHandlerContext.setAgentAddonInstalled({ rpcId: 'agent_addon_install', method: 'agent.addons.install', payload: { addonId } }, { domainId: ctx.domainId, userId: ctx.owner }, async (change) => {
+        await ctx.broadcastAgentEvent?.('agent/addon-state', { ...change });
+    }, true);
+    const value = await addonRpcValue(result, 'Failed to install Agent Addon');
+    return { ok: true, ...(value as Record<string, unknown>) };
+}
+
+export async function uninstallAgentAddon(ctx: ToolContext, args: ToolArgs) {
+    await requireAgentConfigurationPermission(ctx);
+    const addonId = asText(args.addonId);
+    const result = await agentRuntimeHandlerContext.setAgentAddonInstalled({ rpcId: 'agent_addon_uninstall', method: 'agent.addons.uninstall', payload: { addonId } }, { domainId: ctx.domainId, userId: ctx.owner }, async (change) => {
+        await ctx.broadcastAgentEvent?.('agent/addon-state', { ...change });
+    }, false);
+    const value = await addonRpcValue(result, 'Failed to uninstall Agent Addon');
+    return { ok: true, ...(value as Record<string, unknown>) };
+}
+
+export async function updateAgentAddon(ctx: ToolContext, args: ToolArgs) {
+    await requireAgentConfigurationPermission(ctx);
+    const { groupId } = await requireGroup(ctx, args, 'edit');
+    const addonId = asText(args.addonId);
+    if (typeof args.enabled !== 'boolean') throw new Error('enabled must be a boolean');
+    const result = await agentRuntimeHandlerContext.agentAddonSet({ rpcId: 'agent_addon_update', method: 'agent.addons.set', payload: { addonId, enabled: args.enabled } }, sessionScope(ctx, groupId), async (change) => {
+        await ctx.broadcastAgentEvent?.('agent/addon-state', { ...change });
+    });
+    const value = await addonRpcValue(result, 'Failed to update Agent Addon');
+    return { ok: true, groupId, ...(value as Record<string, unknown>) };
+}
+
 function sessionScope(ctx: ToolContext, groupId: number) {
     return { domainId: ctx.domainId, userId: ctx.owner, groupId };
+}
+
+async function groupRootAcl(ctx: ToolContext, groupId: number, title: string) {
+    const root = await ensureGroupRoot(ctx, groupId, title);
+    return { root, acl: normalizeAgentAcl(root.config?.acl ?? defaultAgentAcl()) };
+}
+
+async function validateRoleAssignment(ctx: ToolContext, groupId: number, title: string, roleId: string) {
+    if (!roleId) return undefined;
+    const { acl } = await groupRootAcl(ctx, groupId, title);
+    if (!acl.roles.some((role) => role.roleId === roleId)) throw new Error(`Agent role not found in Group ${groupId}: ${roleId}`);
+    return roleId;
+}
+
+function validateRolePermissions(value: unknown): string[] {
+    if (!Array.isArray(value) || value.some((id) => typeof id !== 'string')) throw new Error('permissions must be an array of permission IDs');
+    const known = new Set(agentPermissionCatalog().map((permission) => permission.id));
+    const permissions = [...new Set((value as string[]).map((id) => id.trim()))];
+    const unknown = permissions.find((id) => !known.has(id));
+    if (unknown) throw new Error(`Unknown Agent permission: ${unknown}`);
+    return permissions.sort();
+}
+
+async function saveGroupRootAcl(ctx: ToolContext, groupId: number, root: AgentTeamDoc, acl: AgentTeamAcl) {
+    const updated = await AgentSessionModel.updateTeamConfig(ctx.domainId, ctx.owner, root.teamId, {
+        ...root.config,
+        acl,
+    }, groupId);
+    if (!updated) throw new Error(`Group root Team not found: ${root.teamId}`);
+    await ctx.broadcastAgentEvent?.('agent/acl-update', { ...sessionScope(ctx, groupId), teamId: root.teamId, acl });
+    return updated;
+}
+
+async function requireAgentConfigurationPermission(ctx: ToolContext) {
+    const user = await UserModel.getById(ctx.domainId, ctx.owner);
+    if (!user.hasPerm(PERM.PERM_CONFIGURE_AGENT)) throw new Error('You do not have permission to configure Agent roles or Addons');
 }
 
 async function renameSessionAgent(ctx: ToolContext, groupId: number, sessionId: string, title: string) {
@@ -498,7 +696,8 @@ function settingsFromArgs(args: ToolArgs, old: AgentSettings = {}): AgentSetting
     if (has('baseDocId')) { const n = Number(args.baseDocId); if (!Number.isSafeInteger(n) || n <= 0) throw new Error('baseDocId must be a positive integer'); baseDocId = String(n); }
     return { ...(provider && model ? { model: { provider, model } } : {}), ...(baseDocId ? { baseDocId } : {}),
         ...(has('runtimeId') ? (asText(args.runtimeId) ? { runtimeId: asText(args.runtimeId) } : {}) : old.runtimeId ? { runtimeId: old.runtimeId } : {}),
-        ...(has('agentPreset') ? (asText(args.agentPreset) ? { agentPreset: asText(args.agentPreset) } : {}) : old.agentPreset ? { agentPreset: old.agentPreset } : {}) };
+        ...(has('agentPreset') ? (asText(args.agentPreset) ? { agentPreset: asText(args.agentPreset) } : {}) : old.agentPreset ? { agentPreset: old.agentPreset } : {}),
+        ...(has('roleId') ? (asText(args.roleId) ? { roleId: asText(args.roleId) } : {}) : old.roleId ? { roleId: old.roleId } : {}) };
 }
 function configFromArgs(args: ToolArgs, old: AgentConfig = {}): AgentConfig {
     if (!Object.prototype.hasOwnProperty.call(args, 'context')) return old;
@@ -516,6 +715,9 @@ export async function createAgent(ctx: ToolContext, args: ToolArgs) {
     if (!title) throw new Error('title is required');
     const teamId = asText(args.teamId) || root.teamId;
     if (!await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId)) throw new Error(`Team not found: ${teamId}`);
+    const roleId = asText(args.roleId);
+    if (roleId) await requireAgentConfigurationPermission(ctx);
+    await validateRoleAssignment(ctx, groupId, group.title, roleId);
     const agent = await AgentModel.createAgent(ctx.domainId, ctx.owner, groupId, teamId, title, settingsFromArgs(args), configFromArgs(args));
     if (Object.prototype.hasOwnProperty.call(args, 'context')) {
         await ctx.broadcastAgentEvent?.('agent/agent-context', { domainId: ctx.domainId, userId: ctx.owner, groupId, agentId: agent.agentId });
@@ -523,7 +725,7 @@ export async function createAgent(ctx: ToolContext, args: ToolArgs) {
     return { ok: true, groupId, agent: agentRecordView(agent) };
 }
 export async function updateAgent(ctx: ToolContext, args: ToolArgs) {
-    const { groupId } = await requireGroup(ctx, args, 'edit');
+    const { groupId, group } = await requireGroup(ctx, args, 'edit');
     const agentId = asText(args.agentId);
     const old = agentId && await AgentModel.getAgent(ctx.domainId, ctx.owner, agentId, groupId);
     if (!old) throw new Error(`Agent not found: ${agentId}`);
@@ -538,7 +740,10 @@ export async function updateAgent(ctx: ToolContext, args: ToolArgs) {
         if (!teamId || !await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId)) throw new Error(`Team not found: ${teamId}`);
         patch.teamId = teamId;
     }
-    if (['provider', 'model', 'baseDocId', 'runtimeId', 'agentPreset'].some((key) => Object.prototype.hasOwnProperty.call(args, key))) {
+    if (['provider', 'model', 'baseDocId', 'runtimeId', 'agentPreset', 'roleId'].some((key) => Object.prototype.hasOwnProperty.call(args, key))) {
+        const roleId = asText(args.roleId);
+        if (Object.prototype.hasOwnProperty.call(args, 'roleId') && roleId) await requireAgentConfigurationPermission(ctx);
+        await validateRoleAssignment(ctx, groupId, group.title, roleId);
         patch.settings = settingsFromArgs(args, old.settings);
     }
     if (Object.prototype.hasOwnProperty.call(args, 'context')) patch.config = configFromArgs(args, old.config);
@@ -1092,6 +1297,18 @@ export function apply(ctx: Context) {
     ctx.Tool('agent', 'agent_team_create', createTeam, TeamCreate, write, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_team_update', updateTeam, TeamUpdate, write, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_team_delete', removeTeam, TeamRemove, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_role_list', listAgentRoles, AgentRoleList, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_role_get', getAgentRole, AgentRoleGet, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_role_create', createAgentRole, AgentRoleCreate, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_role_update', updateAgentRole, AgentRoleUpdate, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_role_delete', removeAgentRole, AgentRoleRemove, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_permission_list', listAgentPermissions, AgentPermissionList, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_permission_get', getAgentPermission, AgentPermissionGet, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_addon_list', listAgentAddons, AgentAddonList, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_addon_get', getAgentAddon, AgentAddonGet, read, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_addon_install', installAgentAddon, AgentAddonInstall, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_addon_uninstall', uninstallAgentAddon, AgentAddonUninstall, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_addon_update', updateAgentAddon, AgentAddonUpdate, write, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_agent_list', listAgents, AgentList, read, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_agent_get', getAgent, AgentGet, read, PRIV.PRIV_USER_PROFILE);
     ctx.Tool('agent', 'agent_agent_create', createAgent, AgentCreate, write, PRIV.PRIV_USER_PROFILE);
