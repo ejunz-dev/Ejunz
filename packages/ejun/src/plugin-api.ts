@@ -69,7 +69,7 @@ export type { AgentStorageDescriptor, AgentStorageSnapshot } from './model/agent
 export { agentDataAdapter, MongoAgentDataAdapter } from './service/runtime';
 export type { AgentDataAdapter, AgentScope } from './service/runtime';
 export { default as ClientModel, ClientWidgetModel, ClientGsiFieldModel } from '../../../plugins/edge/model/client';
-export { PRIV } from './model/builtin';
+export { PRIV, USER, AGENT } from './model/builtin';
 export * from './model/builtin';
 export { Collections } from './service/db';
 export { ConnectionHandler, Handler, requireSudo } from './service/server';

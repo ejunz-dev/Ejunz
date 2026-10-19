@@ -1,10 +1,11 @@
 import Schema from 'schemastery';
 import type { Context } from 'ejun/src/context';
-import { PRIV } from 'ejun/src/model/builtin';
+import { AGENT, USER } from 'ejun/src/model/builtin';
 import { AgentModel, AgentSessionModel } from 'ejun/src/model/agent';
 import { MAX_AGENTS_PER_CALL, MAX_FILE_CONTENT_CHARS, MAX_FILE_CONTENT_CHARS_LIMIT } from '../lib/tool-limits';
 import { asText, idList } from '../lib/tool-shared';
 import { agentRuntimeHandlerContext } from '../service/runtime';
+import { agentToolAccess } from '../service/agent-acl';
 import type { AgentConfig, AgentSettings } from 'ejun/src/model/agent';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import { agentRecordView, configFromArgs, createSessionAgent, ensureGroupRoot, objectEntries, renameSessionAgent, requireGroup, sessionAgentInput, sessionAgentView, sessionConversation, sessionScope, settingsFromArgs, validateRoleAssignment, requireAgentConfigurationPermission } from './common/agent';
@@ -295,23 +296,21 @@ export async function removeAgentSessions(ctx:ToolContext,args:ToolArgs) {const 
 export async function removeAgentSession(ctx:ToolContext,args:ToolArgs) {const {groupId}=await requireGroup(ctx,args,'delete');const sessionId=asText(args.sessionId);if(!sessionId)throw new Error('sessionId is required');await AgentSessionModel.deleteSession(ctx.domainId,ctx.owner,sessionId,groupId);return {ok:true,groupId,sessionId,deleted:true};}
 
 export function apply(ctx: Context) {
-    const read = { source: 'agent', bindBase: 'none' as const, agentPermissions: ['agent:read'] };
-    const write = { ...read, mutating: true, agentPermissions: ['agent:manage'] };
-    ctx.Tool('agent', 'agent_agent_list', listAgents, AgentList, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_agent_get', getAgent, AgentGet, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_agent_create', createAgent, AgentCreate, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_agent_update', updateAgent, AgentUpdate, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_agent_delete', removeAgent, AgentRemove, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_agent_create_many', createAgents, AgentCreateMany, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_agent_get_many', getAgents, AgentGetMany, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_agent_update_many', updateAgents, AgentUpdateMany, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_agent_delete_many', removeAgents, AgentRemoveMany, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_session_list', listAgentSessions, AgentSessionList, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_session_get', getAgentSession, AgentSessionGet, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_session_create', createAgentSession, AgentSessionCreate, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_session_create_many', createAgentSessionsForExistingAgents, AgentSessionCreateMany, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_session_update', updateAgentSession, AgentSessionUpdate, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_session_delete', removeAgentSession, AgentSessionDelete, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_session_get_many', getAgentSessions, AgentSessionGetMany, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_session_delete_many', removeAgentSessions, AgentSessionDeleteMany, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_list', listAgents, AgentList, agentToolAccess(AGENT.AGENT_LIST), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_get', getAgent, AgentGet, agentToolAccess(AGENT.AGENT_GET), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_create', createAgent, AgentCreate, agentToolAccess(AGENT.AGENT_CREATE), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_update', updateAgent, AgentUpdate, agentToolAccess(AGENT.AGENT_UPDATE), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_delete', removeAgent, AgentRemove, agentToolAccess(AGENT.AGENT_DELETE), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_create_many', createAgents, AgentCreateMany, agentToolAccess(AGENT.AGENT_CREATE_MANY), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_get_many', getAgents, AgentGetMany, agentToolAccess(AGENT.AGENT_GET_MANY), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_update_many', updateAgents, AgentUpdateMany, agentToolAccess(AGENT.AGENT_UPDATE_MANY), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_delete_many', removeAgents, AgentRemoveMany, agentToolAccess(AGENT.AGENT_DELETE_MANY), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_session_list', listAgentSessions, AgentSessionList, agentToolAccess(AGENT.SESSION_LIST), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_session_get', getAgentSession, AgentSessionGet, agentToolAccess(AGENT.SESSION_GET), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_session_create', createAgentSession, AgentSessionCreate, agentToolAccess(AGENT.SESSION_CREATE), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_session_create_many', createAgentSessionsForExistingAgents, AgentSessionCreateMany, agentToolAccess(AGENT.SESSION_CREATE_MANY), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_session_update', updateAgentSession, AgentSessionUpdate, agentToolAccess(AGENT.SESSION_UPDATE), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_session_delete', removeAgentSession, AgentSessionDelete, agentToolAccess(AGENT.SESSION_DELETE), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_session_get_many', getAgentSessions, AgentSessionGetMany, agentToolAccess(AGENT.SESSION_GET_MANY), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_session_delete_many', removeAgentSessions, AgentSessionDeleteMany, agentToolAccess(AGENT.SESSION_DELETE_MANY), USER.PRIV.PRIV_USER_PROFILE);
 }

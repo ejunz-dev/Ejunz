@@ -9,7 +9,7 @@ import type { RuntimeHelloFrame, RuntimeInboundFrame, RuntimeLinkPollFrame, Runt
 import { agentRuntimeHandlerContext as service } from '../service/runtime';
 import { listAgentAddons } from '../service/addons';
 import type { AgentAddonStateChange } from '../service/bus';
-import { addonAgentPermissionId, AGENT_CORE_PERMISSIONS, agentPermissionCatalog, defaultAgentAcl, DEFAULT_AGENT_ROLE_ID, normalizeAgentAcl, permissionsForAgentAcl } from '../service/agent-permissions';
+import { addonAgentPermissionId, agentPermissionCatalog, defaultAgentAcl, DEFAULT_AGENT_ROLE_ID, normalizeAgentAcl, permissionsForAgentAcl } from '../service/agent-acl';
 
 interface RpcEnvelope {
     type?: string;
@@ -174,9 +174,7 @@ async function permissionsForSession(
         ? agent.settings.roleId
         : DEFAULT_AGENT_ROLE_ID;
     const permissions = permissionsForAgentAcl(acl, roleId);
-    const corePermissionIds = new Set(AGENT_CORE_PERMISSIONS.map((permission) => permission.id));
     for (const permissionId of [...permissions]) {
-        if (corePermissionIds.has(permissionId)) continue;
         const addonId = permissionId.split(':', 1)[0];
         if (!mountedAddons.has(addonId)) permissions.delete(permissionId);
     }

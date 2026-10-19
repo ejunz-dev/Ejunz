@@ -1,6 +1,7 @@
 import Schema from 'schemastery';
 import type { Context } from 'ejun/src/context';
-import { PRIV } from 'ejun/src/model/builtin';
+import { AGENT, USER } from 'ejun/src/model/builtin';
+import { agentToolAccess } from '../service/agent-acl';
 import GroupDefinitionModel, { AgentSessionModel } from 'ejun/src/model/agent';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import { buildOutline, ensureGroupRoot, groupView, groupWorkspace, requireGroup, resultLimit } from './common/agent';
@@ -105,12 +106,10 @@ export async function removeGroup(ctx: ToolContext, args: ToolArgs) {
 }
 
 export function apply(ctx: Context) {
-    const read = { source: 'agent', bindBase: 'none' as const, agentPermissions: ['agent:read'] };
-    const write = { ...read, mutating: true, agentPermissions: ['agent:manage'] };
-    ctx.Tool('agent', 'agent_group_list', listGroups, GroupList, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_group_search', searchGroups, GroupSearch, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_group_get', getGroup, GroupGet, read, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_group_create', createGroup, GroupCreate, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_group_update', updateGroup, GroupUpdate, write, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_group_delete', removeGroup, GroupRemove, write, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_group_list', listGroups, GroupList, agentToolAccess(AGENT.GROUP_LIST), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_group_search', searchGroups, GroupSearch, agentToolAccess(AGENT.GROUP_SEARCH), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_group_get', getGroup, GroupGet, agentToolAccess(AGENT.GROUP_GET), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_group_create', createGroup, GroupCreate, agentToolAccess(AGENT.GROUP_CREATE), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_group_update', updateGroup, GroupUpdate, agentToolAccess(AGENT.GROUP_UPDATE), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_group_delete', removeGroup, GroupRemove, agentToolAccess(AGENT.GROUP_DELETE), USER.PRIV.PRIV_USER_PROFILE);
 }
