@@ -20,7 +20,7 @@ import {
     ArrayKeys, MaybeArray, NumberKeys, Projection,
 } from '../typeutils';
 import { buildProjection } from '../utils';
-import { PERM, PERMS, STATUS } from './builtin';
+import { PERM, STATUS } from './builtin';
 import DomainModel from './domain';
 import storage from './storage';
 import SystemModel from './system';
@@ -585,9 +585,9 @@ export interface AgentTeamAcl {
 }
 
 export const BUILTIN_AGENT_ROLES: readonly AgentTeamRole[] = [
-    { roleId: 'root', name: 'Root', permissions: ['agent:read', 'agent:manage'] },
-    { roleId: 'default', name: 'Default', permissions: ['agent:read', 'agent:manage'] },
-    { roleId: 'guest', name: 'Guest', permissions: ['agent:read'] },
+    { roleId: 'root', name: 'Root', permissions: [] },
+    { roleId: 'default', name: 'Default', permissions: [] },
+    { roleId: 'guest', name: 'Guest', permissions: [] },
 ];
 
 export function defaultAgentAcl(): AgentTeamAcl {
@@ -596,33 +596,11 @@ export function defaultAgentAcl(): AgentTeamAcl {
 
 export const DEFAULT_AGENT_ROLE_ID = 'default';
 
-export function agentPermissionId(permission: bigint): string | undefined {
-    return Object.entries(PERM).find(([name, value]) => name.startsWith('AGENT_PERM_') && value === permission)?.[0];
-}
-
-function isAgentReadPermission(permissionId: string): boolean {
-    return /_(?:LIST|GET|SEARCH|GET_MANY)$/.test(permissionId);
-}
-
-function expandLegacyAgentPermissions(permissions: readonly string[]): string[] {
-    const expanded = new Set<string>();
-    for (const permission of permissions) {
-        if (permission === 'agent:read' || permission === 'agent:manage') {
-            for (const item of PERMS) {
-                if (item.family !== 'perm_agent') continue;
-                const id = agentPermissionId(item.key);
-                if (!id) continue;
-                if (permission === 'agent:read' && isAgentReadPermission(id)
-                    || permission === 'agent:manage' && !isAgentReadPermission(id)) {
-                    expanded.add(id);
-                }
-            }
-        } else if (permission.startsWith('agent:')) {
-            const migrated = `AGENT_PERM_${permission.slice('agent:'.length).toUpperCase()}`;
-            expanded.add((PERM as Record<string, unknown>)[migrated] === undefined ? permission : migrated);
-        } else expanded.add(permission);
-    }
-    return [...expanded].sort();
+function activeAddonPermissions(permissions: readonly string[]): string[] {
+    return [...new Set(permissions.filter((permission) =>
+        !permission.startsWith('AGENT_PERM_')
+        && !permission.startsWith('agent:'),
+    ))].sort();
 }
 
 export function normalizeAgentAcl(value: unknown): AgentTeamAcl {
@@ -646,39 +624,22 @@ export function normalizeAgentAcl(value: unknown): AgentTeamAcl {
             || (!/^AGENT_PERM_[A-Z0-9_]+$/.test(permission) && !/^[a-z][a-z0-9._-]{0,63}:[a-z][a-z0-9._-]{0,63}$/.test(permission)))) {
             throw new Error(`Agent role "${roleId}" contains an invalid permission ID.`);
         }
-        return { roleId, name, permissions: expandLegacyAgentPermissions(permissions as string[]) };
+        return { roleId, name, permissions: activeAddonPermissions(permissions as string[]) };
     });
-    const builtins = BUILTIN_AGENT_ROLES.map((role) => ({
-        ...role,
-        permissions: expandLegacyAgentPermissions(role.permissions),
-    }));
-    for (const builtin of builtins) {
+    for (const builtin of BUILTIN_AGENT_ROLES) {
         const existing = roles.find((role) => role.roleId === builtin.roleId);
-        if (builtin.roleId === 'root' && existing) existing.permissions = [...builtin.permissions];
-        else if (!existing) roles.push(builtin);
+        if (builtin.roleId === 'root' && existing) existing.permissions = [];
+        else if (!existing) roles.push({ ...builtin, permissions: [] });
     }
     if (roles.length > 32) throw new Error('Agent ACL can contain at most 32 roles.');
     return { roles };
 }
 
-function permissionsForRole(acl: AgentTeamAcl | undefined, roleId: string) {
-    const resolved = acl || defaultAgentAcl();
-    return resolved.roles.find((item) => item.roleId === roleId)
-        || resolved.roles.find((item) => item.roleId === DEFAULT_AGENT_ROLE_ID);
-}
-
-export function agentPermissionMaskForAcl(acl: AgentTeamAcl | undefined, roleId = DEFAULT_AGENT_ROLE_ID): bigint {
-    return expandLegacyAgentPermissions(permissionsForRole(acl, roleId)?.permissions || [])
-        .reduce((mask, permissionId) => {
-            if (!permissionId.startsWith('AGENT_PERM_')) return mask;
-            const permission = (PERM as Record<string, unknown>)[permissionId];
-            return typeof permission === 'bigint' ? mask | permission : mask;
-        }, 0n);
-}
-
 export function permissionsForAgentAcl(acl: AgentTeamAcl | undefined, roleId = DEFAULT_AGENT_ROLE_ID): Set<string> {
-    return new Set(expandLegacyAgentPermissions(permissionsForRole(acl, roleId)?.permissions || [])
-        .filter((permissionId) => !permissionId.startsWith('AGENT_PERM_')));
+    const resolved = acl || defaultAgentAcl();
+    const role = resolved.roles.find((item) => item.roleId === roleId)
+        || resolved.roles.find((item) => item.roleId === DEFAULT_AGENT_ROLE_ID);
+    return new Set(activeAddonPermissions(role?.permissions || []));
 }
 
 export interface AgentTeamConfig {

@@ -1,7 +1,7 @@
 import type { Context } from '../context';
 import { ConnectionHandler, Handler } from '@ejunz/framework';
 import { PERM, PRIV } from '../model/builtin';
-import GroupDefinitionModel, { AgentModel, AgentSessionModel, agentPermissionMaskForAcl, defaultAgentAcl, DEFAULT_AGENT_ROLE_ID, normalizeAgentAcl, permissionsForAgentAcl } from '../model/agent';
+import GroupDefinitionModel, { AgentModel, AgentSessionModel, defaultAgentAcl, DEFAULT_AGENT_ROLE_ID, normalizeAgentAcl, permissionsForAgentAcl } from '../model/agent';
 import type { AgentConfig, AgentTeamConfig, AgentTeamDoc } from '../model/agent';
 import type { AgentScope, RuntimeLink } from '../service/runtime';
 import type { AgentStorageDescriptor } from '../model/agent';
@@ -161,7 +161,7 @@ async function agentAclForScope(scope: AgentScope, teamId?: string) {
 async function permissionsForSession(
     session: { domainId: string; userId: number; sessionId: string; groupId?: number; teamId?: string; agentId?: string },
     mountedAddons: ReadonlySet<string>,
-): Promise<{ agentPerm: bigint; agentPermissions: Set<string> }> {
+): Promise<Set<string>> {
     const scope = { domainId: session.domainId, userId: session.userId, groupId: session.groupId };
     const acl = await agentAclForScope(scope, session.teamId);
     const agent = session.agentId ? await AgentModel.getAgent(session.domainId, session.userId, session.agentId, session.groupId) : null;
@@ -179,7 +179,7 @@ async function permissionsForSession(
             for (const permission of addon.permissions || []) permissions.add(addonAgentPermissionId(addon.addonId, permission.id));
         }
     }
-    return { agentPerm: agentPermissionMaskForAcl(acl, roleId), agentPermissions: permissions };
+    return permissions;
 }
 
 async function syncAddonPermissionsToRootTeams(change: AgentAddonStateChange): Promise<void> {
@@ -307,20 +307,20 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                 const mountedAddons = sessionId && resolved.session
                     ? await mountedAddonsForSession(resolved.session)
                     : new Set<string>();
-                const agentAccess = resolved.session
+                const agentPermissions = resolved.session
                     ? await permissionsForSession(resolved.session, mountedAddons)
-                    : { agentPerm: 0n, agentPermissions: permissionsForAgentAcl(undefined) };
+                    : permissionsForAgentAcl(undefined);
                 const tools = toolRegistry();
                 const context = {
                     domainId: scope?.domain || '',
                     baseDocId: scope?.baseId || 0,
                     ...(sessionId ? { sessionId } : {}),
                 };
-                let access: { priv?: number; perm?: bigint; scope?: bigint; agentPerm: bigint; agentPermissions: ReadonlySet<string> } = agentAccess;
+                let access: { priv?: number; perm?: bigint; scope?: bigint; agentPermissions: ReadonlySet<string> } = { agentPermissions };
                 if (scope?.owner && scope.domain) {
                     const UserModel = (global as any).Ejunz?.model?.user;
                     const user = UserModel ? await UserModel.getById(scope.domain, scope.owner) : null;
-                    if (user) access = { priv: user.priv, perm: user.perm, scope: user.scope, ...agentAccess };
+                    if (user) access = { priv: user.priv, perm: user.perm, scope: user.scope, agentPermissions };
                 }
                 const addonGuidance = listAgentAddons()
                     .filter((addon) => mountedAddons.has(addon.addonId))
@@ -343,7 +343,7 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                 const args = body.args;
                 if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('args must be an object');
                 const mountedAddons = await mountedAddonsForSession(resolved.session);
-                const agentAccess = await permissionsForSession(resolved.session, mountedAddons);
+                const agentPermissions = await permissionsForSession(resolved.session, mountedAddons);
                 const registration = toolRegistry().get(name);
                 if (!registration || !mountedAddons.has(registration.addonId)) {
                     throw new Error(`Addon for tool ${name} is not mounted in this session.`);
@@ -359,7 +359,7 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                         baseDocId: scope.baseId,
                         sessionId,
                         mountedAddons,
-                        ...agentAccess,
+                        agentPermissions,
                     });
                     const result = await provider.call(name, args as Record<string, unknown>, new AbortController().signal);
                     logger.info('[agent-tools] call done session=%s name=%s addon=%s domain=%s baseId=%d durationMs=%d', sessionId, name, registration.addonId, scope.domain, scope.baseId, Date.now() - startedAt);

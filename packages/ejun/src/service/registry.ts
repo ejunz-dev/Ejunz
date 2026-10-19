@@ -16,7 +16,6 @@ export interface ToolDeclaration {
     description: string;
     inputSchema: Record<string, any>;
     agentPermissions?: readonly string[];
-    agentPerm?: bigint;
     mutating?: boolean;
     execute(context: ToolContext, args: ToolArgs): Promise<unknown>;
 }
@@ -35,7 +34,6 @@ export interface RegisteredTool extends ToolSpec {
     source: string;
     mutating: boolean;
     agentPermissions?: readonly string[];
-    agentPerm?: bigint;
 }
 
 export type ToolExecute = (context: ToolContext, args: ToolArgs) => Promise<unknown>;
@@ -54,7 +52,6 @@ export interface ToolRegisterOptions {
     /** Permission IDs supplied by mounted add-ons. */
     agentPermissions?: readonly string[];
     /** PERM flags the active Agent role must have to expose and invoke this tool. */
-    agentPerm?: bigint;
     instructions?: (context: ToolInstructionsContext) => string | Promise<string>;
 }
 
@@ -65,7 +62,6 @@ export interface ToolAccess {
     perm?: bigint;
     scope?: bigint;
     agentPermissions?: ReadonlySet<string>;
-    agentPerm?: bigint;
 }
 
 type StoredTool = ToolDeclaration & {
@@ -75,7 +71,6 @@ type StoredTool = ToolDeclaration & {
     perm?: bigint | bigint[];
     checker?: (context: ToolContext) => void;
     agentPermissions?: readonly string[];
-    agentPerm?: bigint;
 };
 
 interface StoredSource {
@@ -131,14 +126,9 @@ function hasPerm(access: ToolAccess | undefined, required: bigint | bigint[]): b
     return flags.some((flag) => (access.perm! & scope & flag) === flag);
 }
 
-function hasAgentPerm(access: ToolAccess | undefined, required: bigint): boolean {
-    return access?.agentPerm !== undefined && (access.agentPerm & required) === required;
-}
-
 function canAccess(tool: StoredTool, access: ToolAccess | undefined): boolean {
     if (tool.priv !== undefined && !hasPriv(access, tool.priv)) return false;
     if (tool.perm !== undefined && !hasPerm(access, tool.perm)) return false;
-    if (tool.agentPerm !== undefined && !hasAgentPerm(access, tool.agentPerm)) return false;
     if (agentPermissionsForTool(tool).some((permission) => !access?.agentPermissions?.has(permission))) return false;
     return true;
 }
@@ -188,14 +178,11 @@ function parseChecker(args: unknown[]) {
 
 async function resolveAccess(context: ToolContext): Promise<ToolAccess | undefined> {
     if (context.priv !== undefined || context.perm !== undefined) {
-        return { priv: context.priv, perm: context.perm, scope: context.scope ?? context.perm, agentPermissions: context.agentPermissions, agentPerm: context.agentPerm };
+        return { priv: context.priv, perm: context.perm, scope: context.scope ?? context.perm, agentPermissions: context.agentPermissions };
     }
     const owner = Number(context.owner);
     if (!context.domainId || !Number.isSafeInteger(owner) || owner <= 0) {
-        return context.agentPermissions === undefined && context.agentPerm === undefined ? undefined : {
-            agentPermissions: context.agentPermissions,
-            agentPerm: context.agentPerm,
-        };
+        return context.agentPermissions === undefined ? undefined : { agentPermissions: context.agentPermissions };
     }
     try {
         const UserModel = require('ejun/src/model/user').default as {
@@ -203,7 +190,7 @@ async function resolveAccess(context: ToolContext): Promise<ToolAccess | undefin
         };
         const user = await UserModel.getById(context.domainId, owner);
         if (!user) return undefined;
-        return { priv: user.priv, perm: user.perm, scope: user.scope, agentPermissions: context.agentPermissions, agentPerm: context.agentPerm };
+        return { priv: user.priv, perm: user.perm, scope: user.scope, agentPermissions: context.agentPermissions };
     } catch {
         return undefined;
     }
@@ -217,9 +204,6 @@ function assertAccess(tool: StoredTool, access: ToolAccess | undefined): void {
     if (tool.perm !== undefined && !hasPerm(access, tool.perm)) {
         const flags = Array.isArray(tool.perm) ? tool.perm : [tool.perm];
         throw new PermissionError(...flags);
-    }
-    if (tool.agentPerm !== undefined && !hasAgentPerm(access, tool.agentPerm)) {
-        throw new Error(`Agent role is missing permission flag: ${tool.agentPerm}`);
     }
     const missingAgentPermissions = agentPermissionsForTool(tool).filter((permission) => !access?.agentPermissions?.has(permission));
     if (missingAgentPermissions.length) {
@@ -265,8 +249,6 @@ export default class ToolService extends Service {
         const mutating = options.mutating ?? fromDefinition?.mutating === true;
         const explicitAgentPermissions = options.agentPermissions ?? fromDefinition?.agentPermissions;
         const agentPermissions = resolveAgentPermissions(addonId, mutating, explicitAgentPermissions);
-        const agentPerm = options.agentPerm ?? fromDefinition?.agentPerm;
-        if (agentPerm !== undefined && typeof agentPerm !== 'bigint') throw new Error(`tool ${name} has an invalid Agent permission flag.`);
         if (!description) throw new Error(`tool ${name} is missing a description.`);
         if (!inputSchema) throw new Error(`tool ${name} is missing an inputSchema.`);
         if (agentPermissions?.some((permission) => typeof permission !== 'string' || permission.trim().length === 0)) {
@@ -280,7 +262,6 @@ export default class ToolService extends Service {
             inputSchema,
             mutating,
             agentPermissions: [...agentPermissions],
-            ...(agentPerm === undefined ? {} : { agentPerm }),
             execute: wrapBindBase(execute, options.bindBase ?? fromDefinition?.bindBase),
             config: options,
             ...(schema ? { schema } : {}),
@@ -342,7 +323,7 @@ export default class ToolService extends Service {
                 if (!toolEnabled(tool)) continue;
                 if (!inDomain(toolDomains(entry, tool), domainId)) continue;
                 if (mountedAddons !== undefined && !mountedAddons.has(tool.addonId)) continue;
-                if (access ? !canAccess(tool, access) : tool.agentPerm !== undefined || agentPermissionsForTool(tool).length > 0) continue;
+                if (access ? !canAccess(tool, access) : agentPermissionsForTool(tool).length > 0) continue;
                 rows.push({ source: entry, tool });
             }
         }

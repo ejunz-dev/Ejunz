@@ -3,14 +3,14 @@ import type { Context } from 'ejun/src/context';
 import { PERM } from 'ejun/src/model/builtin';
 import { agentRuntimeHandlerContext } from '../service/runtime';
 import { asText } from '../lib/tool-shared';
-import { agentPermissionCatalog, agentToolAccess, registerAgentAddon } from '../service/addons';
+import { agentPermissionCatalog, registerAgentAddon } from '../service/addons';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import { requireAgentConfigurationPermission, requireGroup, sessionScope } from './common/agent';
 
 export const inject = ['server'];
 
-export const AgentPermissionList = Schema.object({}).description('List the fixed Agent permission catalog, including permissions contributed by registered Addons.');
-export const AgentPermissionGet = Schema.object({ permissionId: Schema.string().required() }).description('Read one permission from the Agent permission catalog.');
+export const AgentPermissionList = Schema.object({}).description('List permissions contributed by registered Addons for Agent roles. Core Agent tool permissions are assigned through domain roles.');
+export const AgentPermissionGet = Schema.object({ permissionId: Schema.string().required() }).description('Read one Addon permission available to Agent roles.');
 
 export const AgentAddonList = Schema.object({ groupId: Schema.number().step(1).min(1).required() }).description('List registered Addons and their installed and Group-enabled status. Read Team-specific selections from the Team config.');
 export const AgentAddonGet = Schema.object({ groupId: Schema.number().step(1).min(1).required(), addonId: Schema.string().required() }).description('Read one registered Addon and its tools and permissions.');
@@ -96,11 +96,11 @@ export function apply(ctx: Context) {
         defaultEnabled: true,
     });
     ctx.effect(() => unregister);
-    ctx.Tool('agent', 'agent_permission_list', listAgentPermissions, AgentPermissionList, agentToolAccess(PERM.AGENT_PERM_PERMISSION_LIST));
-    ctx.Tool('agent', 'agent_permission_get', getAgentPermission, AgentPermissionGet, agentToolAccess(PERM.AGENT_PERM_PERMISSION_GET));
-    ctx.Tool('agent', 'agent_addon_list', listAgentAddons, AgentAddonList, agentToolAccess(PERM.AGENT_PERM_ADDON_LIST));
-    ctx.Tool('agent', 'agent_addon_get', getAgentAddon, AgentAddonGet, agentToolAccess(PERM.AGENT_PERM_ADDON_GET));
-    ctx.Tool('agent', 'agent_addon_install', installAgentAddon, AgentAddonInstall, agentToolAccess(PERM.AGENT_PERM_ADDON_INSTALL, true));
-    ctx.Tool('agent', 'agent_addon_uninstall', uninstallAgentAddon, AgentAddonUninstall, agentToolAccess(PERM.AGENT_PERM_ADDON_UNINSTALL, true));
-    ctx.Tool('agent', 'agent_addon_update', updateAgentAddon, AgentAddonUpdate, agentToolAccess(PERM.AGENT_PERM_ADDON_UPDATE, true));
+    ctx.Tool('agent', 'agent_permission_list', listAgentPermissions, AgentPermissionList, PERM.AGENT_PERM_PERMISSION_LIST);
+    ctx.Tool('agent', 'agent_permission_get', getAgentPermission, AgentPermissionGet, PERM.AGENT_PERM_PERMISSION_GET);
+    ctx.Tool('agent', 'agent_addon_list', listAgentAddons, AgentAddonList, PERM.AGENT_PERM_ADDON_LIST);
+    ctx.Tool('agent', 'agent_addon_get', getAgentAddon, AgentAddonGet, PERM.AGENT_PERM_ADDON_GET);
+    ctx.Tool('agent', 'agent_addon_install', installAgentAddon, AgentAddonInstall, PERM.AGENT_PERM_ADDON_INSTALL);
+    ctx.Tool('agent', 'agent_addon_uninstall', uninstallAgentAddon, AgentAddonUninstall, PERM.AGENT_PERM_ADDON_UNINSTALL);
+    ctx.Tool('agent', 'agent_addon_update', updateAgentAddon, AgentAddonUpdate, PERM.AGENT_PERM_ADDON_UPDATE);
 }

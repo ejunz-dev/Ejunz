@@ -1,7 +1,6 @@
 import Schema from 'schemastery';
 import type { Context } from 'ejun/src/context';
 import { PERM } from 'ejun/src/model/builtin';
-import { agentToolAccess } from '../service/addons';
 import GroupDefinitionModel, { AgentSessionModel } from 'ejun/src/model/agent';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import { buildOutline, ensureGroupRoot, groupView, groupWorkspace, requireGroup, resultLimit } from './common/agent';
@@ -106,10 +105,10 @@ export async function removeGroup(ctx: ToolContext, args: ToolArgs) {
 }
 
 export function apply(ctx: Context) {
-    ctx.Tool('agent', 'agent_group_list', listGroups, GroupList, agentToolAccess(PERM.AGENT_PERM_GROUP_LIST));
-    ctx.Tool('agent', 'agent_group_search', searchGroups, GroupSearch, agentToolAccess(PERM.AGENT_PERM_GROUP_SEARCH));
-    ctx.Tool('agent', 'agent_group_get', getGroup, GroupGet, agentToolAccess(PERM.AGENT_PERM_GROUP_GET));
-    ctx.Tool('agent', 'agent_group_create', createGroup, GroupCreate, agentToolAccess(PERM.AGENT_PERM_GROUP_CREATE, true));
-    ctx.Tool('agent', 'agent_group_update', updateGroup, GroupUpdate, agentToolAccess(PERM.AGENT_PERM_GROUP_UPDATE, true));
-    ctx.Tool('agent', 'agent_group_delete', removeGroup, GroupRemove, agentToolAccess(PERM.AGENT_PERM_GROUP_DELETE, true));
+    ctx.Tool('agent', 'agent_group_list', listGroups, GroupList, PERM.AGENT_PERM_GROUP_LIST);
+    ctx.Tool('agent', 'agent_group_search', searchGroups, GroupSearch, PERM.AGENT_PERM_GROUP_SEARCH);
+    ctx.Tool('agent', 'agent_group_get', getGroup, GroupGet, PERM.AGENT_PERM_GROUP_GET);
+    ctx.Tool('agent', 'agent_group_create', createGroup, GroupCreate, PERM.AGENT_PERM_GROUP_CREATE);
+    ctx.Tool('agent', 'agent_group_update', updateGroup, GroupUpdate, PERM.AGENT_PERM_GROUP_UPDATE);
+    ctx.Tool('agent', 'agent_group_delete', removeGroup, GroupRemove, PERM.AGENT_PERM_GROUP_DELETE);
 }

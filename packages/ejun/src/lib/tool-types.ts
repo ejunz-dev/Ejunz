@@ -6,8 +6,6 @@ export interface ToolContext {
     priv?: number;
     perm?: bigint;
     scope?: bigint;
-    /** Agent role permission flags for this session. */
-    agentPerm?: bigint;
     /** Session add-ons allowed to expose and execute tools for this Agent request. */
     mountedAddons?: ReadonlySet<string>;
     /** Non-core permission IDs contributed by mounted Addons. */
