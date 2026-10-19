@@ -3,7 +3,7 @@ import type { Context } from 'ejun/src/context';
 import { PRIV } from 'ejun/src/model/builtin';
 import GroupDefinitionModel, { AgentSessionModel } from 'ejun/src/model/agent';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
-import { buildOutline, ensureGroupRoot, groupView, groupWorkspace, requireGroup, resultLimit } from './agent-common';
+import { buildOutline, ensureGroupRoot, groupView, groupWorkspace, requireGroup, resultLimit } from './common/agent';
 
 export const inject = ['server'];
 

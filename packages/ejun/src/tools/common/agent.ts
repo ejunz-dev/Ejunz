@@ -1,13 +1,13 @@
 import { PERM } from 'ejun/src/model/builtin';
 import GroupDefinitionModel, { AgentModel, AgentSessionModel } from 'ejun/src/model/agent';
 import UserModel from 'ejun/src/model/user';
-import { MAX_FILE_CONTENT_CHARS, MAX_FILE_CONTENT_CHARS_LIMIT } from '../lib/tool-limits';
-import { asText, idList } from '../lib/tool-shared';
-import { agentRuntimeHandlerContext } from '../service/runtime';
+import { MAX_FILE_CONTENT_CHARS, MAX_FILE_CONTENT_CHARS_LIMIT } from '../../lib/tool-limits';
+import { asText, idList } from '../../lib/tool-shared';
+import { agentRuntimeHandlerContext } from '../../service/runtime';
 import { defaultAgentAcl } from 'ejun/src/model/agent';
-import { agentPermissionCatalog, normalizeAgentAcl } from '../service/agent-permissions';
+import { agentPermissionCatalog, normalizeAgentAcl } from '../../service/agent-permissions';
 import type { AgentConfig, AgentSettings, AgentTeamAcl, AgentTeamDoc, AgentSessionSummary, AgentSessionView } from 'ejun/src/model/agent';
-import type { ToolArgs, ToolContext } from '../lib/tool-types';
+import type { ToolArgs, ToolContext } from '../../lib/tool-types';
 
 export function groupIdOf(args: ToolArgs): number {
     const groupId = Number(args.groupId);

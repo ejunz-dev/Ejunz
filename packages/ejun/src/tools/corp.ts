@@ -6,7 +6,7 @@ import { asText } from '../lib/tool-shared';
 import { registerAgentAddon } from '../service/addons';
 import { agentPermissionCatalog } from '../service/agent-permissions';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
-import { requireAgentConfigurationPermission, requireGroup, sessionScope } from './agent-common';
+import { requireAgentConfigurationPermission, requireGroup, sessionScope } from './common/agent';
 
 export const inject = ['server'];
 

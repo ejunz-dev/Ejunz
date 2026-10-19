@@ -9,7 +9,7 @@ import { agentRuntimeHandlerContext } from '../service/runtime';
 import { listAgentAddons as listRegisteredAgentAddons } from '../service/addons';
 import { agentPermissionCatalog, normalizeAgentAcl } from '../service/agent-permissions';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
-import { ensureGroupRoot, groupRootAcl, groupWorkspace, objectEntries, optionalEntries, optionalIds, requireAgentConfigurationPermission, requireGroup, saveGroupRootAcl, sessionScope, teamDetail, teamView, validateRolePermissions } from './agent-common';
+import { ensureGroupRoot, groupRootAcl, groupWorkspace, objectEntries, optionalEntries, optionalIds, requireAgentConfigurationPermission, requireGroup, saveGroupRootAcl, sessionScope, teamDetail, teamView, validateRolePermissions } from './common/agent';
 import { createAgent, getAgents, removeAgents, updateAgents } from './agent';
 
 export const inject = ['server'];

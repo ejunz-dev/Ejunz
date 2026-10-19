@@ -7,7 +7,7 @@ import { asText, idList } from '../lib/tool-shared';
 import { agentRuntimeHandlerContext } from '../service/runtime';
 import type { AgentConfig, AgentSettings } from 'ejun/src/model/agent';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
-import { agentRecordView, configFromArgs, createSessionAgent, ensureGroupRoot, objectEntries, renameSessionAgent, requireGroup, sessionAgentInput, sessionAgentView, sessionConversation, sessionScope, settingsFromArgs, validateRoleAssignment, requireAgentConfigurationPermission } from './agent-common';
+import { agentRecordView, configFromArgs, createSessionAgent, ensureGroupRoot, objectEntries, renameSessionAgent, requireGroup, sessionAgentInput, sessionAgentView, sessionConversation, sessionScope, settingsFromArgs, validateRoleAssignment, requireAgentConfigurationPermission } from './common/agent';
 
 export const inject = ['server'];
 
