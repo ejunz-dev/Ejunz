@@ -83,7 +83,7 @@
           {% endif %}
         </button>
 
-        {% if base.docId and (handler.user.own(base) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) %}
+        {% if base.docId and (handler.user.own(base) or handler.user.hasPriv(PRIV.USER_PRIV_EDIT_SYSTEM)) %}
         <button form="base-form" name="operation" value="delete" type="submit" class="rounded button expanded">
           {{ _('Delete Base') }}
         </button>

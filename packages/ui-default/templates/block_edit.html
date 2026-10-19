@@ -72,7 +72,7 @@
                   {{ _('Create') }}
                 {% endif %}
               </button>
-              {% if block and (handler.user.own(block) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) %}
+              {% if block and (handler.user.own(block) or handler.user.hasPriv(PRIV.USER_PRIV_EDIT_SYSTEM)) %}
                 <button name="operation" value="delete" type="submit" class="rounded button">
                   {{ _('Delete') }}
                 </button>

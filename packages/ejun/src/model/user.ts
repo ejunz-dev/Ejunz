@@ -77,7 +77,7 @@ export class User {
     group?: string[];
     [key: string]: any;
 
-    constructor(udoc: Udoc, dudoc, scope = PERM.PERM_ALL) {
+    constructor(udoc: Udoc, dudoc, scope = PERM.USER_PERM_ALL) {
         this._id = udoc._id;
 
         this._udoc = udoc;
@@ -187,7 +187,7 @@ export class User {
 
     serialize(h) {
         if (!this._isPrivate) {
-            return pick(this, this.getFields(h?.user?.hasPerm(PERM.PERM_VIEW_USER_PRIVATE_INFO) ? 'private' : 'public'));
+            return pick(this, this.getFields(h?.user?.hasPerm(PERM.USER_PERM_VIEW_USER_PRIVATE_INFO) ? 'private' : 'public'));
         }
         return JSON.stringify(this, serializer(true, h));
     }
@@ -203,7 +203,7 @@ export function handleMailLower(mail: string) {
     return `${name.replace(/\./g, '')}@${d === 'googlemail.com' ? 'gmail.com' : d}`;
 }
 
-async function initAndCache(udoc: Udoc, dudoc, scope: bigint = PERM.PERM_ALL) {
+async function initAndCache(udoc: Udoc, dudoc, scope: bigint = PERM.USER_PERM_ALL) {
     const res = await new User(udoc, dudoc, scope).init();
     cache.set(`id/${udoc._id}/${dudoc.domainId}`, res);
     cache.set(`name/${udoc.unameLower}/${dudoc.domainId}`, res);
@@ -238,7 +238,7 @@ class UserModel {
     static _deleteUserCache = deleteUserCache;
 
     @ArgMethod
-    static async getById(domainId: string, _id: number, scope: bigint | string = PERM.PERM_ALL): Promise<User> {
+    static async getById(domainId: string, _id: number, scope: bigint | string = PERM.USER_PERM_ALL): Promise<User> {
         if (cache.has(`id/${_id}/${domainId}`)) return cache.get(`id/${_id}/${domainId}`) || null;
         const udoc = await (_id < -999 ? collV : coll).findOne({ _id });
         if (!udoc) return null;
@@ -473,22 +473,22 @@ class UserModel {
 
     @ArgMethod
     static async setSuperAdmin(uid: number) {
-        return await UserModel.setPriv(uid, PRIV.PRIV_ALL);
+        return await UserModel.setPriv(uid, PRIV.USER_PRIV_ALL);
     }
 
     @ArgMethod
     static async setWorker(uid: number) {
         return await UserModel.setPriv(
             uid,
-            PRIV.PRIV_USER_PROFILE | PRIV.PRIV_WORKER | PRIV.PRIV_VIEW_ALL_DOMAIN
-            | PRIV.PRIV_READ_PROBLEM_DATA | PRIV.PRIV_UNLIMITED_ACCESS,
+            PRIV.USER_PRIV_USER_PROFILE | PRIV.USER_PRIV_WORKER | PRIV.USER_PRIV_VIEW_ALL_DOMAIN
+            | PRIV.USER_PRIV_READ_PROBLEM_DATA | PRIV.USER_PRIV_UNLIMITED_ACCESS,
         );
     }
 
     @ArgMethod
     static ban(uid: number, reason = '') {
         return Promise.all([
-            UserModel.setById(uid, { priv: PRIV.PRIV_NONE, banReason: reason }),
+            UserModel.setById(uid, { priv: PRIV.USER_PRIV_NONE, banReason: reason }),
             token.delByUid(uid),
         ]);
     }

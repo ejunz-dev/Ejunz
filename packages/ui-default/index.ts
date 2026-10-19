@@ -44,7 +44,7 @@ class SetThemeHandler extends Handler {
   noCheckPermView = true;
 
   async get({ theme }) {
-    this.checkPriv(PRIV.PRIV_USER_PROFILE);
+    this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
     await UserModel.setById(this.user._id, { theme });
     this.back();
   }
@@ -73,23 +73,23 @@ class RichMediaHandler extends Handler {
   async renderUser(domainId, payload) {
     let d = payload.domainId || domainId;
     const cur = payload.domainId ? await UserModel.getById(payload.domainId, this.user._id) : this.user;
-    if (!cur.hasPerm(PERM.PERM_VIEW)) d = domainId;
+    if (!cur.hasPerm(PERM.USER_PERM_VIEW)) d = domainId;
     const udoc = Number.isNaN(+payload.id) ? await UserModel.getByUname(d, payload.id) : await UserModel.getById(d, +payload.id);
     return await this.renderHTML('partials/user.html', { udoc });
   }
 
   async renderProblem(domainId, payload) {
     const cur = payload.domainId ? await UserModel.getById(payload.domainId, this.user._id) : this.user;
-    let pdoc = cur.hasPerm(PERM.PERM_VIEW | PERM.PERM_VIEW_PROBLEM)
+    let pdoc = cur.hasPerm(PERM.USER_PERM_VIEW | PERM.USER_PERM_VIEW_PROBLEM)
       ? await ProblemModel.get(payload.domainId || domainId, payload.id) || ProblemModel.default
       : ProblemModel.default;
-    if (pdoc.hidden && !cur.own(pdoc) && !cur.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN)) pdoc = ProblemModel.default;
+    if (pdoc.hidden && !cur.own(pdoc) && !cur.hasPerm(PERM.USER_PERM_VIEW_PROBLEM_HIDDEN)) pdoc = ProblemModel.default;
     return await this.renderHTML('partials/problem.html', { pdoc });
   }
 
   async renderContest(domainId, payload) {
     const cur = payload.domainId ? await UserModel.getById(payload.domainId, this.user._id) : this.user;
-    const tdoc = cur.hasPerm(PERM.PERM_VIEW | PERM.PERM_VIEW_CONTEST)
+    const tdoc = cur.hasPerm(PERM.USER_PERM_VIEW | PERM.USER_PERM_VIEW_CONTEST)
       ? await ContestModel.get(payload.domainId || domainId, new ObjectId(payload.id))
       : null;
     if (tdoc) return await this.renderHTML('partials/contest.html', { tdoc });
@@ -98,7 +98,7 @@ class RichMediaHandler extends Handler {
 
   async renderHomework(domainId, payload) {
     const cur = payload.domainId ? await UserModel.getById(payload.domainId, this.user._id) : this.user;
-    const tdoc = cur.hasPerm(PERM.PERM_VIEW | PERM.PERM_VIEW_HOMEWORK)
+    const tdoc = cur.hasPerm(PERM.USER_PERM_VIEW | PERM.USER_PERM_VIEW_HOMEWORK)
       ? await ContestModel.get(payload.domainId || domainId, new ObjectId(payload.id))
       : null;
     if (tdoc) return await this.renderHTML('partials/homework.html', { tdoc });
@@ -173,7 +173,7 @@ export function apply(ctx: Context) {
         enableScratchpad: Schema.boolean().default(true).description('Enable Scratchpad Mode'),
       }),
     }));
-    ctx.Route('config_schema', '/manage/config/schema.json', SystemConfigSchemaHandler, PRIV.PRIV_EDIT_SYSTEM);
+    ctx.Route('config_schema', '/manage/config/schema.json', SystemConfigSchemaHandler, PRIV.USER_PRIV_EDIT_SYSTEM);
   });
   if (process.env.EJUNZ_CLI) return;
   ctx.Route('wiki_help', '/wiki/help', WikiHelpHandler);

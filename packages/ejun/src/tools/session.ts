@@ -68,6 +68,6 @@ export function apply(ctx: Context) {
     });
     ctx.effect(() => unregister);
     const session = { source: 'session' as const, bindBase: 'none' as const };
-    ctx.Tool('base', 'base_context', context, ContextConfig, { ...session, instructions }, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_select', (toolCtx, args) => select(ctx, toolCtx, args), SelectConfig, { ...session, mutating: true }, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_context', context, ContextConfig, { ...session, instructions }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_select', (toolCtx, args) => select(ctx, toolCtx, args), SelectConfig, { ...session, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }

@@ -1,15 +1,14 @@
 import type { Context } from '../context';
 import { ConnectionHandler, Handler } from '@ejunz/framework';
 import { PERM, PRIV } from '../model/builtin';
-import GroupDefinitionModel, { AgentModel, AgentSessionModel } from '../model/agent';
+import GroupDefinitionModel, { AgentModel, AgentSessionModel, agentPermissionMaskForAcl, defaultAgentAcl, DEFAULT_AGENT_ROLE_ID, normalizeAgentAcl, permissionsForAgentAcl } from '../model/agent';
 import type { AgentConfig, AgentTeamConfig, AgentTeamDoc } from '../model/agent';
 import type { AgentScope, RuntimeLink } from '../service/runtime';
 import type { AgentStorageDescriptor } from '../model/agent';
 import type { RuntimeHelloFrame, RuntimeInboundFrame, RuntimeLinkPollFrame, RuntimeStream } from '../service/runtime';
 import { agentRuntimeHandlerContext as service } from '../service/runtime';
-import { listAgentAddons } from '../service/addons';
+import { addonAgentPermissionId, agentPermissionCatalog, listAgentAddons } from '../service/addons';
 import type { AgentAddonStateChange } from '../service/bus';
-import { addonAgentPermissionId, agentPermissionCatalog, defaultAgentAcl, DEFAULT_AGENT_ROLE_ID, normalizeAgentAcl, permissionsForAgentAcl } from '../service/agent-acl';
 
 interface RpcEnvelope {
     type?: string;
@@ -159,14 +158,10 @@ async function agentAclForScope(scope: AgentScope, teamId?: string) {
     return root?.config?.acl || selectedTeam?.config?.acl;
 }
 
-async function agentRolePermissions(scope: AgentScope, teamId?: string): Promise<Set<string>> {
-    return permissionsForAgentAcl(await agentAclForScope(scope, teamId));
-}
-
 async function permissionsForSession(
     session: { domainId: string; userId: number; sessionId: string; groupId?: number; teamId?: string; agentId?: string },
     mountedAddons: ReadonlySet<string>,
-): Promise<Set<string>> {
+): Promise<{ agentPerm: bigint; agentPermissions: Set<string> }> {
     const scope = { domainId: session.domainId, userId: session.userId, groupId: session.groupId };
     const acl = await agentAclForScope(scope, session.teamId);
     const agent = session.agentId ? await AgentModel.getAgent(session.domainId, session.userId, session.agentId, session.groupId) : null;
@@ -184,7 +179,7 @@ async function permissionsForSession(
             for (const permission of addon.permissions || []) permissions.add(addonAgentPermissionId(addon.addonId, permission.id));
         }
     }
-    return permissions;
+    return { agentPerm: agentPermissionMaskForAcl(acl, roleId), agentPermissions: permissions };
 }
 
 async function syncAddonPermissionsToRootTeams(change: AgentAddonStateChange): Promise<void> {
@@ -312,20 +307,20 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                 const mountedAddons = sessionId && resolved.session
                     ? await mountedAddonsForSession(resolved.session)
                     : new Set<string>();
-                const agentPermissions = resolved.session
+                const agentAccess = resolved.session
                     ? await permissionsForSession(resolved.session, mountedAddons)
-                    : permissionsForAgentAcl(undefined);
+                    : { agentPerm: 0n, agentPermissions: permissionsForAgentAcl(undefined) };
                 const tools = toolRegistry();
                 const context = {
                     domainId: scope?.domain || '',
                     baseDocId: scope?.baseId || 0,
                     ...(sessionId ? { sessionId } : {}),
                 };
-                let access: { priv?: number; perm?: bigint; scope?: bigint; agentPermissions: ReadonlySet<string> } = { agentPermissions };
+                let access: { priv?: number; perm?: bigint; scope?: bigint; agentPerm: bigint; agentPermissions: ReadonlySet<string> } = agentAccess;
                 if (scope?.owner && scope.domain) {
                     const UserModel = (global as any).Ejunz?.model?.user;
                     const user = UserModel ? await UserModel.getById(scope.domain, scope.owner) : null;
-                    if (user) access = { priv: user.priv, perm: user.perm, scope: user.scope, agentPermissions };
+                    if (user) access = { priv: user.priv, perm: user.perm, scope: user.scope, ...agentAccess };
                 }
                 const addonGuidance = listAgentAddons()
                     .filter((addon) => mountedAddons.has(addon.addonId))
@@ -348,7 +343,7 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                 const args = body.args;
                 if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('args must be an object');
                 const mountedAddons = await mountedAddonsForSession(resolved.session);
-                const agentPermissions = await permissionsForSession(resolved.session, mountedAddons);
+                const agentAccess = await permissionsForSession(resolved.session, mountedAddons);
                 const registration = toolRegistry().get(name);
                 if (!registration || !mountedAddons.has(registration.addonId)) {
                     throw new Error(`Addon for tool ${name} is not mounted in this session.`);
@@ -364,7 +359,7 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                         baseDocId: scope.baseId,
                         sessionId,
                         mountedAddons,
-                        agentPermissions,
+                        ...agentAccess,
                     });
                     const result = await provider.call(name, args as Record<string, unknown>, new AbortController().signal);
                     logger.info('[agent-tools] call done session=%s name=%s addon=%s domain=%s baseId=%d durationMs=%d', sessionId, name, registration.addonId, scope.domain, scope.baseId, Date.now() - startedAt);
@@ -474,14 +469,14 @@ export class EjunzAgentDataHandler extends Handler<Context> {
 
 export class EjunzAgentPageHandler extends Handler<Context> {
     async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         this.response.template = 'agent_list';
     }
 }
 
 export class EjunzAgentChatPageHandler extends Handler<Context> {
     async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         this.response.template = 'agent';
         this.response.body = { groupId: null };
     }
@@ -489,14 +484,14 @@ export class EjunzAgentChatPageHandler extends Handler<Context> {
 
 export class EjunzAgentMarketPageHandler extends Handler<Context> {
     async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         this.response.template = 'market';
     }
 }
 
 export class EjunzAgentWorkspacePageHandler extends Handler<Context> {
     async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         await service.modelReady();
         const scope = scopeOf(this);
         const groupId = Number(this.args?.groupId);
@@ -524,7 +519,7 @@ export class EjunzAgentWorkspacePageHandler extends Handler<Context> {
 
 export class EjunzAgentLinkPageHandler extends Handler<Context> {
     async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         this.response.template = 'ejunz_agent_link.html';
     }
 }
@@ -532,7 +527,7 @@ export class EjunzAgentLinkPageHandler extends Handler<Context> {
 
 export class EjunzAgentStatusPageHandler extends Handler<Context> {
     async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         this.response.template = 'ejunz_agent_status.html';
     }
 }
@@ -540,7 +535,7 @@ export class EjunzAgentStatusPageHandler extends Handler<Context> {
 
 export class EjunzAgentRpcHandler extends Handler<Context> {
     async post() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         await service.modelReady();
         const envelope = (this.request.body ?? {}) as RpcEnvelope;
         const rawMethod = this.args?.method;
@@ -582,7 +577,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             return;
         }
         if (method === 'group.create') {
-            this.checkPerm(PERM.PERM_CREATE_AGENT);
+            this.checkPerm(PERM.USER_PERM_CREATE_AGENT);
             const title = typeof envelope.payload?.title === 'string' ? envelope.payload.title.trim() : '';
             const content = typeof envelope.payload?.content === 'string' ? envelope.payload.content : '';
             if (!title || title.length > 256 || content.length > 100000) {
@@ -610,7 +605,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
                 return;
             }
             if (!this.user.own(agent)) {
-                this.checkPerm(method === 'group.delete' ? PERM.PERM_DELETE_AGENT : PERM.PERM_EDIT_AGENT);
+                this.checkPerm(method === 'group.delete' ? PERM.USER_PERM_DELETE_AGENT : PERM.USER_PERM_EDIT_AGENT);
             }
             if (method === 'group.delete') {
                 await AgentSessionModel.detachGroup(scope.domainId, groupId);
@@ -650,7 +645,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             return;
         }
         if (method === 'agent.addons.install' || method === 'agent.addons.uninstall') {
-            this.checkPerm(PERM.PERM_CONFIGURE_AGENT);
+            this.checkPerm(PERM.USER_PERM_CONFIGURE_AGENT);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await setAgentAddonInstalled(
                 envelope,
@@ -661,7 +656,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             return;
         }
         if (method === 'agent.addons.set') {
-            this.checkPerm(PERM.PERM_CONFIGURE_AGENT);
+            this.checkPerm(PERM.USER_PERM_CONFIGURE_AGENT);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await agentAddonSet(
                 envelope,
@@ -671,13 +666,13 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             return;
         }
         if (method === 'settings.describe' || method === 'settings.update' || method === 'settings.replace' || method === 'settings.mutate') {
-            if (method !== 'settings.describe') this.checkPerm(PERM.PERM_CONFIGURE_AGENT);
+            if (method !== 'settings.describe') this.checkPerm(PERM.USER_PERM_CONFIGURE_AGENT);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await domainSettingsRpc(envelope, scope));
             return;
         }
         if (method === 'credentials.describe' || method === 'credentials.set' || method === 'credentials.unset') {
-            if (method !== 'credentials.describe') this.checkPerm(PERM.PERM_CONFIGURE_AGENT);
+            if (method !== 'credentials.describe') this.checkPerm(PERM.USER_PERM_CONFIGURE_AGENT);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await domainCredentialsRpc(envelope, scope));
             return;
@@ -704,7 +699,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             this.response.body = JSON.stringify(await saveAgentConfig(envelope, scope, this.ctx));
             return;
         }
-        if (method === 'agent.create') this.checkPerm(PERM.PERM_CREATE_AGENT);
+        if (method === 'agent.create') this.checkPerm(PERM.USER_PERM_CREATE_AGENT);
         if (method.startsWith('agent.')) {
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await agentRpc(envelope, scope));
@@ -769,7 +764,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             return;
         }
         if (method === 'link.approve') {
-            this.checkPerm(PERM.PERM_CONFIGURE_AGENT);
+            this.checkPerm(PERM.USER_PERM_CONFIGURE_AGENT);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await linkApprove(envelope, scope));
             return;
@@ -780,13 +775,13 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             return;
         }
         if (method === 'host.label') {
-            this.checkPerm(PERM.PERM_CONFIGURE_AGENT);
+            this.checkPerm(PERM.USER_PERM_CONFIGURE_AGENT);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await runtimeRelabel(envelope));
             return;
         }
         if (method === 'host.remove') {
-            this.checkPerm(PERM.PERM_CONFIGURE_AGENT);
+            this.checkPerm(PERM.USER_PERM_CONFIGURE_AGENT);
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(await runtimeRemove(envelope));
             return;
@@ -928,7 +923,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
 
 export class EjunzAgentResponseHandler extends Handler<Context> {
     async post() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         await service.modelReady();
         const body = (this.request.body ?? {}) as Record<string, unknown>;
         const result = body.result as Record<string, unknown> | undefined;
@@ -969,7 +964,7 @@ export class EjunzAgentResponseHandler extends Handler<Context> {
 
 export class EjunzAgentSseHandler extends Handler<Context> {
     async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         this.response.status = 501;
         this.response.type = 'text/plain; charset=utf-8';
         this.response.body = 'the client-plugin event channel is unavailable in an embedded deployment';
@@ -1317,16 +1312,16 @@ export async function apply(ctx: Context): Promise<void> {
             logger.warn('[agent-acl] add-on permission sync failed domain=%s addon=%s error=%s', change.domainId, change.addonId, error instanceof Error ? error.message : String(error));
         }
     });
-    ctx.Route('agent_domain', '/corp', EjunzAgentPageHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
-    ctx.Route('agent_chat', '/corp/chat', EjunzAgentChatPageHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
-    ctx.Route('agent_market', '/market', EjunzAgentMarketPageHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
-    ctx.Route('ejunz_agent_status', '/agent/status', EjunzAgentStatusPageHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
-    ctx.Route('ejunz_agent_link', '/agent-link/:code', EjunzAgentLinkPageHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_CONFIGURE_AGENT);
-    ctx.Route('agent_workspace', '/corp/group/:groupId', EjunzAgentWorkspacePageHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
+    ctx.Route('agent_domain', '/corp', EjunzAgentPageHandler, PRIV.USER_PRIV_USER_PROFILE, PERM.USER_PERM_VIEW_AGENT);
+    ctx.Route('agent_chat', '/corp/chat', EjunzAgentChatPageHandler, PRIV.USER_PRIV_USER_PROFILE, PERM.USER_PERM_VIEW_AGENT);
+    ctx.Route('agent_market', '/market', EjunzAgentMarketPageHandler, PRIV.USER_PRIV_USER_PROFILE, PERM.USER_PERM_VIEW_AGENT);
+    ctx.Route('ejunz_agent_status', '/agent/status', EjunzAgentStatusPageHandler, PRIV.USER_PRIV_USER_PROFILE, PERM.USER_PERM_VIEW_AGENT);
+    ctx.Route('ejunz_agent_link', '/agent-link/:code', EjunzAgentLinkPageHandler, PRIV.USER_PRIV_USER_PROFILE, PERM.USER_PERM_CONFIGURE_AGENT);
+    ctx.Route('agent_workspace', '/corp/group/:groupId', EjunzAgentWorkspacePageHandler, PRIV.USER_PRIV_USER_PROFILE, PERM.USER_PERM_VIEW_AGENT);
     ctx.Route('ejunz_agent_data', '/api/ejunz-agent/data/*method', EjunzAgentDataHandler);
-    ctx.Route('ejunz_agent_rpc', '/api/ejunz-agent/rpc/*method', EjunzAgentRpcHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
-    ctx.Route('ejunz_agent_response', '/api/ejunz-agent/respond', EjunzAgentResponseHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
-    ctx.Route('ejunz_agent_sse', '/api/ejunz-agent/sse/plugins/events', EjunzAgentSseHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
-    ctx.Connection('ejunz_agent_events', '/api/ejunz-agent/events/:stream', EjunzAgentEventsConnectionHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_VIEW_AGENT);
+    ctx.Route('ejunz_agent_rpc', '/api/ejunz-agent/rpc/*method', EjunzAgentRpcHandler, PRIV.USER_PRIV_USER_PROFILE, PERM.USER_PERM_VIEW_AGENT);
+    ctx.Route('ejunz_agent_response', '/api/ejunz-agent/respond', EjunzAgentResponseHandler, PRIV.USER_PRIV_USER_PROFILE, PERM.USER_PERM_VIEW_AGENT);
+    ctx.Route('ejunz_agent_sse', '/api/ejunz-agent/sse/plugins/events', EjunzAgentSseHandler, PRIV.USER_PRIV_USER_PROFILE, PERM.USER_PERM_VIEW_AGENT);
+    ctx.Connection('ejunz_agent_events', '/api/ejunz-agent/events/:stream', EjunzAgentEventsConnectionHandler, PRIV.USER_PRIV_USER_PROFILE, PERM.USER_PERM_VIEW_AGENT);
     ctx.Connection('ejunz_agent_runtime', '/api/ejunz-agent/runtime', EjunzAgentRuntimeConnectionHandler);
 }

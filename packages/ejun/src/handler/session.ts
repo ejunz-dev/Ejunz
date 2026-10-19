@@ -183,7 +183,7 @@ async function loadDevelopMindMapDoc(
 
 class DevelopSessionStartHandler extends Handler {
     async post(domainId: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const body = this.request.body || {};
         const baseDocId = Number(body.baseDocId);
@@ -192,7 +192,7 @@ class DevelopSessionStartHandler extends Handler {
         }
         const mapDocType = parseDevelopMapDocType(body);
         const { doc: mindMap } = await loadDevelopMindMapDoc(finalDomainId, baseDocId, mapDocType);
-        if (!this.user.own(mindMap)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        if (!this.user.own(mindMap)) this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
 
         const nodeId = typeof body.nodeId === 'string' ? body.nodeId.trim() : '';
         const cardId = typeof body.cardId === 'string' ? body.cardId.trim() : '';
@@ -312,7 +312,7 @@ class DevelopSessionStartHandler extends Handler {
 /** POST JSON: settle today’s develop session after every pool row with daily goals has met them. */
 class DevelopSessionSettleHandler extends Handler {
     async post(domainId: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const body = this.request.body || {};
         const sessionHex = typeof body.sessionId === 'string' ? body.sessionId.trim() : '';
@@ -359,14 +359,14 @@ class DevelopSessionSettleHandler extends Handler {
 /** GET / POST own progress (JSON, for lesson client). */
 class SessionMeHandler extends Handler {
     async get(domainId: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const doc = await SessionModel.get(finalDomainId, this.user._id);
         this.response.body = { session: doc };
     }
 
     async post(domainId: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
         const patch = readPatch(this.request.body);
         const doc = await SessionModel.touch(finalDomainId, this.user._id, patch);
@@ -408,7 +408,7 @@ export class SessionDomainHandler extends Handler {
         recordTypeRaw?: string,
         statusRaw?: string,
     ) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         let filterUid: number | undefined;
         /** Only pass a user filter to `/session-conn` when it resolved; invalid strings (e.g. domain id) would close the socket with 4000. */
         let sessionConnUidOrName: string | undefined;
@@ -421,10 +421,10 @@ export class SessionDomainHandler extends Handler {
                 sessionConnUidOrName = uidOrName;
             }
             if (filterUid !== this.user._id) {
-                this.checkPerm(PERM.PERM_VIEW_RECORD);
+                this.checkPerm(PERM.USER_PERM_VIEW_RECORD);
             }
         } else {
-            this.checkPerm(PERM.PERM_VIEW_RECORD);
+            this.checkPerm(PERM.USER_PERM_VIEW_RECORD);
         }
         const pageSize = 20;
         const kind = parseSessionListKind(kindRaw?.trim() || undefined);
@@ -506,7 +506,7 @@ class SessionConnectionHandler extends ConnectionHandler {
                 return;
             }
             this.args.domainId = q;
-            this.checkPriv(PRIV.PRIV_USER_PROFILE);
+            this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
 
             if (uidOrName) {
                 const udoc = await user.getById(q, +uidOrName)
@@ -515,14 +515,14 @@ class SessionConnectionHandler extends ConnectionHandler {
                 if (udoc) {
                     this.watchUid = udoc._id;
                     if (this.watchUid !== this.user._id) {
-                        this.checkPerm(PERM.PERM_VIEW_RECORD);
+                        this.checkPerm(PERM.USER_PERM_VIEW_RECORD);
                     }
                 } else {
                     this.watchUid = undefined;
-                    this.checkPerm(PERM.PERM_VIEW_RECORD);
+                    this.checkPerm(PERM.USER_PERM_VIEW_RECORD);
                 }
             } else {
-                this.checkPerm(PERM.PERM_VIEW_RECORD);
+                this.checkPerm(PERM.USER_PERM_VIEW_RECORD);
                 this.watchUid = undefined;
             }
 
@@ -610,7 +610,7 @@ class SessionMeLessonConnectionHandler extends ConnectionHandler {
                 return;
             }
             this.args.domainId = q;
-            this.checkPriv(PRIV.PRIV_USER_PROFILE);
+            this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
             const doc = await SessionModel.get(q, this.user._id);
             await this.send({ type: 'learnSession', event: 'snapshot', session: sessionDocToWire(doc) });
         } catch (e: any) {
@@ -629,10 +629,10 @@ class SessionMeLessonConnectionHandler extends ConnectionHandler {
 }
 
 export async function apply(ctx: Context) {
-    ctx.Route('session_me', '/session/me', SessionMeHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('session_develop_start', '/session/develop/start', DevelopSessionStartHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('session_develop_settle', '/session/develop/settle', DevelopSessionSettleHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('session_domain', '/session', SessionDomainHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Connection('session_conn', '/session-conn', SessionConnectionHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Connection('session_me_conn', '/session-me-conn', SessionMeLessonConnectionHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('session_me', '/session/me', SessionMeHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('session_develop_start', '/session/develop/start', DevelopSessionStartHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('session_develop_settle', '/session/develop/settle', DevelopSessionSettleHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('session_domain', '/session', SessionDomainHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Connection('session_conn', '/session-conn', SessionConnectionHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Connection('session_me_conn', '/session-me-conn', SessionMeLessonConnectionHandler, PRIV.USER_PRIV_USER_PROFILE);
 }

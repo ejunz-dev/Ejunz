@@ -17,7 +17,7 @@
       </div>
     </div>
     {# 注释掉权限相关的条件 #}
-    {# {% set can_edit = (handler.user.own(pdoc, perm.PERM_EDIT_PROBLEM_SELF) or handler.user.hasPerm(perm.PERM_EDIT_PROBLEM)) and not reference %} #}
+    {# {% set can_edit = (handler.user.own(pdoc, perm.USER_PERM_EDIT_PROBLEM_SELF) or handler.user.hasPerm(perm.USER_PERM_EDIT_PROBLEM)) and not reference %} #}
     <div class="section__body">
 
   
@@ -58,7 +58,7 @@
     </div>
     <div class="section__body">
       <button class="rounded button" name="download_selected_file">{{ _('Download Selected') }}</button>
-      {# {% if (handler.user.own(pdoc, perm.PERM_EDIT_PROBLEM_SELF) or handler.user.hasPerm(perm.PERM_EDIT_PROBLEM)) and not reference %} #}
+      {# {% if (handler.user.own(pdoc, perm.USER_PERM_EDIT_PROBLEM_SELF) or handler.user.hasPerm(perm.USER_PERM_EDIT_PROBLEM)) and not reference %} #}
       <button class="rounded button" name="remove_selected_file">{{ _('Remove Selected') }}</button>
       <button class="rounded button" name="rename_selected_file">{{ _('Rename Selected') }}</button>
       {# {% endif %} #}

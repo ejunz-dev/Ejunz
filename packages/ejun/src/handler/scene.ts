@@ -289,7 +289,7 @@ export class SceneDomainHandler extends Handler<Context> {
 // 创建/编辑场景
 export class SceneEditHandler extends Handler<Context> {
     async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { sid } = this.request.params;
         
         let scene = null;
@@ -299,8 +299,8 @@ export class SceneEditHandler extends Handler<Context> {
                 scene = await SceneModel.getBySceneId(this.domain._id, sidNum);
                 if (scene) {
                     // 检查权限
-                    if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-                        throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+                    if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+                        throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
                     }
                 }
             }
@@ -311,7 +311,7 @@ export class SceneEditHandler extends Handler<Context> {
     }
 
     async postCreate() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { name, description } = this.request.body;
         if (!name || typeof name !== 'string') {
             throw new ValidationError('name');
@@ -328,7 +328,7 @@ export class SceneEditHandler extends Handler<Context> {
     }
 
     async postUpdate() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { sid } = this.request.params;
         const { name, description } = this.request.body;
         
@@ -347,8 +347,8 @@ export class SceneEditHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         await SceneModel.update(this.domain._id, sidNum, { name, description });
@@ -356,7 +356,7 @@ export class SceneEditHandler extends Handler<Context> {
     }
 
     async postDelete() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { sid } = this.request.params;
         
         const sidNum = parseInt(sid, 10);
@@ -370,8 +370,8 @@ export class SceneEditHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         await SceneModel.del(this.domain._id, sidNum);
@@ -400,8 +400,8 @@ export class SceneDetailHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         // 获取场景的所有事件
@@ -466,7 +466,7 @@ export class SceneDetailHandler extends Handler<Context> {
 // 启用/禁用场景
 export class SceneToggleHandler extends Handler<Context> {
     async post() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { sid } = this.request.params;
         const { enabled } = this.request.body;
         
@@ -481,8 +481,8 @@ export class SceneToggleHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         if (enabled === true || enabled === 'true') {
@@ -500,7 +500,7 @@ export class SceneToggleHandler extends Handler<Context> {
 // 事件编辑页面
 export class SceneEventEditHandler extends Handler<Context> {
     async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { sid, eid } = this.request.params;
         
         // 排除静态资源文件
@@ -519,8 +519,8 @@ export class SceneEventEditHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         // 获取所有节点和设备（用于下拉选择）
@@ -694,7 +694,7 @@ export class SceneEventEditHandler extends Handler<Context> {
     }
 
     async postCreate() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { sid } = this.request.params;
         const { 
             name, 
@@ -728,8 +728,8 @@ export class SceneEventEditHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         // 验证必填字段
@@ -987,7 +987,7 @@ export class SceneEventEditHandler extends Handler<Context> {
     }
 
     async post() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { sid, eid } = this.request.params;
         const { operation } = this.request.body;
         
@@ -1014,7 +1014,7 @@ export class SceneEventEditHandler extends Handler<Context> {
     }
 
     async postUpdate() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { sid, eid } = this.request.params;
         const { 
             name, 
@@ -1048,8 +1048,8 @@ export class SceneEventEditHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         const event = await SceneEventModel.getByEventId(this.domain._id, sidNum, eidNum);
@@ -1234,7 +1234,7 @@ export class SceneEventEditHandler extends Handler<Context> {
     }
 
     async postDelete() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { sid, eid } = this.request.params;
         
         const sidNum = parseInt(sid, 10);
@@ -1252,8 +1252,8 @@ export class SceneEventEditHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         await SceneEventModel.del(this.domain._id, sidNum, eidNum);
@@ -1264,7 +1264,7 @@ export class SceneEventEditHandler extends Handler<Context> {
 // 事件 CRUD（保留用于 API）
 export class SceneEventHandler extends Handler<Context> {
     async postCreate() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { sid } = this.request.params;
         const { 
             name, 
@@ -1287,8 +1287,8 @@ export class SceneEventHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         // 验证必填字段
@@ -1366,7 +1366,7 @@ export class SceneEventHandler extends Handler<Context> {
     }
 
     async postUpdate() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { sid, eid } = this.request.params;
         const { 
             name, 
@@ -1395,8 +1395,8 @@ export class SceneEventHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         const event = await SceneEventModel.getByEventId(this.domain._id, sidNum, eidNum);
@@ -1534,7 +1534,7 @@ export class SceneEventHandler extends Handler<Context> {
     }
 
     async postDelete() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { sid, eid } = this.request.params;
         
         const sidNum = parseInt(sid, 10);
@@ -1552,8 +1552,8 @@ export class SceneEventHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         await SceneEventModel.del(this.domain._id, sidNum, eidNum);
@@ -1593,7 +1593,7 @@ export class SceneNodeDevicesHandler extends Handler<Context> {
 // 批量操作事件
 export class SceneEventBulkHandler extends Handler<Context> {
     private async handleBulkOperation(operation: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { sid } = this.request.params;
         const { eids } = this.request.body;
         
@@ -1612,8 +1612,8 @@ export class SceneEventBulkHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         const results = {
@@ -1680,7 +1680,7 @@ export class SceneEventBulkHandler extends Handler<Context> {
 // 场景日志页面
 export class SceneLogsHandler extends Handler<Context> {
     async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { sid } = this.request.params;
         
         const sidNum = parseInt(sid, 10);
@@ -1694,8 +1694,8 @@ export class SceneLogsHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         // 获取所有事件（用于过滤）
@@ -1745,7 +1745,7 @@ export class SceneLogsConnectionHandler extends ConnectionHandler<Context> {
             return;
         }
         
-        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+        if (scene.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
             this.close(1000, 'Permission denied');
             return;
         }
@@ -2548,18 +2548,18 @@ export async function apply(ctx: Context) {
     });
 
     ctx.Route('scene_domain', '/scene', SceneDomainHandler);
-    ctx.Route('scene_create', '/scene/create', SceneEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('scene_edit', '/scene/:sid/edit', SceneEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('scene_delete', '/scene/:sid/delete', SceneEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('scene_toggle', '/scene/:sid/toggle', SceneToggleHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('scene_event_create', '/scene/:sid/event/create', SceneEventEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('scene_event_edit', '/scene/:sid/event/:eid/edit', SceneEventEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('scene_event_delete', '/scene/:sid/event/:eid/delete', SceneEventEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('scene_event_bulk', '/scene/:sid/events/bulk', SceneEventBulkHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('scene_event_api_create', '/scene/:sid/event', SceneEventHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('scene_event_api_update', '/scene/:sid/event/:eid', SceneEventHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('scene_create', '/scene/create', SceneEditHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('scene_edit', '/scene/:sid/edit', SceneEditHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('scene_delete', '/scene/:sid/delete', SceneEditHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('scene_toggle', '/scene/:sid/toggle', SceneToggleHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('scene_event_create', '/scene/:sid/event/create', SceneEventEditHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('scene_event_edit', '/scene/:sid/event/:eid/edit', SceneEventEditHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('scene_event_delete', '/scene/:sid/event/:eid/delete', SceneEventEditHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('scene_event_bulk', '/scene/:sid/events/bulk', SceneEventBulkHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('scene_event_api_create', '/scene/:sid/event', SceneEventHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('scene_event_api_update', '/scene/:sid/event/:eid', SceneEventHandler, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Route('scene_node_devices', '/scene/node/:nid/devices', SceneNodeDevicesHandler);
-    ctx.Route('scene_logs', '/scene/:sid/logs', SceneLogsHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('scene_logs', '/scene/:sid/logs', SceneLogsHandler, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Connection('scene_logs_conn', '/scene/logs/ws', SceneLogsConnectionHandler);
     // 最后注册 :sid 路由，作为兜底
     ctx.Route('scene_detail', '/scene/:sid', SceneDetailHandler);

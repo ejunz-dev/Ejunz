@@ -499,7 +499,7 @@ class RecordMainHandler extends Handler {
     @query('page', Types.PositiveInt, true)
     @query('uidOrName', Types.UidOrName, true)
     async get(domainId: string, page = 1, uidOrName?: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         let filterUid: number | undefined;
         let recordConnUidOrName: string | undefined;
         if (uidOrName) {
@@ -511,10 +511,10 @@ class RecordMainHandler extends Handler {
                 recordConnUidOrName = uidOrName;
             }
             if (filterUid !== this.user._id) {
-                this.checkPerm(PERM.PERM_VIEW_RECORD);
+                this.checkPerm(PERM.USER_PERM_VIEW_RECORD);
             }
         } else {
-            this.checkPerm(PERM.PERM_VIEW_RECORD);
+            this.checkPerm(PERM.USER_PERM_VIEW_RECORD);
         }
         const pageSize = 20;
         const filter: Record<string, unknown> = { domainId };
@@ -562,7 +562,7 @@ class RecordListConnectionHandler extends ConnectionHandler {
                 return;
             }
             this.args.domainId = q;
-            this.checkPriv(PRIV.PRIV_USER_PROFILE);
+            this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
 
             if (uidOrName) {
                 const udoc = await user.getById(q, +uidOrName)
@@ -571,14 +571,14 @@ class RecordListConnectionHandler extends ConnectionHandler {
                 if (udoc) {
                     this.watchUid = udoc._id;
                     if (this.watchUid !== this.user._id) {
-                        this.checkPerm(PERM.PERM_VIEW_RECORD);
+                        this.checkPerm(PERM.USER_PERM_VIEW_RECORD);
                     }
                 } else {
                     this.watchUid = undefined;
-                    this.checkPerm(PERM.PERM_VIEW_RECORD);
+                    this.checkPerm(PERM.USER_PERM_VIEW_RECORD);
                 }
             } else {
-                this.checkPerm(PERM.PERM_VIEW_RECORD);
+                this.checkPerm(PERM.USER_PERM_VIEW_RECORD);
                 this.watchUid = undefined;
             }
 
@@ -643,7 +643,7 @@ class RecordDetailHandler extends Handler {
     async prepare(domainId: string, rid: ObjectId) {
         const doc = await RecordModel.get(domainId, rid);
         if (!doc) throw new NotFoundError('Record');
-        if (doc.uid !== this.user._id) this.checkPerm(PERM.PERM_VIEW_RECORD);
+        if (doc.uid !== this.user._id) this.checkPerm(PERM.USER_PERM_VIEW_RECORD);
         this.rdoc = doc;
     }
 
@@ -684,13 +684,13 @@ class RecordDetailConnectionHandler extends ConnectionHandler {
     @param('rid', Types.ObjectId)
     async prepare(domainId: string, rid: ObjectId) {
         try {
-            this.checkPriv(PRIV.PRIV_USER_PROFILE);
+            this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
             const doc = await RecordModel.get(domainId, rid);
             if (!doc) {
                 this.close(4000, 'Record not found');
                 return;
             }
-            if (doc.uid !== this.user._id) this.checkPerm(PERM.PERM_VIEW_RECORD);
+            if (doc.uid !== this.user._id) this.checkPerm(PERM.USER_PERM_VIEW_RECORD);
             this.rid = rid.toString();
             this.throttleSend = throttle((d: SessionRecordDoc) => this.sendUpdate(d), 400, { trailing: true });
             await this.sendUpdate(doc);
@@ -727,13 +727,13 @@ class RecordDetailConnectionHandler extends ConnectionHandler {
 }
 
 export async function apply(ctx: Context) {
-    ctx.Route('record_main', '/record', RecordMainHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('record_detail', '/record/:rid', RecordDetailHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Connection('record_conn', '/record-conn', RecordListConnectionHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('record_main', '/record', RecordMainHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('record_detail', '/record/:rid', RecordDetailHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Connection('record_conn', '/record-conn', RecordListConnectionHandler, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Connection(
         'record_detail_conn',
         '/record-detail-conn',
         RecordDetailConnectionHandler,
-        PRIV.PRIV_USER_PROFILE,
+        PRIV.USER_PRIV_USER_PROFILE,
     );
 }

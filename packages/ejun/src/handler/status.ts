@@ -140,7 +140,7 @@ class StatusHandler extends Handler {
 
 class StatusWorkerEditHandler extends Handler {
     async post(args) {
-        this.checkPriv(PRIV.PRIV_WORKER);
+        this.checkPriv(PRIV.USER_PRIV_WORKER);
         const ids = cleanWorkerIds(args.workerIds || args.workerId || '');
         if (!ids.length) throw new Error('Missing workerId');
         if (args.deleteWorker === true || args.deleteWorker === 'true' || args.deleteWorker === '1' || args.deleteWorker === 'on') {
@@ -163,7 +163,7 @@ class StatusWorkerEditHandler extends Handler {
 
 class StatusUpdateHandler extends Handler {
     async post(args) {
-        this.checkPriv(PRIV.PRIV_WORKER);
+        this.checkPriv(PRIV.USER_PRIV_WORKER);
         const workerId = String(args.workerId || args.mid || '').trim();
         if (!workerId) throw new Error('Missing workerId');
         return upsertWorkerStatus({ ...args, workerId });
@@ -173,7 +173,7 @@ class StatusUpdateHandler extends Handler {
 export async function apply(ctx: Context) {
     ctx.Route('status', '/status', StatusHandler);
     ctx.Route('status_update', '/status/update', StatusUpdateHandler);
-    ctx.Route('status_worker_edit', '/status/worker/edit', StatusWorkerEditHandler, PRIV.PRIV_WORKER);
+    ctx.Route('status_worker_edit', '/status/worker/edit', StatusWorkerEditHandler, PRIV.USER_PRIV_WORKER);
     await db.ensureIndexes(coll, { name: 'expire', key: { updateAt: 1 }, expireAfterSeconds: 24 * 2600 });
     await db.ensureIndexes(workerStatusColl, { name: 'worker_id', key: { type: 1, workerId: 1 } });
     await db.ensureIndexes(workerStatusColl, { name: 'process_worker_id', key: { processWorkerId: 1 } });

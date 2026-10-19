@@ -38,7 +38,7 @@ async function successfulAuth(this: Handler, udoc: User) {
     this.session.uid = udoc._id;
     this.session.sudo = null;
     this.session.sudoUid = null;
-    this.session.scope = PERM.PERM_ALL.toString();
+    this.session.scope = PERM.USER_PERM_ALL.toString();
     this.session.oauthBind = null;
     this.session.recreate = true;
 }
@@ -66,7 +66,7 @@ class UserLoginHandler extends Handler {
         let udoc = await user.getByEmail(domainId, uname);
         udoc ||= await user.getByUname(domainId, uname);
         if (!udoc) throw new UserNotFoundError(uname);
-        if (system.get('system.contestmode') && !udoc.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) {
+        if (system.get('system.contestmode') && !udoc.hasPriv(PRIV.USER_PRIV_EDIT_SYSTEM)) {
             if (udoc._loginip && udoc._loginip !== this.request.ip) throw new ValidationError('ip');
             if (system.get('system.contestmode') === 'strict') {
                 const udocs = await user.getMulti({ loginip: this.request.ip, _id: { $ne: udoc._id } }).toArray();
@@ -89,7 +89,7 @@ class UserLoginHandler extends Handler {
             } else throw new ValidationError('2FA', 'Authn');
         }
         await udoc.checkPassword(password);
-        if (!udoc.hasPriv(PRIV.PRIV_USER_PROFILE)) throw new BlacklistedError(uname, udoc.banReason);
+        if (!udoc.hasPriv(PRIV.USER_PRIV_USER_PROFILE)) throw new BlacklistedError(uname, udoc.banReason);
         await successfulAuth.call(this, udoc);
         this.session.save = rememberme;
         this.response.redirect = redirect || ((this.request.referer || '/login').endsWith('/login')
@@ -1265,7 +1265,7 @@ class OauthCallbackHandler extends Handler {
             return;
         }
         if (!provider.canRegister) throw new ForbiddenError('No binded account found');
-        this.checkPriv(PRIV.PRIV_REGISTER_USER);
+        this.checkPriv(PRIV.USER_PRIV_REGISTER_USER);
         let username = '';
         r.uname ||= [];
         const mailDomain = r.email.split('@')[1];
@@ -1304,14 +1304,14 @@ class OauthCallbackHandler extends Handler {
 
 class UserGithubTokenHandler extends Handler {
     async get(domainId: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const u = await user.getById(domainId, this.user._id);
         const t = u ? String((u as any)._udoc?.githubToken || '').trim() : '';
         this.response.body = { configured: !!t };
     }
 
     async post(domainId: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const body = this.request.body || {};
         const raw = body.githubToken;
         if (raw === null || raw === undefined || raw === '') {
@@ -1409,22 +1409,22 @@ declare module '@ejunz/framework' {
 export async function apply(ctx: Context) {
     ctx.Route('user_login', '/login', UserLoginHandler);
     ctx.Route('user_oauth', '/oauth/:type/login', OauthHandler);
-    ctx.Route('user_sudo', '/user/sudo', UserSudoHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('user_sudo', '/user/sudo', UserSudoHandler, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Route('user_tfa', '/user/tfa', UserTFAHandler);
     ctx.Route('user_webauthn', '/user/webauthn', UserWebauthnHandler);
-    ctx.Route('user_github_token', '/user/github-token', UserGithubTokenHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('user_github_token', '/user/github-token', UserGithubTokenHandler, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Route('user_oauth_callback', '/oauth/:type/callback', OauthCallbackHandler);
-    ctx.Route('user_register', '/register', UserRegisterHandler, PRIV.PRIV_REGISTER_USER);
-    ctx.Route('user_register_with_code', '/register/:code', UserRegisterWithCodeHandler, PRIV.PRIV_REGISTER_USER);
-    ctx.Route('user_logout', '/logout', UserLogoutHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('user_register', '/register', UserRegisterHandler, PRIV.USER_PRIV_REGISTER_USER);
+    ctx.Route('user_register_with_code', '/register/:code', UserRegisterWithCodeHandler, PRIV.USER_PRIV_REGISTER_USER);
+    ctx.Route('user_logout', '/logout', UserLogoutHandler, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Route('user_lostpass', '/lostpass', UserLostPassHandler);
     ctx.Route('user_lostpass_with_code', '/lostpass/:code', UserLostPassWithCodeHandler);
-    ctx.Route('user_delete', '/user/delete', UserDeleteHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('user_delete', '/user/delete', UserDeleteHandler, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Route('user_detail', '/user/:uid', UserDetailHandler);
     ctx.Route('user_contribution_detail', '/user/:uid/contributions/:date/:domainId', UserContributionDetailHandler);
     ctx.Route('user_consumption_detail', '/user/:uid/consumption/:date/:domainId', UserConsumptionDetailHandler);
     if (system.get('server.contestmode')) {
-        ctx.Route('contest_mode', '/contestmode', ContestModeHandler, PRIV.PRIV_EDIT_SYSTEM);
+        ctx.Route('contest_mode', '/contestmode', ContestModeHandler, PRIV.USER_PRIV_EDIT_SYSTEM);
     }
     ctx.oauth.provide('mail', {
         text: 'Mail',

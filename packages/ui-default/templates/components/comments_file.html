@@ -108,10 +108,10 @@
         {% if (handler.user.hasPerm(comment_delete_self_perm) and handler.user.own(doc)) or handler.user.hasPerm(comment_delete_perm) %}
           {{ action(_('Delete'), 'delete', 'comment', {operation: comment_delete_op, drid: doc._id}, 'delete') }}
         {% endif %}
-        {% if (handler.user.hasPerm(perm.PERM_ADD_REACTION)) %}
+        {% if (handler.user.hasPerm(perm.USER_PERM_ADD_REACTION)) %}
           {{ action('', 'react', 'comment', {operation: 'reaction', nodeType: 'drid', id: doc._id}, 'emoji') }}
         {% endif %}
-        {% if handler.user.hasPerm(perm.PERM_ADD_REACTION) %}
+        {% if handler.user.hasPerm(perm.USER_PERM_ADD_REACTION) %}
           {{ action(_('Upload File'), 'upload', 'commentfile', {operation: comment_upload_op, drid: doc._id}, 'upload') }}
         {% endif %}
         </div>

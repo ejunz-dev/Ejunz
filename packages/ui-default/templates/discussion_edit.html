@@ -10,7 +10,7 @@
               <button name="operation" value="update" data-default-submit type="submit" class="rounded primary button">
                 {{ _('Update') }} (Ctrl+Enter)
               </button>
-            {% if handler.user.own(ddoc) or handler.user.hasPerm(perm.PERM_DELETE_DISCUSSION) %}
+            {% if handler.user.own(ddoc) or handler.user.hasPerm(perm.USER_PERM_DELETE_DISCUSSION) %}
               <button name="operation" value="delete" type="submit" class="rounded button">
                 {{ _('Delete') }}
               </button>

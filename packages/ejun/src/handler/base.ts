@@ -115,8 +115,8 @@ async function applyLearnProblemNotesBatchBlocks(
         if (b.deleteIds?.length) needDelete = true;
     }
     if (!h.user.own(base)) {
-        if (needEdit) h.checkPerm(PERM.PERM_EDIT_DISCUSSION);
-        if (needDelete) h.checkPerm(PERM.PERM_DELETE_DISCUSSION);
+        if (needEdit) h.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
+        if (needDelete) h.checkPerm(PERM.USER_PERM_DELETE_DISCUSSION);
     }
 
     for (const block of blocks) {
@@ -713,7 +713,7 @@ export class BaseEditorUiPrefsHandler extends Handler {
     @post('docId', Types.PositiveInt)
     @post('editorUiPrefs', Types.Any, true)
     async post(domainId: string, docId: number, editorUiPrefs?: unknown) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
 
@@ -748,7 +748,7 @@ export class BaseDetailUiPrefsHandler extends Handler {
     @post('docId', Types.PositiveInt)
     @post('displayPrefs', Types.Any, true)
     async post(domainId: string, docId: number, displayPrefs?: unknown) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
 
@@ -954,7 +954,7 @@ export class BaseEditorHandler extends Handler {
     }
 
     async get(domainId: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
 
         const opts = this.getEditorOptions(domainId);
         this.response.template = opts.template;
@@ -1181,7 +1181,7 @@ class BaseCreateHandler extends Handler {
         slug?: string,
         tag: string[] = [],
     ) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
 
         const actualDomainId = this.args.domainId || domainId || 'system';
 
@@ -1271,7 +1271,7 @@ class BaseEditHandler extends Handler {
         if (!this.base) throw new NotFoundError('Base not found');
 
         if (!this.user.own(this.base)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         }
     }
 
@@ -1337,7 +1337,7 @@ class BaseEditHandler extends Handler {
     async postDelete(domainId: string, docId: string) {
 
         if (!this.user.own(this.base)) {
-            this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_DELETE_DISCUSSION);
         }
 
         await BaseModel.delete(domainId, this.base!.docId);
@@ -1416,7 +1416,7 @@ export class BaseNodeHandler extends Handler {
     ) {
         const startTime = Date.now();
 
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
 
 
         const actualDomainId = this.args.domainId || domainId || 'system';
@@ -1424,7 +1424,7 @@ export class BaseNodeHandler extends Handler {
         const docId = base.docId;
 
         if (!this.user.own(base)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         }
 
         let newNodeId: string | undefined;
@@ -1630,13 +1630,13 @@ export class BaseNodeHandler extends Handler {
         y?: number,
         expanded?: boolean
     ) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
 
         const base = await this.resolveBase(domainId);
         const docId = base.docId;
 
         if (!this.user.own(base)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         }
 
         const updates: Partial<BaseNode> = {};
@@ -1676,13 +1676,13 @@ export class BaseNodeHandler extends Handler {
 
     @param('nodeId', Types.String)
     async postDelete(domainId: string, nodeId: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
 
         const base = await this.resolveBase(domainId);
         const docId = base.docId;
 
         if (!this.user.own(base)) {
-            this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_DELETE_DISCUSSION);
         }
 
 
@@ -1727,13 +1727,13 @@ export class BaseEdgeHandler extends Handler {
         target: string,
         label?: string
     ) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
 
         const base = await this.resolveBase(domainId);
         const docId = base.docId;
 
         if (!this.user.own(base)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         }
 
         const edge: Omit<BaseEdge, 'id'> = {
@@ -1754,13 +1754,13 @@ export class BaseEdgeHandler extends Handler {
 
     @param('edgeId', Types.String)
     async postDelete(domainId: string, edgeId: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
 
         const base = await this.resolveBase(domainId);
         const docId = base.docId;
 
         if (!this.user.own(base)) {
-            this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_DELETE_DISCUSSION);
         }
 
         await BaseModel.deleteEdge(domainId, docId, edgeId);
@@ -1843,7 +1843,7 @@ export class BaseSaveHandler extends Handler {
     }
 
     async post(domainId: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const mdt = this.saveMindMapDocType();
 
         const data = this.request.body || {};
@@ -1853,7 +1853,7 @@ export class BaseSaveHandler extends Handler {
             if (!specifiedDocIdEarly) throw new BadRequestError('docId is required for sidecarOnly save');
             const baseOnly = await BaseModel.get(domainId, specifiedDocIdEarly, mdt);
             if (!baseOnly) throw new NotFoundError('Base not found');
-            if (!this.user.own(baseOnly)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            if (!this.user.own(baseOnly)) this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
             const docIdOnly = baseOnly.docId;
             await persistBaseEditorSaveSidecars(this, domainId, docIdOnly, data as Record<string, unknown>, mdt);
             this.ctx.broadcast('base/update', docIdOnly, this.user._id, this.user.uname, 'sidecar_save');
@@ -1870,7 +1870,7 @@ export class BaseSaveHandler extends Handler {
             if (!base) throw new NotFoundError('Base not found');
             docId = base.docId;
             if (!this.user.own(base)) {
-                this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+                this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
             }
         } else {
             base = await this.getBase(domainId);
@@ -1880,7 +1880,7 @@ export class BaseSaveHandler extends Handler {
             } else {
                 docId = base.docId;
                 if (!this.user.own(base)) {
-                    this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+                    this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
                 }
             }
         }
@@ -2206,7 +2206,7 @@ class BaseDomainListHandler extends Handler {
     }
 
     async postDeleteSelected(domainId: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { docIds } = this.request.body;
         const did = typeof domainId === 'string' ? domainId : (this.args?.domainId ?? 'system');
         const ids: string[] = Array.isArray(docIds) ? docIds : [];
@@ -2216,7 +2216,7 @@ class BaseDomainListHandler extends Handler {
             const base = await BaseModel.get(did, id);
             if (!base) continue;
             if (!this.user.own(base)) {
-                this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
+                this.checkPerm(PERM.USER_PERM_DELETE_DISCUSSION);
             }
             await BaseModel.delete(did, id);
         }
@@ -2227,7 +2227,7 @@ class BaseDomainListHandler extends Handler {
 
 class BaseCreateNewHandler extends Handler {
     async post(domainId: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const did = typeof domainId === 'string' ? domainId : (this.args?.domainId ?? (domainId as any)?._id ?? 'system');
         const { docId } = await BaseModel.create(
             did,
@@ -3118,7 +3118,7 @@ class BaseGithubPushHandler extends Handler {
         }
 
         if (!this.user.own(base)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         }
 
         const githubRepo = (base.githubRepo || '') as string;
@@ -3198,7 +3198,7 @@ export class BaseCardHandler extends Handler {
             return;
         }
 
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
 
 
         const body: any = this.request?.body || {};
@@ -3214,7 +3214,7 @@ export class BaseCardHandler extends Handler {
         const base = await this.getBase(domainId);
 
         if (!this.user.own(base)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         }
 
         const cardDocId = await CardModel.create(
@@ -3273,7 +3273,7 @@ export class BaseCardHandler extends Handler {
         bidParam?: number,
         docIdParam?: ObjectId,
     ) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         await this.handleCardMutation('update', domainId, {
             cardIdParam,
             nodeId,
@@ -3307,7 +3307,7 @@ export class BaseCardHandler extends Handler {
         bidParam?: number,
         docIdParam?: ObjectId
     ) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         await this.handleCardMutation('delete', domainId, {
             cardIdParam,
             nodeId,
@@ -3381,7 +3381,7 @@ export class BaseCardHandler extends Handler {
         const base = await BaseModel.get(domainId, Number(targetCard.baseDocId));
         if (!base) throw new NotFoundError('Base not found');
         if (!this.user.own(base)) {
-            const perm = action === 'delete' ? PERM.PERM_DELETE_DISCUSSION : PERM.PERM_EDIT_DISCUSSION;
+            const perm = action === 'delete' ? PERM.USER_PERM_DELETE_DISCUSSION : PERM.USER_PERM_EDIT_DISCUSSION;
             this.checkPerm(perm);
         }
 
@@ -3533,7 +3533,7 @@ class BaseCardFilesHandler extends Handler {
         this.base = await BaseModel.get(domainId, docId);
         if (!this.base) throw new NotFoundError('Base not found');
         if (!this.user.own(this.base)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         }
         this.card = await CardModel.get(domainId, cardId);
         if (!this.card || this.card.baseDocId.toString() !== docId.toString()) {
@@ -3576,13 +3576,13 @@ class BaseCardFilesHandler extends Handler {
     @post('filename', Types.Filename, true)
     async postUploadFile(domainId: string, docId: number, cardId: ObjectId, filename?: string) {
         if ((this.card!.files?.length || 0) >= system.get('limit.user_files')) {
-            if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('count');
+            if (!this.user.hasPriv(PRIV.USER_PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('count');
         }
         const file = this.request.files?.file;
         if (!file) throw new ValidationError('file');
         const size = Math.sum((this.card!.files || []).map((i) => i.size)) + file.size;
         if (size >= system.get('limit.user_files_size')) {
-            if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('size');
+            if (!this.user.hasPriv(PRIV.USER_PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('size');
         }
         const finalFilename = filename || file.originalFilename || 'untitled';
         if ((this.card!.files || []).find((i) => i.name === finalFilename)) throw new FileExistsError(finalFilename);
@@ -3679,7 +3679,7 @@ class BaseNodeFilesHandler extends Handler {
         this.base = await BaseModel.get(domainId, docId);
         if (!this.base) throw new NotFoundError('Base not found');
         if (!this.user.own(this.base)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         }
         const nodes = this.base.nodes || [];
         this.node = nodes.find((n) => n.id === nodeId) || null;
@@ -3737,14 +3737,14 @@ class BaseNodeFilesHandler extends Handler {
     async postUploadFile(domainId: string, docId: number, nodeId: string, filename?: string) {
         if (!this.isTempNode) {
             if ((this.node!.files?.length || 0) >= system.get('limit.user_files')) {
-                if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('count');
+                if (!this.user.hasPriv(PRIV.USER_PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('count');
             }
         }
         const file = this.request.files?.file;
         if (!file) throw new ValidationError('file');
         const size = Math.sum((this.node?.files || []).map((i) => i.size)) + file.size;
         if (size >= system.get('limit.user_files_size')) {
-            if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('size');
+            if (!this.user.hasPriv(PRIV.USER_PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('size');
         }
         const finalFilename = filename || file.originalFilename || 'untitled';
         const storagePath = `base/${domainId}/${docId.toString()}/node/${nodeId}/${finalFilename}`;
@@ -3836,7 +3836,7 @@ class BaseFileMoveHandler extends Handler {
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
         if (!this.user.own(base)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         }
 
         const nodes = base.nodes || [];
@@ -3992,7 +3992,7 @@ class BaseCardEditHandler extends Handler {
         operation?: string,
         cardId?: ObjectId
     ) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
 
         const base = docId
             ? await BaseModel.get(domainId, docId)
@@ -4000,7 +4000,7 @@ class BaseCardEditHandler extends Handler {
         if (!base) throw new NotFoundError('Base not found');
 
         if (!this.user.own(base)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         }
 
         if (operation === 'update' && cardId) {
@@ -4072,7 +4072,7 @@ class BaseCardEditHandler extends Handler {
         content?: string,
         operation?: string
     ) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
 
         const base = docId
             ? await BaseModel.get(domainId, docId)
@@ -4080,7 +4080,7 @@ class BaseCardEditHandler extends Handler {
         if (!base) throw new NotFoundError('Base not found');
 
         if (!this.user.own(base)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         }
 
         if (cardId) {
@@ -4180,7 +4180,7 @@ class BaseCardDetailHandler extends Handler {
         order?: number,
         operation?: string
     ) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
 
 
         if (operation === 'delete') {
@@ -4190,7 +4190,7 @@ class BaseCardDetailHandler extends Handler {
             const base = await BaseModel.get(domainId, Number(card.baseDocId));
             if (!base) throw new NotFoundError('Base not found');
             if (!this.user.own(base)) {
-                this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
+                this.checkPerm(PERM.USER_PERM_DELETE_DISCUSSION);
             }
 
             await CardModel.delete(domainId, cardId);
@@ -4205,7 +4205,7 @@ class BaseCardDetailHandler extends Handler {
         const base = await BaseModel.get(domainId, Number(card.baseDocId));
         if (!base) throw new NotFoundError('Base not found');
         if (!this.user.own(base)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         }
 
         const updates: any = {};
@@ -4479,7 +4479,7 @@ export class BaseBatchSaveHandler extends Handler {
     }
 
     async post(domainId: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
 
         const actualDomainId = this.args.domainId || domainId || 'system';
         const opts = this.getBatchSaveOptions();
@@ -4494,7 +4494,7 @@ export class BaseBatchSaveHandler extends Handler {
             base = await opts.getBase(actualDomainId);
             if (!base) base = await opts.createBase(actualDomainId);
         }
-        if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        if (!this.user.own(base)) this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         const docId = base.docId;
 
         const developSessionRaw = typeof data.developSessionId === 'string' ? data.developSessionId.trim() : '';
@@ -5446,7 +5446,7 @@ class BaseCommitHandler extends Handler {
         }
 
         if (!this.user.own(base)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         }
 
         try {
@@ -5804,7 +5804,7 @@ class BaseGithubPullHandler extends Handler {
         }
 
         if (!this.user.own(base)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         }
 
         const githubRepo = (base.githubRepo || '') as string;
@@ -5933,7 +5933,7 @@ class BaseGithubConfigHandler extends Handler {
         if (!this.base) throw new NotFoundError('Base not found');
 
         if (!this.user.own(this.base)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         }
     }
 
@@ -6029,7 +6029,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
         }
 
         if (!this.user.own(base)) {
-            this.checkPerm(PERM.PERM_VIEW_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_VIEW_DISCUSSION);
         }
 
         logger.info('Base WebSocket connected: docId=%s', this.docId);
@@ -6305,7 +6305,7 @@ export class BaseConnectionHandler extends ConnectionHandler {
 class BaseDomainEditHandler extends Handler {
     @param('q', Types.Content, true)
     async get(domainId: string, q = '') {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
 
         const base = await BaseModel.getByDomain(domainId);
         if (!base) {
@@ -6402,7 +6402,7 @@ function collectSubtreeNodeIds(nodes: BaseNode[], edges: BaseEdge[], rootId: str
  */
 class BaseMigrateNodeToNewHandler extends Handler {
     async post(domainId: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const actualDomainId = this.args.domainId || domainId || 'system';
         const body = (this.request.body || {}) as Record<string, unknown>;
         const sourceDocId = readOptionalRequestBaseDocId(this.request);
@@ -6424,7 +6424,7 @@ class BaseMigrateNodeToNewHandler extends Handler {
         if (!sourceBase) {
             throw new NotFoundError('Base not found');
         }
-        if (!this.user.own(sourceBase)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        if (!this.user.own(sourceBase)) this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
 
         const nodes = sourceBase.nodes || [];
         const edges = sourceBase.edges || [];
@@ -6565,7 +6565,7 @@ class BaseMigrateNodeToNewHandler extends Handler {
 export class BaseProblemTagRegistryHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
     async post(domainId: string, docId: number) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const body: Record<string, unknown> = (this.request.body && typeof this.request.body === 'object')
             ? this.request.body as Record<string, unknown>
             : {};
@@ -6573,7 +6573,7 @@ export class BaseProblemTagRegistryHandler extends Handler {
         if (!tag) throw new ValidationError('tag required');
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
-        if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        if (!this.user.own(base)) this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         const prev = sanitizeProblemTagRegistryList((base as BaseDoc & { problemTags?: unknown }).problemTags);
         if (prev.includes(tag)) {
             this.response.body = { success: true, problemTags: prev };
@@ -6595,14 +6595,14 @@ export class BaseProblemTagRegistryHandler extends Handler {
 export class BaseCardTagRegistryHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
     async post(domainId: string, docId: number) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const body: Record<string, unknown> = (this.request.body && typeof this.request.body === 'object')
             ? this.request.body as Record<string, unknown>
             : {};
         const action = String(body.action || '').trim();
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
-        if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        if (!this.user.own(base)) this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
 
         const current = sanitizeProblemTagRegistryList((base as BaseDoc & { cardTags?: unknown }).cardTags || []);
 
@@ -6687,14 +6687,14 @@ export class BaseCardTagRegistryHandler extends Handler {
 export class BaseProblemTagManageHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
     async post(domainId: string, docId: number) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const body: Record<string, unknown> = (this.request.body && typeof this.request.body === 'object')
             ? this.request.body as Record<string, unknown>
             : {};
         const action = String(body.action || '').trim();
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
-        if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        if (!this.user.own(base)) this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
 
         const current = sanitizeProblemTagRegistryList((base as BaseDoc & { problemTags?: unknown }).problemTags || []);
 
@@ -7045,42 +7045,42 @@ export class BaseSlugCheckHandler extends Handler {
 
 export async function apply(ctx: Context) {
     ctx.Route('base_domain', '/base', BaseDomainListHandler);
-    ctx.Route('base_create', '/base/create', BaseCreateHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_create', '/base/create', BaseCreateHandler, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Route('base_outline_redirect_to_detail', '/base/:docId/outline', BaseDetailHandler);
     ctx.Route('base_list', '/base/list', BaseListHandler);
     ctx.Route('base_data', '/base/data', BaseDataHandler);
-    ctx.Route('base_editor_ui_prefs', '/base/editor-ui-prefs', BaseEditorUiPrefsHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_detail_ui_prefs', '/base/detail-ui-prefs', BaseDetailUiPrefsHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_node_update', '/base/node/:nodeId', BaseNodeHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_node', '/base/node', BaseNodeHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_edge', '/base/edge', BaseEdgeHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_save', '/base/save', BaseSaveHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_batch_save', '/base/batch-save', BaseBatchSaveHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_migrate_node_to_new', '/base/migrate-node-to-new', BaseMigrateNodeToNewHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_problem_tag_register', '/base/:docId/problem-tag-register', BaseProblemTagRegistryHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_problem_tag_manage', '/base/problem-tag', BaseProblemTagManageHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_card_tag_manage', '/base/card-tag', BaseCardTagRegistryHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_card', '/base/card', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_card_update', '/base/card/:cardId', BaseCardHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_editor_ui_prefs', '/base/editor-ui-prefs', BaseEditorUiPrefsHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_detail_ui_prefs', '/base/detail-ui-prefs', BaseDetailUiPrefsHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_node_update', '/base/node/:nodeId', BaseNodeHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_node', '/base/node', BaseNodeHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_edge', '/base/edge', BaseEdgeHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_save', '/base/save', BaseSaveHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_batch_save', '/base/batch-save', BaseBatchSaveHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_migrate_node_to_new', '/base/migrate-node-to-new', BaseMigrateNodeToNewHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_problem_tag_register', '/base/:docId/problem-tag-register', BaseProblemTagRegistryHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_problem_tag_manage', '/base/problem-tag', BaseProblemTagManageHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_card_tag_manage', '/base/card-tag', BaseCardTagRegistryHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_card', '/base/card', BaseCardHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_card_update', '/base/card/:cardId', BaseCardHandler, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Route('base_git_status', '/base/git/status', BaseGitStatusHandler);
-    ctx.Route('base_commit', '/base/commit', BaseCommitHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_github_push', '/base/github/push', BaseGithubPushHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_github_config', '/base/github/config', BaseGithubConfigHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_github_pull', '/base/github/pull', BaseGithubPullHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_slug_check', '/base/slug-check', BaseSlugCheckHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_commit', '/base/commit', BaseCommitHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_github_push', '/base/github/push', BaseGithubPushHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_github_config', '/base/github/config', BaseGithubConfigHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_github_pull', '/base/github/pull', BaseGithubPullHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_slug_check', '/base/slug-check', BaseSlugCheckHandler, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Route('base_detail', '/base/:docId', BaseDetailHandler);
     ctx.Route('base_study', '/base/:docId/study', BaseStudyHandler);
-    ctx.Route('base_edit', '/base/:docId/edit', BaseEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_editor', '/base/:docId/editor', BaseEditorHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_edit', '/base/:docId/edit', BaseEditHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_editor', '/base/:docId/editor', BaseEditorHandler, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Route('base_card_list', '/base/node/:nodeId/cards', BaseCardListHandler);
-    ctx.Route('base_card_edit', '/base/node/:nodeId/card/edit', BaseCardEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_card_edit_with_card', '/base/node/:nodeId/card/:cardId/edit', BaseCardEditHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_card_edit', '/base/node/:nodeId/card/edit', BaseCardEditHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_card_edit_with_card', '/base/node/:nodeId/card/:cardId/edit', BaseCardEditHandler, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Route('base_card_detail', '/base/node/:nodeId/card/:cardId', BaseCardDetailHandler);
-    ctx.Route('base_card_files', '/base/:docId/card/:cardId/files', BaseCardFilesHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_card_files', '/base/:docId/card/:cardId/files', BaseCardFilesHandler, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Route('base_card_file_download', '/base/:docId/card/:cardId/file/:filename', BaseCardFileDownloadHandler);
-    ctx.Route('base_node_files', '/base/:docId/node/:nodeId/files', BaseNodeFilesHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_node_files', '/base/:docId/node/:nodeId/files', BaseNodeFilesHandler, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Route('base_node_file_download', '/base/:docId/node/:nodeId/file/:filename', BaseNodeFileDownloadHandler);
-    ctx.Route('base_file_move', '/base/:docId/file/move', BaseFileMoveHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('base_file_move', '/base/:docId/file/move', BaseFileMoveHandler, PRIV.USER_PRIV_USER_PROFILE);
 
 
     ctx.Connection('base_connection', '/base/ws', BaseConnectionHandler);

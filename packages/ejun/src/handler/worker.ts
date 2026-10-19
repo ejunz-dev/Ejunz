@@ -484,6 +484,6 @@ export class ToolCallInternalHandler extends Handler {
 }
 
 export async function apply(ctx: Context) {
-    ctx.Connection('worker_conn', '/worker/conn', EjunzWorkerConnectionHandler, builtin.PRIV.PRIV_WORKER);
-    ctx.Route('toolcall_internal', '/toolcall/internal', ToolCallInternalHandler, builtin.PRIV.PRIV_WORKER);
+    ctx.Connection('worker_conn', '/worker/conn', EjunzWorkerConnectionHandler, builtin.PRIV.USER_PRIV_WORKER);
+    ctx.Route('toolcall_internal', '/toolcall/internal', ToolCallInternalHandler, builtin.PRIV.USER_PRIV_WORKER);
 }

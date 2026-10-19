@@ -176,8 +176,8 @@ export async function apply(ctx: Context) {
             },
             checkPerm(...args: bigint[]) {
                 if (!this.user.hasPerm(...args)) {
-                    if (this.user.hasPriv(PRIV.PRIV_USER_PROFILE)) throw new PermissionError(...args);
-                    throw new PrivilegeError(PRIV.PRIV_USER_PROFILE);
+                    if (this.user.hasPriv(PRIV.USER_PRIV_USER_PROFILE)) throw new PermissionError(...args);
+                    throw new PrivilegeError(PRIV.USER_PRIV_USER_PROFILE);
                 }
             },
             checkPriv(...args: number[]) {
@@ -190,7 +190,7 @@ export async function apply(ctx: Context) {
                 op: string, periodSecs: number, maxOperations: number, defaultKey = system.get('limit.by_user') ? '{{ip}}@{{user}}' : '{{ip}}',
             ) {
                 if (ignoredLimit.includes(op)) return;
-                if (this.user && this.user.hasPriv(PRIV.PRIV_UNLIMITED_ACCESS)) return;
+                if (this.user && this.user.hasPriv(PRIV.USER_PRIV_UNLIMITED_ACCESS)) return;
                 const overrideLimit = system.get(`limit.${op}`);
                 if (overrideLimit) maxOperations = overrideLimit;
                 // deprecated: remove boolean support in future
@@ -272,7 +272,7 @@ export async function apply(ctx: Context) {
                     text: v.text,
                     name: v.name,
                 }));
-            if ((!('noCheckPermView' in h) || !h.noCheckPermView) && !h.user.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN)) h.checkPerm(PERM.PERM_VIEW);
+            if ((!('noCheckPermView' in h) || !h.noCheckPermView) && !h.user.hasPriv(PRIV.USER_PRIV_VIEW_ALL_DOMAIN)) h.checkPerm(PERM.USER_PERM_VIEW);
             if (h.context.pendingError) throw h.context.pendingError;
         });
         on('handler/create/ws', async (h) => {

@@ -153,7 +153,7 @@ class DomainRankHandler extends Handler {
 
 class ManageHandler extends Handler {
     async prepare({ domainId }) {
-        this.checkPerm(PERM.PERM_EDIT_DOMAIN);
+        this.checkPerm(PERM.USER_PERM_EDIT_DOMAIN);
         this.domain = await domain.get(domainId);
     }
 }
@@ -241,7 +241,7 @@ class DomainUserHandler extends ManageHandler {
                             {
                                 $match: {
                                     $expr: { $eq: ['$_id', '$$uid'] },
-                                    priv: { $bitsAllSet: PRIV.PRIV_USER_PROFILE },
+                                    priv: { $bitsAllSet: PRIV.USER_PRIV_USER_PROFILE },
                                 },
                             },
                             {
@@ -261,7 +261,7 @@ class DomainUserHandler extends ManageHandler {
                         user: 1,
                         role: 1,
                         join: 1,
-                        ...(this.user.hasPerm(PERM.PERM_VIEW_USER_PRIVATE_INFO) ? { displayName: 1 } : {}),
+                        ...(this.user.hasPerm(PERM.USER_PERM_VIEW_USER_PRIVATE_INFO) ? { displayName: 1 } : {}),
                     },
                 },
             ]).toArray(),
@@ -283,7 +283,7 @@ class DomainUserHandler extends ManageHandler {
             roles,
             rudocs,
             domain: this.domain,
-            canForceJoin: this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN),
+            canForceJoin: this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN),
         };
     }
 
@@ -297,7 +297,7 @@ class DomainUserHandler extends ManageHandler {
     @param('role', Types.Role)
     @param('join', Types.Boolean)
     async postSetUsers(domainId: string, uid: number[], role: string, join = false) {
-        if (join) this.checkPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN);
+        if (join) this.checkPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN);
         await Promise.all([
             domain.setUserRole(domainId, uid, role),
             oplog.log(this, 'domain.setRole', { uid, role, join }),
@@ -467,7 +467,7 @@ class DomainJoinHandler extends Handler {
             domain.collUser.findOne({ domainId: target, uid: this.user._id }),
         ]);
         if (!ddoc) throw new NotFoundError(target);
-        const assignedRole = this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)
+        const assignedRole = this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)
             ? 'root'
             : dudoc?.role || 'default';
         if (dudoc?.join) throw new DomainJoinAlreadyMemberError(target, this.user._id);
@@ -551,7 +551,7 @@ export const DomainApi = {
             const ddoc = args.id ? await domain.get(args.id) : ctx.domain;
             if (!ddoc) return null;
             const udoc = await user.getById(ddoc._id, ctx.user._id);
-            if (!udoc.hasPerm(PERM.PERM_VIEW) && !udoc.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN)) return null;
+            if (!udoc.hasPerm(PERM.USER_PERM_VIEW) && !udoc.hasPriv(PRIV.USER_PRIV_VIEW_ALL_DOMAIN)) return null;
             return ddoc;
         },
     ),
@@ -562,7 +562,7 @@ export const DomainApi = {
             domainId: Schema.string().required(),
         }),
         async (ctx, args) => {
-            if (!ctx.user.hasPerm(PERM.PERM_VIEW) && !ctx.user.hasPriv(PRIV.PRIV_VIEW_ALL_DOMAIN)) throw new PermissionError(PERM.PERM_VIEW);
+            if (!ctx.user.hasPerm(PERM.USER_PERM_VIEW) && !ctx.user.hasPriv(PRIV.USER_PRIV_VIEW_ALL_DOMAIN)) throw new PermissionError(PERM.USER_PERM_VIEW);
             const groups = await user.listGroup(args.domainId);
             if (args.names?.length) {
                 return groups.filter((g) => args.names.includes(g.name));
@@ -580,7 +580,7 @@ export const DomainApi = {
             uids: Schema.array(Schema.number()),
         }),
         async (ctx, args) => {
-            if (!ctx.user.hasPerm(PERM.PERM_EDIT_DOMAIN)) throw new PermissionError(PERM.PERM_EDIT_DOMAIN);
+            if (!ctx.user.hasPerm(PERM.USER_PERM_EDIT_DOMAIN)) throw new PermissionError(PERM.USER_PERM_EDIT_DOMAIN);
             if (args.uids?.length) {
                 const res = await user.updateGroup(ctx.domain._id, args.name, args.uids);
                 return res.upsertedCount > 0;
@@ -616,7 +616,7 @@ export async function apply(ctx: Context) {
         rankingUpdateTimers.set(domainId, timer);
     });
     
-    ctx.Route('ranking', '/ranking', DomainRankHandler, PERM.PERM_VIEW_RANKING);
+    ctx.Route('ranking', '/ranking', DomainRankHandler, PERM.USER_PERM_VIEW_RANKING);
     ctx.Route('domain_dashboard', '/domain/dashboard', DomainDashboardHandler);
     ctx.Route('domain_edit', '/domain/edit', DomainEditHandler);
     ctx.Route('domain_user', '/domain/user', DomainUserHandler);
@@ -624,8 +624,8 @@ export async function apply(ctx: Context) {
     ctx.Route('domain_role', '/domain/role', DomainRoleHandler);
     ctx.Route('domain_group', '/domain/group', DomainUserGroupHandler);
     ctx.Route('domain_join_applications', '/domain/join_applications', DomainJoinApplicationsHandler);
-    ctx.Route('domain_join', '/domain/join', DomainJoinHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('domain_search', '/domain/search', DomainSearchHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('domain_join', '/domain/join', DomainJoinHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('domain_search', '/domain/search', DomainSearchHandler, PRIV.USER_PRIV_USER_PROFILE);
     await ctx.inject(['api'], ({ api }) => {
         api.provide(DomainApi);
     });

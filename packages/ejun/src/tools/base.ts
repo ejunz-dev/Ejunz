@@ -206,10 +206,10 @@ export async function remove(ctx: ToolContext, _args: ToolArgs) {
 export function apply(ctx: Context) {
     const none = { source: 'base' as const, bindBase: 'none' as const };
     const explicit = { source: 'base' as const, bindBase: 'explicit' as const };
-    ctx.Tool('base', 'base_create', create, Create, { ...none, mutating: true }, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_list', list, List, none, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_search', search, Search, none, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_get', get, Get, explicit, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_update', update, Update, { ...explicit, mutating: true }, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_delete', remove, Remove, { ...explicit, mutating: true }, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_create', create, Create, { ...none, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_list', list, List, none, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_search', search, Search, none, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_get', get, Get, explicit, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_update', update, Update, { ...explicit, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_delete', remove, Remove, { ...explicit, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }

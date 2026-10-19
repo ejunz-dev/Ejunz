@@ -67,8 +67,8 @@ inject('Nav', 'develop', { prefix: 'develop' });
 inject('Nav', 'base_domain', { prefix: 'base' });
 inject('Nav', 'agent_domain', { prefix: 'corp' });
 // inject('Nav', 'edge_domain', { prefix: 'edge' });
-inject('Nav', 'session_domain', { prefix: 'session' }, PERM.PERM_VIEW_RECORD);
-inject('Nav', 'record_main', { prefix: 'record' }, PERM.PERM_VIEW_RECORD);
+inject('Nav', 'session_domain', { prefix: 'session' }, PERM.USER_PERM_VIEW_RECORD);
+inject('Nav', 'record_main', { prefix: 'record' }, PERM.USER_PERM_VIEW_RECORD);
 inject('Nav', 'discussion_main', { prefix: 'discussion' });
 // inject('Nav', 'workflow_domain', { prefix: 'workflow' });
 
@@ -77,8 +77,8 @@ inject('Nav', 'discussion_main', { prefix: 'discussion' });
 
 
 
-inject('NavDropdown', 'domain_dashboard', { prefix: 'domain' }, PERM.PERM_EDIT_DOMAIN);
-inject('NavDropdown', 'manage_dashboard', { prefix: 'manage' }, PRIV.PRIV_EDIT_SYSTEM);
+inject('NavDropdown', 'domain_dashboard', { prefix: 'domain' }, PERM.USER_PERM_EDIT_DOMAIN);
+inject('NavDropdown', 'manage_dashboard', { prefix: 'manage' }, PRIV.USER_PRIV_EDIT_SYSTEM);
 inject('AgentAdd', 'agent_create', { icon: 'add', text: 'Create Agent' });
 inject('BaseAdd', 'base_create', { icon: 'add', text: 'Create Base' });
 inject('ControlPanel', 'manage_dashboard');

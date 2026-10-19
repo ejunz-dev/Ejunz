@@ -77,7 +77,7 @@ class MessageModel {
     }
 
     static async sendNotification(message: string, ...args: any[]) {
-        const targets = await user.getMulti({ priv: { $bitsAllSet: PRIV.PRIV_VIEW_SYSTEM_NOTIFICATION } })
+        const targets = await user.getMulti({ priv: { $bitsAllSet: PRIV.USER_PRIV_VIEW_SYSTEM_NOTIFICATION } })
             .project({ _id: 1, viewLang: 1 }).toArray();
         return Promise.all(targets.map(({ _id, viewLang }) => {
             const msg = message.translate(viewLang || system.get('server.language')).format(...args);

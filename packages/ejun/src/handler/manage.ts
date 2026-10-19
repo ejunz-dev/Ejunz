@@ -45,7 +45,7 @@ function set(key: string, value: any) {
 
 class SystemHandler extends Handler {
     async prepare() {
-        this.checkPriv(PRIV.PRIV_EDIT_SYSTEM);
+        this.checkPriv(PRIV.USER_PRIV_EDIT_SYSTEM);
     }
 }
 
@@ -59,7 +59,7 @@ class SystemCheckConnHandler extends ConnectionHandler {
     id: string;
 
     async prepare() {
-        this.checkPriv(PRIV.PRIV_EDIT_SYSTEM);
+        this.checkPriv(PRIV.USER_PRIV_EDIT_SYSTEM);
         await this.check();
     }
 

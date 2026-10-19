@@ -26,7 +26,7 @@ export class WorkflowDomainHandler extends Handler<Context> {
 // 创建/编辑工作流基本信息（只处理 name 和 description）
 export class WorkflowEditHandler extends Handler<Context> {
     async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { wid } = this.request.params;
         
         let workflow = null;
@@ -36,8 +36,8 @@ export class WorkflowEditHandler extends Handler<Context> {
                 workflow = await WorkflowModel.getByWorkflowId(this.domain._id, widNum);
                 if (workflow) {
                     // 检查权限
-                    if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-                        throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+                    if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+                        throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
                     }
                 }
             }
@@ -48,7 +48,7 @@ export class WorkflowEditHandler extends Handler<Context> {
     }
 
     async postCreate() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { name, description } = this.request.body;
         if (!name || typeof name !== 'string') {
             throw new ValidationError('name');
@@ -65,7 +65,7 @@ export class WorkflowEditHandler extends Handler<Context> {
     }
 
     async postUpdate() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { wid } = this.request.params;
         const { name, description } = this.request.body;
         
@@ -84,8 +84,8 @@ export class WorkflowEditHandler extends Handler<Context> {
         }
 
         // Check permissions
-        if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         const update: any = { name, description };
@@ -99,7 +99,7 @@ export class WorkflowEditHandler extends Handler<Context> {
 // 编辑工作流节点流程图
 export class WorkflowEditFlowHandler extends Handler<Context> {
     async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { wid } = this.request.params;
         
         const widNum = parseInt(wid, 10);
@@ -113,8 +113,8 @@ export class WorkflowEditFlowHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         // 获取节点
@@ -401,7 +401,7 @@ class WorkflowDetailConnectionHandler extends ConnectionHandler<Context> {
 // 工作流节点 API
 export class WorkflowNodeHandler extends Handler<Context> {
     async postCreate() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         
         const domainId = this.domain._id;
         
@@ -420,8 +420,8 @@ export class WorkflowNodeHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         const { name, nodeType, type, position, config, connections } = this.request.body;
@@ -455,7 +455,7 @@ export class WorkflowNodeHandler extends Handler<Context> {
     }
 
     async postUpdate() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         
         const domainId = this.domain._id;
         
@@ -476,8 +476,8 @@ export class WorkflowNodeHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         const node = await WorkflowNodeModel.getByNodeId(domainId, nidNum);
@@ -509,7 +509,7 @@ export class WorkflowNodeHandler extends Handler<Context> {
     }
 
     async postDelete() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         
         const domainId = this.domain._id;
         
@@ -530,8 +530,8 @@ export class WorkflowNodeHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         const node = await WorkflowNodeModel.getByNodeId(domainId, nidNum);
@@ -547,7 +547,7 @@ export class WorkflowNodeHandler extends Handler<Context> {
 // 执行工作流
 export class WorkflowExecuteHandler extends Handler<Context> {
     async postExecute() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         
         const domainId = this.domain._id;
         
@@ -564,8 +564,8 @@ export class WorkflowExecuteHandler extends Handler<Context> {
         }
 
         // 检查权限
-        if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
 
         const triggerData = this.request.body.triggerData || {};
@@ -584,7 +584,7 @@ export class WorkflowExecuteHandler extends Handler<Context> {
 // 触发工作流（用于按钮触发器）
 export class WorkflowTriggerHandler extends Handler<Context> {
     async postTrigger() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         
         const domainId = this.domain._id;
         
@@ -664,7 +664,7 @@ export class WorkflowTriggerHandler extends Handler<Context> {
 // 切换工作流启用状态
 export class WorkflowToggleHandler extends Handler<Context> {
     async postToggle() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         
         const domainId = this.domain._id;
         const { wid } = this.request.params;
@@ -679,8 +679,8 @@ export class WorkflowToggleHandler extends Handler<Context> {
         }
         
         // 检查权限
-        if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
-            throw new PermissionError(PRIV.PRIV_USER_PROFILE);
+        if (workflow.owner !== this.user._id && !this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
+            throw new PermissionError(PRIV.USER_PRIV_USER_PROFILE);
         }
         
         // 切换 enabled 状态
@@ -781,7 +781,7 @@ export class WorkflowNodeTypesHandler extends Handler<Context> {
 // 获取节点列表（用于对象操作选择）
 export class WorkflowNodesListHandler extends Handler<Context> {
     async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const NodeModel = global.Ejunz.model.node;
         const nodes = await NodeModel.getByDomain(this.domain._id);
         this.response.body = { nodes: nodes.map(n => ({ nid: n.nid, name: n.name })) };
@@ -791,7 +791,7 @@ export class WorkflowNodesListHandler extends Handler<Context> {
 // 获取设备列表（用于设备操作选择）
 export class WorkflowDevicesListHandler extends Handler<Context> {
     async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const { nodeId } = this.request.query;
         if (!nodeId) {
             throw new ValidationError('nodeId is required');
@@ -814,7 +814,7 @@ export class WorkflowDevicesListHandler extends Handler<Context> {
 // 获取Client列表（用于接收器节点选择）
 export class WorkflowClientsListHandler extends Handler<Context> {
     async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const ClientModel = require('../../../../plugins/edge/model/client').default;
         const clients = await ClientModel.getByDomain(this.domain._id);
         this.response.body = { clients: clients.map(c => ({ clientId: c.clientId, name: c.name })) };
@@ -824,7 +824,7 @@ export class WorkflowClientsListHandler extends Handler<Context> {
 // 获取工作流定时器状态
 export class WorkflowTimerStatusHandler extends Handler<Context> {
     async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         
         const domainId = this.domain._id;
         const { wid } = this.request.params;
@@ -858,22 +858,22 @@ export class WorkflowTimerStatusHandler extends Handler<Context> {
 export async function apply(ctx: Context) {
     // 先注册没有参数的路由，避免被 :wid 路由匹配
     ctx.Route('workflow_node_types', '/workflow/node-types', WorkflowNodeTypesHandler);
-    ctx.Route('workflow_nodes_list', '/workflow/nodes', WorkflowNodesListHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('workflow_devices_list', '/workflow/devices', WorkflowDevicesListHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('workflow_clients_list', '/workflow/clients', WorkflowClientsListHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('workflow_nodes_list', '/workflow/nodes', WorkflowNodesListHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('workflow_devices_list', '/workflow/devices', WorkflowDevicesListHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('workflow_clients_list', '/workflow/clients', WorkflowClientsListHandler, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Route('workflow_domain', '/workflow', WorkflowDomainHandler);
-    ctx.Route('workflow_create', '/workflow/create', WorkflowEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('workflow_edit', '/workflow/:wid/edit', WorkflowEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('workflow_editFlow', '/workflow/:wid/editFlow', WorkflowEditFlowHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('workflow_node', '/workflow/:wid/node', WorkflowNodeHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('workflow_create', '/workflow/create', WorkflowEditHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('workflow_edit', '/workflow/:wid/edit', WorkflowEditHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('workflow_editFlow', '/workflow/:wid/editFlow', WorkflowEditFlowHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('workflow_node', '/workflow/:wid/node', WorkflowNodeHandler, PRIV.USER_PRIV_USER_PROFILE);
     // 先注册更具体的删除路由，避免被更新路由匹配
-    ctx.Route('workflow_node_delete', '/workflow/:wid/node/:nid/delete', WorkflowNodeHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('workflow_node_update', '/workflow/:wid/node/:nid', WorkflowNodeHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('workflow_execute', '/workflow/:wid/execute', WorkflowExecuteHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('workflow_trigger', '/workflow/:wid/trigger', WorkflowTriggerHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('workflow_timer_status', '/workflow/:wid/timer-status', WorkflowTimerStatusHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('workflow_node_delete', '/workflow/:wid/node/:nid/delete', WorkflowNodeHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('workflow_node_update', '/workflow/:wid/node/:nid', WorkflowNodeHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('workflow_execute', '/workflow/:wid/execute', WorkflowExecuteHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('workflow_trigger', '/workflow/:wid/trigger', WorkflowTriggerHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('workflow_timer_status', '/workflow/:wid/timer-status', WorkflowTimerStatusHandler, PRIV.USER_PRIV_USER_PROFILE);
     // 先注册更具体的 toggle 路由，避免被 detail 路由匹配
-    ctx.Route('workflow_toggle', '/workflow/:wid/toggle', WorkflowToggleHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('workflow_toggle', '/workflow/:wid/toggle', WorkflowToggleHandler, PRIV.USER_PRIV_USER_PROFILE);
     // 最后注册 :wid 路由，作为兜底
     ctx.Route('workflow_detail', '/workflow/:wid', WorkflowDetailHandler);
     // WebSocket 连接

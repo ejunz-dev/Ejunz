@@ -1,4 +1,4 @@
-{% set canManage = mcp.kind == 'outbound' and mcp.tokenInfo and (handler.user._id == mcp.mcp.owner or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) %}
+{% set canManage = mcp.kind == 'outbound' and mcp.tokenInfo and (handler.user._id == mcp.mcp.owner or handler.user.hasPriv(PRIV.USER_PRIV_EDIT_SYSTEM)) %}
 <tr data-mid="{{ mcp.mid }}" data-kind="{{ mcp.kind }}">
   <td class="col--checkbox display-mode-hide">
     {% if canManage %}

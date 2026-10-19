@@ -45,7 +45,7 @@ async function cleanupDeletedPluginArtifacts(domainId: string, pluginDocId: numb
 export class PluginDomainHandler extends Handler {
     @query('q', Types.String, true)
     async get(domainId: string, q?: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const query: Filter<PluginDoc> = {} as any;
         const all = await PluginModel.getAll(domainId, query);
         const keyword = String(q || '').trim().toLowerCase();
@@ -67,7 +67,7 @@ export class PluginDomainHandler extends Handler {
 
 export class PluginCreateHandler extends Handler {
     async get() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         this.response.template = 'plugin_edit.html';
         this.response.body = { plugin: null, operation: 'create' };
     }
@@ -76,7 +76,7 @@ export class PluginCreateHandler extends Handler {
     @post('content', Types.Content, true)
     @post('pluginSlug', Types.String, true)
     async post(domainId: string, title: string, content = '', pluginSlug?: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const slug = parsePluginSlug(pluginSlug, title);
         const existing = await PluginModel.getAll(domainId, { pluginSlug: slug } as any);
         if (existing.length) throw new ValidationError('pluginSlug');
@@ -114,7 +114,7 @@ export class PluginMetaEditHandler extends Handler {
     async post(domainId: string, docId: number, title: string, content = '', pluginSlug?: string, visibility?: string, enabled?: string) {
         assertPluginEditable(this, this.plugin!);
         const vis = visibility === 'domain' || visibility === 'system' ? visibility : 'private';
-        if (vis === 'system' && !this.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) throw new ForbiddenError('Only administrator can create system plugins');
+        if (vis === 'system' && !this.user.hasPriv(PRIV.USER_PRIV_EDIT_SYSTEM)) throw new ForbiddenError('Only administrator can create system plugins');
         const nextEnabled = enabled !== 'off' && enabled !== 'false';
         const wasEnabled = this.plugin!.enabled !== false;
         await PluginModel.update(domainId, docId, {
@@ -131,7 +131,7 @@ export class PluginMetaEditHandler extends Handler {
 export class PluginDeleteHandler extends Handler {
     @param('docId', Types.PositiveInt)
     async post(domainId: string, docId: number) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const plugin = await PluginModel.get(domainId, docId);
         if (!plugin) throw new NotFoundError('Plugin not found');
         assertPluginEditable(this, plugin);
@@ -150,13 +150,13 @@ export class PluginEditorHandler extends Handler {
         this.plugin = await PluginModel.get(domainId, docId);
         if (!this.plugin) throw new NotFoundError('Plugin not found');
         if (!PluginModel.canRead(this.user, this.plugin) && !PluginModel.canEdit(this.user, this.plugin)) {
-            this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         }
     }
 
     @param('docId', Types.PositiveInt)
     async get(domainId: string, docId: number) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         let availableMcpServices: any[] = [];
         try {
             availableMcpServices = [];
@@ -190,7 +190,7 @@ export class PluginEditorHandler extends Handler {
 export class PluginDataHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
     async get(domainId: string, docId?: number) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         if (!docId) throw new BadRequestError('docId');
         const plugin = await PluginModel.get(domainId, docId);
         if (!plugin) throw new NotFoundError('Plugin not found');
@@ -240,7 +240,7 @@ export class PluginBatchSaveHandler extends BaseBatchSaveHandler {
 export class PluginCatalogHandler extends Handler {
     @param('docId', Types.PositiveInt, true)
     async get(domainId: string, docId?: number) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const plugins = docId ? [await PluginModel.get(domainId, docId)] : await PluginModel.getAll(domainId, {} as any);
         this.response.body = await Promise.all((plugins.filter(Boolean) as PluginDoc[])
             .filter((p) => PluginModel.canRead(this.user, p) || PluginModel.canEdit(this.user, p))
@@ -251,14 +251,14 @@ export class PluginCatalogHandler extends Handler {
 export async function apply(ctx: Context) {
     // The periodic plugin MCP status check is deleted.
 
-    ctx.Route('plugin_domain', '/plugins', PluginDomainHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('plugin_create', '/plugins/create', PluginCreateHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('plugin_catalog', '/plugins/catalog', PluginCatalogHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('plugin_catalog_doc', '/plugins/:docId/catalog', PluginCatalogHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('plugin_data', '/plugins/data', PluginDataHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('plugin_batch_save', '/plugins/batch-save', PluginBatchSaveHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('plugin_edit', '/plugins/:docId/edit', PluginMetaEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('plugin_delete', '/plugins/:docId/delete', PluginDeleteHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('plugin_editor', '/plugins/:docId/editor', PluginEditorHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('plugin_detail', '/plugins/:docId', PluginEditorHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('plugin_domain', '/plugins', PluginDomainHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('plugin_create', '/plugins/create', PluginCreateHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('plugin_catalog', '/plugins/catalog', PluginCatalogHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('plugin_catalog_doc', '/plugins/:docId/catalog', PluginCatalogHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('plugin_data', '/plugins/data', PluginDataHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('plugin_batch_save', '/plugins/batch-save', PluginBatchSaveHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('plugin_edit', '/plugins/:docId/edit', PluginMetaEditHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('plugin_delete', '/plugins/:docId/delete', PluginDeleteHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('plugin_editor', '/plugins/:docId/editor', PluginEditorHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('plugin_detail', '/plugins/:docId', PluginEditorHandler, PRIV.USER_PRIV_USER_PROFILE);
 }

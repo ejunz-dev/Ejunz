@@ -265,7 +265,7 @@ class BaseSemanticSearchHandler extends Handler {
     @post('query', Types.String)
     @post('limit', Types.PositiveInt, true)
     async post(domainId: string, docId: number, query?: string, limit?: number) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         if (!query || !query.trim()) throw new BadRequestError('Query is required');
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
@@ -284,8 +284,8 @@ class BaseSemanticSearchHandler extends Handler {
 export function apply(ctx: Context) {
     const session = { source: 'base' as const, bindBase: 'session' as const };
     const optional = { source: 'base' as const, bindBase: 'optional' as const };
-    ctx.Tool('base', 'base_semantic_search', search, Search, session, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('base_semantic_search', '/base/semantic-search', BaseSemanticSearchHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_embedding_status', status, Status, optional, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_embedding_reindex', reindex, Reindex, { ...optional, mutating: true }, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_semantic_search', search, Search, session, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('base_semantic_search', '/base/semantic-search', BaseSemanticSearchHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_embedding_status', status, Status, optional, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_embedding_reindex', reindex, Reindex, { ...optional, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }

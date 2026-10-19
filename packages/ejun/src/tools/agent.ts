@@ -1,11 +1,11 @@
 import Schema from 'schemastery';
 import type { Context } from 'ejun/src/context';
-import { PERM, PRIV } from 'ejun/src/model/builtin';
+import { PERM } from 'ejun/src/model/builtin';
 import { AgentModel, AgentSessionModel } from 'ejun/src/model/agent';
 import { MAX_AGENTS_PER_CALL, MAX_FILE_CONTENT_CHARS, MAX_FILE_CONTENT_CHARS_LIMIT } from '../lib/tool-limits';
 import { asText, idList } from '../lib/tool-shared';
 import { agentRuntimeHandlerContext } from '../service/runtime';
-import { agentToolAccess } from '../service/agent-acl';
+import { agentToolAccess } from '../service/addons';
 import type { AgentConfig, AgentSettings } from 'ejun/src/model/agent';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import { agentRecordView, configFromArgs, createSessionAgent, ensureGroupRoot, objectEntries, renameSessionAgent, requireGroup, sessionAgentInput, sessionAgentView, sessionConversation, sessionScope, settingsFromArgs, validateRoleAssignment, requireAgentConfigurationPermission } from './common/agent';
@@ -296,21 +296,21 @@ export async function removeAgentSessions(ctx:ToolContext,args:ToolArgs) {const 
 export async function removeAgentSession(ctx:ToolContext,args:ToolArgs) {const {groupId}=await requireGroup(ctx,args,'delete');const sessionId=asText(args.sessionId);if(!sessionId)throw new Error('sessionId is required');await AgentSessionModel.deleteSession(ctx.domainId,ctx.owner,sessionId,groupId);return {ok:true,groupId,sessionId,deleted:true};}
 
 export function apply(ctx: Context) {
-    ctx.Tool('agent', 'agent_agent_list', listAgents, AgentList, agentToolAccess(PERM.AGENT.AGENT_LIST), PRIV.USER.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_agent_get', getAgent, AgentGet, agentToolAccess(PERM.AGENT.AGENT_GET), PRIV.USER.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_agent_create', createAgent, AgentCreate, agentToolAccess(PERM.AGENT.AGENT_CREATE), PRIV.USER.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_agent_update', updateAgent, AgentUpdate, agentToolAccess(PERM.AGENT.AGENT_UPDATE), PRIV.USER.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_agent_delete', removeAgent, AgentRemove, agentToolAccess(PERM.AGENT.AGENT_DELETE), PRIV.USER.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_agent_create_many', createAgents, AgentCreateMany, agentToolAccess(PERM.AGENT.AGENT_CREATE_MANY), PRIV.USER.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_agent_get_many', getAgents, AgentGetMany, agentToolAccess(PERM.AGENT.AGENT_GET_MANY), PRIV.USER.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_agent_update_many', updateAgents, AgentUpdateMany, agentToolAccess(PERM.AGENT.AGENT_UPDATE_MANY), PRIV.USER.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_agent_delete_many', removeAgents, AgentRemoveMany, agentToolAccess(PERM.AGENT.AGENT_DELETE_MANY), PRIV.USER.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_session_list', listAgentSessions, AgentSessionList, agentToolAccess(PERM.AGENT.SESSION_LIST), PRIV.USER.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_session_get', getAgentSession, AgentSessionGet, agentToolAccess(PERM.AGENT.SESSION_GET), PRIV.USER.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_session_create', createAgentSession, AgentSessionCreate, agentToolAccess(PERM.AGENT.SESSION_CREATE), PRIV.USER.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_session_create_many', createAgentSessionsForExistingAgents, AgentSessionCreateMany, agentToolAccess(PERM.AGENT.SESSION_CREATE_MANY), PRIV.USER.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_session_update', updateAgentSession, AgentSessionUpdate, agentToolAccess(PERM.AGENT.SESSION_UPDATE), PRIV.USER.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_session_delete', removeAgentSession, AgentSessionDelete, agentToolAccess(PERM.AGENT.SESSION_DELETE), PRIV.USER.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_session_get_many', getAgentSessions, AgentSessionGetMany, agentToolAccess(PERM.AGENT.SESSION_GET_MANY), PRIV.USER.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_session_delete_many', removeAgentSessions, AgentSessionDeleteMany, agentToolAccess(PERM.AGENT.SESSION_DELETE_MANY), PRIV.USER.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_agent_list', listAgents, AgentList, agentToolAccess(PERM.AGENT_PERM_AGENT_LIST));
+    ctx.Tool('agent', 'agent_agent_get', getAgent, AgentGet, agentToolAccess(PERM.AGENT_PERM_AGENT_GET));
+    ctx.Tool('agent', 'agent_agent_create', createAgent, AgentCreate, agentToolAccess(PERM.AGENT_PERM_AGENT_CREATE, true));
+    ctx.Tool('agent', 'agent_agent_update', updateAgent, AgentUpdate, agentToolAccess(PERM.AGENT_PERM_AGENT_UPDATE, true));
+    ctx.Tool('agent', 'agent_agent_delete', removeAgent, AgentRemove, agentToolAccess(PERM.AGENT_PERM_AGENT_DELETE, true));
+    ctx.Tool('agent', 'agent_agent_create_many', createAgents, AgentCreateMany, agentToolAccess(PERM.AGENT_PERM_AGENT_CREATE_MANY, true));
+    ctx.Tool('agent', 'agent_agent_get_many', getAgents, AgentGetMany, agentToolAccess(PERM.AGENT_PERM_AGENT_GET_MANY));
+    ctx.Tool('agent', 'agent_agent_update_many', updateAgents, AgentUpdateMany, agentToolAccess(PERM.AGENT_PERM_AGENT_UPDATE_MANY, true));
+    ctx.Tool('agent', 'agent_agent_delete_many', removeAgents, AgentRemoveMany, agentToolAccess(PERM.AGENT_PERM_AGENT_DELETE_MANY, true));
+    ctx.Tool('agent', 'agent_session_list', listAgentSessions, AgentSessionList, agentToolAccess(PERM.AGENT_PERM_SESSION_LIST));
+    ctx.Tool('agent', 'agent_session_get', getAgentSession, AgentSessionGet, agentToolAccess(PERM.AGENT_PERM_SESSION_GET));
+    ctx.Tool('agent', 'agent_session_create', createAgentSession, AgentSessionCreate, agentToolAccess(PERM.AGENT_PERM_SESSION_CREATE, true));
+    ctx.Tool('agent', 'agent_session_create_many', createAgentSessionsForExistingAgents, AgentSessionCreateMany, agentToolAccess(PERM.AGENT_PERM_SESSION_CREATE_MANY, true));
+    ctx.Tool('agent', 'agent_session_update', updateAgentSession, AgentSessionUpdate, agentToolAccess(PERM.AGENT_PERM_SESSION_UPDATE, true));
+    ctx.Tool('agent', 'agent_session_delete', removeAgentSession, AgentSessionDelete, agentToolAccess(PERM.AGENT_PERM_SESSION_DELETE, true));
+    ctx.Tool('agent', 'agent_session_get_many', getAgentSessions, AgentSessionGetMany, agentToolAccess(PERM.AGENT_PERM_SESSION_GET_MANY));
+    ctx.Tool('agent', 'agent_session_delete_many', removeAgentSessions, AgentSessionDeleteMany, agentToolAccess(PERM.AGENT_PERM_SESSION_DELETE_MANY, true));
 }

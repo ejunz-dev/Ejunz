@@ -345,13 +345,13 @@ export async function removeMany(ctx: ToolContext, args: ToolArgs) {
 
 export function apply(ctx: Context) {
     const opts = { source: 'base' as const, bindBase: 'session' as const };
-    ctx.Tool('base', 'base_node_fileCard_list', list, List, opts, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_get', get, Get, opts, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_content_get', contentGet, ContentGet, opts, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_delete', remove, Remove, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_create', create, Create, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_create_many', createMany, CreateMany, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_list_many', listMany, ListMany, opts, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_get_many', getMany, GetMany, opts, PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_delete_many', removeMany, RemoveMany, { ...opts, mutating: true }, PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_list', list, List, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_get', get, Get, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_content_get', contentGet, ContentGet, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_delete', remove, Remove, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_create', create, Create, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_create_many', createMany, CreateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_list_many', listMany, ListMany, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_get_many', getMany, GetMany, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_delete_many', removeMany, RemoveMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }

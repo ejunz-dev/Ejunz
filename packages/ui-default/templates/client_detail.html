@@ -52,7 +52,7 @@
             </div>
             <div class="section__body">
                 <a href="{{ url('client_domain', {}) }}" class="button block">{{ _('Back to List') }}</a>
-                {% if handler.user.hasPriv(model.builtin.PRIV.PRIV_USER_PROFILE) %}
+                {% if handler.user.hasPriv(model.builtin.PRIV.USER_PRIV_USER_PROFILE) %}
                     <a href="{{ url('client_settings', { clientId: client.clientId }) }}" class="button block">{{ _('Configuration') }}</a>
                     <a href="{{ url('client_edit', { clientId: client.clientId }) }}" class="button block">{{ _('Edit Client') }}</a>
                     <a href="{{ url('client_logs', { clientId: client.clientId }) }}" class="button block">{{ _('View Connection Logs') }}</a>

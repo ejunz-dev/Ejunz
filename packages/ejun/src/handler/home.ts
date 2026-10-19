@@ -55,9 +55,9 @@ export class HomeHandler extends Handler {
     }
 
     async getDiscussion(domainId: string, limit = 20) {
-        if (!this.user.hasPerm(PERM.PERM_VIEW_DISCUSSION)) return [[], {}];
+        if (!this.user.hasPerm(PERM.USER_PERM_VIEW_DISCUSSION)) return [[], {}];
         const ddocs = await discussion.getMulti(domainId).limit(limit).toArray();
-        const vndict = await discussion.getListVnodes(domainId, ddocs, this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN), this.user.group);
+        const vndict = await discussion.getListVnodes(domainId, ddocs, this.user.hasPerm(PERM.USER_PERM_VIEW_PROBLEM_HIDDEN), this.user.group);
         this.collectUser(ddocs.map((ddoc) => ddoc.owner));
         return [ddocs, vndict];
     }
@@ -81,7 +81,7 @@ export class HomeHandler extends Handler {
             return { needLogin: true, domainId };
         }
         const rawDudoc = await this.ctx.db.db.collection('domain.user').findOne({ domainId, uid: this.user._id });
-        if ((!rawDudoc || !rawDudoc.join) && !(this.user.priv & PRIV.PRIV_VIEW_ALL_DOMAIN)) {
+        if ((!rawDudoc || !rawDudoc.join) && !(this.user.priv & PRIV.USER_PRIV_VIEW_ALL_DOMAIN)) {
             return { needJoinDomain: true, domainId };
         }
         const dudoc = await domain.getDomainUser(domainId, { _id: this.user._id, priv: this.user.priv });
@@ -118,7 +118,7 @@ export class HomeHandler extends Handler {
             return { needLogin: true, domainId };
         }
         const rawDudoc = await this.ctx.db.db.collection('domain.user').findOne({ domainId, uid: this.user._id });
-        if ((!rawDudoc || !rawDudoc.join) && !(this.user.priv & PRIV.PRIV_VIEW_ALL_DOMAIN)) {
+        if ((!rawDudoc || !rawDudoc.join) && !(this.user.priv & PRIV.USER_PRIV_VIEW_ALL_DOMAIN)) {
             return { needJoinDomain: true, domainId };
         }
         const todayKey = moment.utc().format('YYYY-MM-DD');
@@ -522,11 +522,11 @@ class HomeDomainHandler extends Handler {
             const dids = Object.keys(dudict);
             ddocs = await domain.getMulti({ _id: { $in: dids } }).toArray();
         } else {
-            this.checkPriv(PRIV.PRIV_VIEW_ALL_DOMAIN);
+            this.checkPriv(PRIV.USER_PRIV_VIEW_ALL_DOMAIN);
             ddocs = await domain.getMulti().toArray();
         }
         const canManage = {};
-        if (this.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN)) {
+        if (this.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN)) {
             for (const ddoc of ddocs) {
                 canManage[ddoc._id] = true;
                 role[ddoc._id] = 'root';
@@ -535,7 +535,7 @@ class HomeDomainHandler extends Handler {
             for (const ddoc of ddocs) {
                 // eslint-disable-next-line no-await-in-loop
                 const udoc = await user.getById(ddoc._id, this.user._id);
-                canManage[ddoc._id] = udoc.hasPerm(PERM.PERM_EDIT_DOMAIN);
+                canManage[ddoc._id] = udoc.hasPerm(PERM.USER_PERM_EDIT_DOMAIN);
                 role[ddoc._id] = udoc.role;
             }
         }
@@ -547,8 +547,8 @@ class HomeDomainHandler extends Handler {
             })),
             canManage,
             role,
-            canCreate: this.user.hasPriv(PRIV.PRIV_CREATE_DOMAIN),
-            canJoin: this.user.hasPriv(PRIV.PRIV_USER_PROFILE),
+            canCreate: this.user.hasPriv(PRIV.USER_PRIV_CREATE_DOMAIN),
+            canJoin: this.user.hasPriv(PRIV.USER_PRIV_USER_PROFILE),
             pinnedDomains: this.user.pinnedDomains || [],
         };
     }
@@ -631,7 +631,7 @@ class HomeMessagesHandler extends Handler {
     @param('uid', Types.Int)
     @param('content', Types.Content)
     async postSend({ }, uid: number, content: string) {
-        this.checkPriv(PRIV.PRIV_SEND_MESSAGE);
+        this.checkPriv(PRIV.USER_PRIV_SEND_MESSAGE);
         const udoc = await user.getById('system', uid);
         if (!udoc) throw new UserNotFoundError(uid);
         if (udoc.avatar) udoc.avatarUrl = avatar(udoc.avatar);
@@ -651,13 +651,13 @@ class HomeMessagesHandler extends Handler {
 export const inject = { geoip: { required: false }, oauth: {} };
 export function apply(ctx: Context) {
     ctx.Route('homepage', '/', HomeHandler);
-    ctx.Route('home_security', '/home/security', HomeSecurityHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('user_changemail_with_code', '/home/changeMail/:code', UserChangemailWithCodeHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('home_settings', '/home/settings/:category', HomeSettingsHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('home_avatar', '/home/avatar', HomeAvatarHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('home_domain', '/home/domain', HomeDomainHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('home_domain_create', '/home/domain/create', HomeDomainCreateHandler, PRIV.PRIV_CREATE_DOMAIN);
-    ctx.Route('home_messages', '/home/messages', HomeMessagesHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('home_security', '/home/security', HomeSecurityHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('user_changemail_with_code', '/home/changeMail/:code', UserChangemailWithCodeHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('home_settings', '/home/settings/:category', HomeSettingsHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('home_avatar', '/home/avatar', HomeAvatarHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('home_domain', '/home/domain', HomeDomainHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('home_domain_create', '/home/domain/create', HomeDomainCreateHandler, PRIV.USER_PRIV_CREATE_DOMAIN);
+    ctx.Route('home_messages', '/home/messages', HomeMessagesHandler, PRIV.USER_PRIV_USER_PROFILE);
 
     async function notifyMessage(uid: number[], mdoc: any, h) {
         const udoc = (await user.getById('system', mdoc.from))!;
@@ -685,7 +685,7 @@ export function apply(ctx: Context) {
     });
 
     ctx.on('subscription/subscribe', (channel, udoc) => { // eslint-disable-line consistent-return
-        if (channel === 'message' && udoc.hasPriv(PRIV.PRIV_USER_PROFILE)) {
+        if (channel === 'message' && udoc.hasPriv(PRIV.USER_PRIV_USER_PROFILE)) {
             return {
                 ok: true,
                 channel: `message:${udoc._id}`,

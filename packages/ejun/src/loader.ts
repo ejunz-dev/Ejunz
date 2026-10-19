@@ -163,7 +163,7 @@ async function preload() {
         } catch (e) {
             logger.error(`Addon not found: ${a}`);
             logger.error(e);
-            app.injectUI('Notification', 'Addon not found: {0}', { args: [a], type: 'warn' }, PRIV.PRIV_VIEW_SYSTEM_NOTIFICATION);
+            app.injectUI('Notification', 'Addon not found: {0}', { args: [a], type: 'warn' }, PRIV.USER_PRIV_VIEW_SYSTEM_NOTIFICATION);
         }
     }
 }

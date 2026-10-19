@@ -231,7 +231,7 @@ function copyResourceUrl(el) {
                   {{ _('Create') }}
                 {% endif %}
               </button>
-              {% if ddoc and (handler.user.own(ddoc) or handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM)) %}
+              {% if ddoc and (handler.user.own(ddoc) or handler.user.hasPriv(PRIV.USER_PRIV_EDIT_SYSTEM)) %}
                 <button name="operation" value="delete" type="submit" class="rounded button">
                   {{ _('Delete') }}
                 </button>

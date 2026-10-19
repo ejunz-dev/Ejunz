@@ -54,7 +54,7 @@ function allDevelopGoalsMet(rows: DevelopRowWithStats[]): boolean {
 class DevelopSessionEditorHandler extends Handler {
     @query('session', Types.String, true)
     async get(domainId: string, sessionHex?: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const sid = (sessionHex || '').trim();
         if (!sid || !ObjectId.isValid(sid)) {
             throw new ValidationError(this.translate('Invalid session'));
@@ -81,7 +81,7 @@ class DevelopSessionEditorHandler extends Handler {
         }
         const base = await BaseModel.get(domainId, baseDocId);
         if (!base) throw new NotFoundError('Base not found');
-        if (!this.user.own(base)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+        if (!this.user.own(base)) this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
 
         const q = this.request.query || {};
         const hasCardInUrl = typeof q.cardId === 'string' && q.cardId.trim().length > 0;
@@ -139,7 +139,7 @@ class DevelopSessionEditorHandler extends Handler {
 class DevelopSessionHistoryHandler extends Handler {
     @query('session', Types.String, true)
     async get(domainId: string, sessionHex?: string) {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const sid = (sessionHex || '').trim();
         if (!sid || !ObjectId.isValid(sid)) {
             throw new ValidationError(this.translate('Invalid session'));
@@ -212,7 +212,7 @@ class DevelopSessionHistoryHandler extends Handler {
 class DevelopHandler extends Handler {
     async get(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         if (String(this.request.path || '').includes('/develop/pool')) {
             this.response.redirect = this.url('develop', { domainId: finalDomainId });
             return;
@@ -325,7 +325,7 @@ class DevelopHandler extends Handler {
 
     async postCheckin(domainId: string) {
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const dudoc = await DomainModel.getDomainUser(finalDomainId, { _id: this.user._id, priv: this.user.priv });
         const todayYmd = developTodayUtcYmd();
         const rawAct = (dudoc as any)?.developActivityDates;
@@ -374,7 +374,7 @@ class DevelopHandler extends Handler {
             throw new MethodNotAllowedError('POST');
         }
         const finalDomainId = typeof domainId === 'string' ? domainId : (domainId as any)?.domainId || this.args.domainId;
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
         const body: any = this.request.body || {};
         const pool = normalizeDevelopPool(body.pool);
         for (const e of pool) {
@@ -390,9 +390,9 @@ class DevelopHandler extends Handler {
 }
 
 export async function apply(ctx: Context) {
-    ctx.Route('develop_editor', '/develop/editor', DevelopSessionEditorHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('develop_session_history', '/develop/session/history', DevelopSessionHistoryHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('develop', '/develop', DevelopHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('develop_pool', '/develop/pool', DevelopHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('develop_checkin', '/develop/checkin', DevelopHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('develop_editor', '/develop/editor', DevelopSessionEditorHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('develop_session_history', '/develop/session/history', DevelopSessionHistoryHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('develop', '/develop', DevelopHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('develop_pool', '/develop/pool', DevelopHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('develop_checkin', '/develop/checkin', DevelopHandler, PRIV.USER_PRIV_USER_PROFILE);
 }

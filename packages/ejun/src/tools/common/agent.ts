@@ -1,11 +1,10 @@
 import { PERM } from 'ejun/src/model/builtin';
-import GroupDefinitionModel, { AgentModel, AgentSessionModel } from 'ejun/src/model/agent';
+import GroupDefinitionModel, { AgentModel, AgentSessionModel, defaultAgentAcl, normalizeAgentAcl } from 'ejun/src/model/agent';
 import UserModel from 'ejun/src/model/user';
 import { MAX_FILE_CONTENT_CHARS, MAX_FILE_CONTENT_CHARS_LIMIT } from '../../lib/tool-limits';
 import { asText, idList } from '../../lib/tool-shared';
 import { agentRuntimeHandlerContext } from '../../service/runtime';
-import { defaultAgentAcl } from 'ejun/src/model/agent';
-import { agentPermissionCatalog, normalizeAgentAcl } from '../../service/agent-acl';
+import { agentPermissionCatalog } from '../../service/addons';
 import type { AgentConfig, AgentSettings, AgentTeamAcl, AgentTeamDoc, AgentSessionSummary, AgentSessionView } from 'ejun/src/model/agent';
 import type { ToolArgs, ToolContext } from '../../lib/tool-types';
 
@@ -68,7 +67,7 @@ export async function requireGroup(ctx: ToolContext, args: ToolArgs, action: 're
     if (!group) throw new Error(`Group not found: ${groupId}`);
     if (action !== 'read' && Number(group.owner) !== Number(ctx.owner)) {
         const user = await UserModel.getById(ctx.domainId, ctx.owner);
-        const permission = action === 'delete' ? PERM.PERM_DELETE_DISCUSSION : PERM.PERM_EDIT_DISCUSSION;
+        const permission = action === 'delete' ? PERM.USER_PERM_DELETE_DISCUSSION : PERM.USER_PERM_EDIT_DISCUSSION;
         if (!user.hasPerm(permission)) throw new Error(`You do not have permission to ${action} this Group`);
     }
     return { groupId, group };
@@ -175,7 +174,7 @@ export async function saveGroupRootAcl(ctx: ToolContext, groupId: number, root: 
 
 export async function requireAgentConfigurationPermission(ctx: ToolContext) {
     const user = await UserModel.getById(ctx.domainId, ctx.owner);
-    if (!user.hasPerm(PERM.PERM_CONFIGURE_AGENT)) throw new Error('You do not have permission to configure Agent roles or Addons');
+    if (!user.hasPerm(PERM.USER_PERM_CONFIGURE_AGENT)) throw new Error('You do not have permission to configure Agent roles or Addons');
 }
 
 export async function renameSessionAgent(ctx: ToolContext, groupId: number, sessionId: string, title: string) {

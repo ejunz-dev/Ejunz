@@ -27,7 +27,7 @@
             <div class="media__body profile-header__main">
               <h1>
                 {{ udoc['uname'] }}
-                {% if handler.user.hasPerm(perm.PERM_VIEW_DISPLAYNAME) and udoc.displayName %}<small>({{ udoc['displayName'] }})</small>{% endif %}
+                {% if handler.user.hasPerm(perm.USER_PERM_VIEW_DISPLAYNAME) and udoc.displayName %}<small>({{ udoc['displayName'] }})</small>{% endif %}
               </h1>
               <p>
                 {{ _('UID') }}: {{ udoc['_id'] }},
@@ -40,7 +40,7 @@
               {% endif %}
               </p>
               <p>{{ _('Solved {0} problems, RP: {1} (No. {2})').format(udoc.nAccept|default(0), udoc['rp']|default(0.0)|round(2), udoc['rank']|default('?')) }}</p>
-              {% if udoc._id != 1 and not udoc.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+              {% if udoc._id != 1 and not udoc.hasPriv(PRIV.USER_PRIV_USER_PROFILE) %}
                 <p>{{ _('This user was banned.') }}</p>
               {% endif %}
               <div class="profile-header__contact-bar">
@@ -75,14 +75,14 @@
                   {{ model.builtin.USER_GENDER_ICONS[udoc.gender] }}
                 </span>
               {% endif %}
-              {% if udoc.hasPriv(PRIV.PRIV_MOD_BADGE) %}
+              {% if udoc.hasPriv(PRIV.USER_PRIV_MOD_BADGE) %}
                 <span
                   class="profile-header__contact-item user-profile-badge badge--su"
                   data-tooltip="{{ _('{0} 是超级用户.').format(_('She' if udoc.gender == 1 else 'He')) }}"
                 >
                   SU
                 </span>
-              {% elif udoc.hasPerm(perm.PERM_MOD_BADGE) %}
+              {% elif udoc.hasPerm(perm.USER_PERM_MOD_BADGE) %}
                 <span
                   class="profile-header__contact-item user-profile-badge badge--mod"
                   data-tooltip="{{ _('{0} 是域主.').format(_('She' if udoc.gender == 1 else 'He')) }}"

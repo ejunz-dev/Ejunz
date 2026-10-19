@@ -13,7 +13,7 @@
     {% include "partials/problem_sidebar.html" %}
   {% elif vnode.type == model.document.TYPE_CONTEST %}
     {% set tdoc = vnode %}
-    {%- if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) -%}
+    {%- if handler.user.hasPriv(PRIV.USER_PRIV_USER_PROFILE) -%}
     {% set tsdoc = { attend: tdoc.attend } %}
     {%- endif -%}
     {% set owner_udoc = udict[vnode.owner] %}
@@ -27,10 +27,10 @@
       </div>
       <div class="section__body">
         <p>{{ _('This section contains discussions related to the docs content.') }}</p>
-        {% if handler.user.hasPerm(perm.PERM_CREATE_HUB) %}
+        {% if handler.user.hasPerm(perm.USER_PERM_CREATE_HUB) %}
           <p><a href="{{ url('hub_create', type=model.hub.typeDisplay[vnode.type], name=vnode.id) }}" class="expanded primary button">{{ _('Create a Discussion') }}</a></p>
         {% else %}
-          {% if not handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+          {% if not handler.user.hasPriv(PRIV.USER_PRIV_USER_PROFILE) %}
             <p><a href="javascript:showSignInDialog();" class="expanded primary button">{{ _('Login to Create a Discussion') }}</a></p>
           {% else %}
             <p><a href="javascript:;" class="disabled expanded primary button">{{ _('No Permission to Create a Discussion') }}</a></p>
@@ -46,10 +46,10 @@
       </div>
       <div class="section__body">
       {% if vnode._id %}
-        {% if handler.user.hasPerm(perm.PERM_CREATE_HUB) %}
+        {% if handler.user.hasPerm(perm.USER_PERM_CREATE_HUB) %}
           <p><a href="{{ url('hub_create', type=model.hub.typeDisplay[vnode.type], name=vnode.id) }}" class="expanded primary button">{{ _('Create a Discussion') }}</a></p>
         {% else %}
-          {% if not handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+          {% if not handler.user.hasPriv(PRIV.USER_PRIV_USER_PROFILE) %}
             <p><a href="javascript:showSignInDialog();" class="expanded primary button">{{ _('Login to Create a Discussion') }}</a></p>
           {% else %}
             <p><a href="javascript:;" class="disabled expanded primary button">{{ _('No Permission to Create a Discussion') }}</a></p>

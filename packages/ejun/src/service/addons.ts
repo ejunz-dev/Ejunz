@@ -1,3 +1,13 @@
+import { PERM, PERMS } from '../model/builtin';
+
+export interface AgentPermissionInfo {
+    id: string;
+    name: string;
+    family: string;
+    description?: string;
+    addonId?: string;
+}
+
 export interface AgentAddonPermission {
     /** Add-on-local stable ID; the host keys it as `${addonId}:${id}`. */
     id: string;
@@ -66,4 +76,39 @@ export function listAgentAddons(): AgentAddonDescriptor[] {
         ...(addon.contextSources === undefined ? {} : { contextSources: [...addon.contextSources] }),
         ...(addon.permissions === undefined ? {} : { permissions: addon.permissions.map((permission) => ({ ...permission })) }),
     }));
+}
+
+export function addonAgentPermissionId(addonId: string, permissionId: string): string {
+    return `${addonId}:${permissionId}`;
+}
+
+function agentPermissionName(permission: bigint): string | undefined {
+    return Object.entries(PERM).find(([name, value]) => name.startsWith('AGENT_PERM_') && value === permission)?.[0];
+}
+
+export function agentToolAccess(permission: bigint, mutating = false) {
+    const permissionId = agentPermissionName(permission);
+    if (!permissionId) throw new Error(`Unknown Agent permission: ${permission}`);
+    return {
+        source: 'agent' as const,
+        bindBase: 'none' as const,
+        ...(mutating ? { mutating: true } : {}),
+        agentPerm: permission,
+    };
+}
+
+export function agentPermissionCatalog(): AgentPermissionInfo[] {
+    const core = PERMS.flatMap((permission) => {
+        if (permission.family !== 'perm_agent') return [];
+        const id = agentPermissionName(permission.key);
+        return id ? [{ id, name: permission.desc, family: 'Ejunz Agent', addonId: 'agent' }] : [];
+    });
+    const addons = listAgentAddons().flatMap((addon) => (addon.permissions || []).map((permission) => ({
+        id: addonAgentPermissionId(addon.addonId, permission.id),
+        name: permission.name,
+        family: addon.displayName,
+        ...(permission.description ? { description: permission.description } : {}),
+        addonId: addon.addonId,
+    })));
+    return [...core, ...addons];
 }

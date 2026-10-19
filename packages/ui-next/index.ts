@@ -297,9 +297,9 @@ function buildNavItems(handler: any) {
 
 function buildNavDropdown(handler: any) {
     const nodes = global.Ejunz?.ui?.getNodes?.('NavDropdown') || [];
-    const badge = handler.user?.hasPriv(PRIV.PRIV_MOD_BADGE)
+    const badge = handler.user?.hasPriv(PRIV.USER_PRIV_MOD_BADGE)
         ? 'SU'
-        : handler.user?.hasPerm(PERM.PERM_MOD_BADGE) ? 'MOD' : null;
+        : handler.user?.hasPerm(PERM.USER_PERM_MOD_BADGE) ? 'MOD' : null;
     const items = nodes.filter((item: any) => item.checker(handler)).map((item: any) => {
         const rawArgs = typeof item.args === 'function' ? item.args(handler) : item.args || {};
         const args = Object.fromEntries(Object.entries(rawArgs).filter(([key, value]) => key !== 'prefix' && key !== 'displayName' && ['string', 'number', 'boolean'].includes(typeof value)));

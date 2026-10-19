@@ -40,7 +40,7 @@
                 <select name="visibility" class="select">
                   <option value="private" {% if (plugin.visibility or 'private') == 'private' %}selected{% endif %}>private</option>
                   <option value="domain" {% if plugin.visibility == 'domain' %}selected{% endif %}>domain</option>
-                  {% if handler.user.hasPriv(PRIV.PRIV_EDIT_SYSTEM) %}<option value="system" {% if plugin.visibility == 'system' %}selected{% endif %}>system</option>{% endif %}
+                  {% if handler.user.hasPriv(PRIV.USER_PRIV_EDIT_SYSTEM) %}<option value="system" {% if plugin.visibility == 'system' %}selected{% endif %}>system</option>{% endif %}
                 </select>
               </label>
             </div>

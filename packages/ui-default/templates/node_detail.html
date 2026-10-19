@@ -110,13 +110,13 @@
     </div>
     
     <div class="medium-3 columns">
-        {% if handler.user.hasPriv(PRIV.PRIV_USER_PROFILE) %}
+        {% if handler.user.hasPriv(PRIV.USER_PRIV_USER_PROFILE) %}
         <div class="section">
             <div class="section__header">
                 <h2>{{ _('Actions') }}</h2>
             </div>
             <div class="section__body">
-                {% if handler.user.own(node) or handler.user.hasPriv(PRIV.PRIV_MANAGE_ALL_DOMAIN) %}
+                {% if handler.user.own(node) or handler.user.hasPriv(PRIV.USER_PRIV_MANAGE_ALL_DOMAIN) %}
                 <a href="{{ url('node_edit', nid=node.nid) }}" class="button primary expanded">
                     {{ _('Edit') }}
                 </a>

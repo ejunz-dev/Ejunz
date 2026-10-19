@@ -272,7 +272,7 @@ export class TemplateService extends Service {
           }
           logger.info('Template init: %s', i);
         } catch (e) {
-          this.ctx.injectUI('Notification', 'Template load fail: {0}', { args: [i], type: 'warn' }, PRIV.PRIV_VIEW_SYSTEM_NOTIFICATION);
+          this.ctx.injectUI('Notification', 'Template load fail: {0}', { args: [i], type: 'warn' }, PRIV.USER_PRIV_VIEW_SYSTEM_NOTIFICATION);
           logger.error('Template Load Fail: %s', i);
           logger.error(e);
         }

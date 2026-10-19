@@ -44,7 +44,7 @@ export default async (ctx: KoaContext, next: Next) => {
         ? header.split(' ')[1] // Accept bearer token
         : ctx.cookies.get('sid') || ctx.query.sid; // FIXME maybe a better way for shared conn?
     const session = sid ? await token.get(sid instanceof Array ? sid[0] : sid, token.TYPE_SESSION) : null;
-    ctx.session = Object.create(session || { uid: 0, scope: PERM.PERM_ALL.toString() });
+    ctx.session = Object.create(session || { uid: 0, scope: PERM.USER_PERM_ALL.toString() });
     await next();
     const request = ctx.EjunzContext.request;
     const ua = request.headers['user-agent'] || '';

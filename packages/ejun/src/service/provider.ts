@@ -13,6 +13,7 @@ export interface ProviderScope {
     readonly priv?: number;
     readonly perm?: bigint;
     readonly scope?: bigint;
+    readonly agentPerm?: bigint;
     readonly mountedAddons?: ReadonlySet<string>;
     readonly agentPermissions?: ReadonlySet<string>;
 }
@@ -35,8 +36,8 @@ export function createProvider(
         return tools;
     };
     const access = (): ToolAccess | undefined => (
-        scope.priv === undefined && scope.perm === undefined && scope.agentPermissions === undefined ? undefined
-            : { priv: scope.priv, perm: scope.perm, scope: scope.scope ?? scope.perm, agentPermissions: scope.agentPermissions }
+        scope.priv === undefined && scope.perm === undefined && scope.agentPermissions === undefined && scope.agentPerm === undefined ? undefined
+            : { priv: scope.priv, perm: scope.perm, scope: scope.scope ?? scope.perm, agentPermissions: scope.agentPermissions, agentPerm: scope.agentPerm }
     );
     const toolContext = (): ToolContext => ({
         domainId: scope.domainId,
@@ -46,6 +47,7 @@ export function createProvider(
         ...(scope.priv !== undefined ? { priv: scope.priv } : {}),
         ...(scope.perm !== undefined ? { perm: scope.perm } : {}),
         ...(scope.scope !== undefined ? { scope: scope.scope } : {}),
+        ...(scope.agentPerm !== undefined ? { agentPerm: scope.agentPerm } : {}),
         ...(scope.mountedAddons !== undefined ? { mountedAddons: scope.mountedAddons } : {}),
         ...(scope.agentPermissions !== undefined ? { agentPermissions: scope.agentPermissions } : {}),
         ...(typeof ctx.broadcast === 'function' ? { broadcastAgentEvent: (event, payload) => (ctx.broadcast as any)(event, payload) } : {}),

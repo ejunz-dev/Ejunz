@@ -83,12 +83,12 @@ export class PluginModel {
             plugin.visibility === 'domain'
             || plugin.visibility === 'system'
             || user?.own?.(plugin)
-            || user?.hasPriv?.(PRIV.PRIV_EDIT_SYSTEM)
+            || user?.hasPriv?.(PRIV.USER_PRIV_EDIT_SYSTEM)
         );
     }
 
     static canEdit(user: any, plugin: PluginDoc): boolean {
-        return !!(user?.own?.(plugin) || user?.hasPriv?.(PRIV.PRIV_EDIT_SYSTEM));
+        return !!(user?.own?.(plugin) || user?.hasPriv?.(PRIV.USER_PRIV_EDIT_SYSTEM));
     }
 
     static slugify(raw: string): string {

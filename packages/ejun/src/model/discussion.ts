@@ -322,7 +322,7 @@ export async function getListVnodes(domainId: string, ddocs: any, getHidden = fa
 
 export function checkVNodeVisibility(type: number, vnode: any, user: User) {
     if (type === document.TYPE_PROBLEM) {
-        if (vnode.hidden && !(user.own(vnode) || user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN))) return false;
+        if (vnode.hidden && !(user.own(vnode) || user.hasPerm(PERM.USER_PERM_VIEW_PROBLEM_HIDDEN))) return false;
     }
     if ([document.TYPE_CONTEST, document.TYPE_TRAINING].includes(type as any)) {
         if (!user.own(vnode) && vnode.assign?.length && !Set.intersection(vnode.assign, user.group).size) return false;

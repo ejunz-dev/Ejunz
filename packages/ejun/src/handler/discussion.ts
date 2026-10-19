@@ -36,7 +36,7 @@ class DiscussionHandler extends Handler {
         domainId: string, type: string, name: string,
         did: ObjectId, drid: ObjectId, drrid: ObjectId,
     ) {
-        this.checkPerm(PERM.PERM_VIEW_DISCUSSION);
+        this.checkPerm(PERM.USER_PERM_VIEW_DISCUSSION);
         if (did) {
             this.ddoc = await discussion.get(domainId, did);
             if (!this.ddoc) throw new DiscussionNotFoundError(domainId, did);
@@ -70,7 +70,7 @@ class DiscussionMainHandler extends Handler {
     async get(domainId: string, page = 1, all = false) {
         // Limit to known types
         const parentType = { $in: Object.keys(typeMapper).map((i) => typeMapper[i]) };
-        all &&= this.user.hasPerm(PERM.PERM_MOD_BADGE);
+        all &&= this.user.hasPerm(PERM.USER_PERM_MOD_BADGE);
         const [ddocs, dpcount] = await this.paginate(
             discussion.getMulti(domainId, { parentType, ...all ? {} : { hidden: false } }).hint('discussionSort'),
             page,
@@ -78,7 +78,7 @@ class DiscussionMainHandler extends Handler {
         );
         const udict = await user.getList(domainId, ddocs.map((ddoc) => ddoc.owner));
         const [vndict, vnodes] = await Promise.all([
-            discussion.getListVnodes(domainId, ddocs, this.user.hasPerm(PERM.PERM_VIEW_PROBLEM_HIDDEN), this.user.group),
+            discussion.getListVnodes(domainId, ddocs, this.user.hasPerm(PERM.USER_PERM_VIEW_PROBLEM_HIDDEN), this.user.group),
             discussion.getNodes(domainId),
         ]);
         this.response.template = 'discussion_main_or_node.html';
@@ -97,7 +97,7 @@ class DiscussionNodeHandler extends DiscussionHandler {
         if (ObjectId.isValid(_name)) name = new ObjectId(_name);
         else if (isSafeInteger(Number.parseInt(_name, 10))) name = Number.parseInt(_name, 10);
         else name = _name;
-        const hidden = this.user.own(this.vnode) || this.user.hasPerm(PERM.PERM_EDIT_DISCUSSION) ? {} : { hidden: false };
+        const hidden = this.user.own(this.vnode) || this.user.hasPerm(PERM.USER_PERM_EDIT_DISCUSSION) ? {} : { hidden: false };
         const [ddocs, dpcount] = await this.paginate(
             discussion.getMulti(domainId, { parentType: typeMapper[type], parentId: name, ...hidden }),
             page,
@@ -146,8 +146,8 @@ class DiscussionCreateHandler extends DiscussionHandler {
         content: string, highlight = false, pin = false,
     ) {
         await this.limitRate('add_discussion', 3600, 60);
-        if (highlight) this.checkPerm(PERM.PERM_HIGHLIGHT_DISCUSSION);
-        if (pin) this.checkPerm(PERM.PERM_PIN_DISCUSSION);
+        if (highlight) this.checkPerm(PERM.USER_PERM_HIGHLIGHT_DISCUSSION);
+        if (pin) this.checkPerm(PERM.USER_PERM_PIN_DISCUSSION);
         const hidden = this.vnode.hidden ?? false;
         const did = await discussion.add(
             domainId, typeMapper[type], this.vnode.id, this.user._id,
@@ -162,7 +162,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
     @param('did', Types.ObjectId)
     @param('page', Types.PositiveInt, true)
     async get(domainId: string, did: ObjectId, page = 1) {
-        const dsdoc = this.user.hasPriv(PRIV.PRIV_USER_PROFILE)
+        const dsdoc = this.user.hasPriv(PRIV.USER_PRIV_USER_PROFILE)
             ? await discussion.getStatus(domainId, did, this.user._id)
             : null;
         const [drdocs, pcount, drcount] = await this.paginate(
@@ -184,7 +184,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
                 reactions[drdoc._id.toHexString()] = reaction;
             })));
         const udict = await user.getList(domainId, uids);
-        if (!dsdoc?.view && this.user.hasPriv(PRIV.PRIV_USER_PROFILE)) {
+        if (!dsdoc?.view && this.user.hasPriv(PRIV.USER_PRIV_USER_PROFILE)) {
             await Promise.all([
                 discussion.inc(domainId, did, 'views', 1),
                 discussion.setStatus(domainId, did, this.user._id, { view: true }),
@@ -203,13 +203,13 @@ class DiscussionDetailHandler extends DiscussionHandler {
     }
 
     async post() {
-        this.checkPriv(PRIV.PRIV_USER_PROFILE);
+        this.checkPriv(PRIV.USER_PRIV_USER_PROFILE);
     }
 
     @param('did', Types.ObjectId)
     @param('lock', Types.Boolean)
     async postSetLock(domainId: string, did: ObjectId, lock: boolean) {
-        if (!this.user.own(this.ddoc)) this.checkPerm(PERM.PERM_LOCK_DISCUSSION);
+        if (!this.user.own(this.ddoc)) this.checkPerm(PERM.USER_PERM_LOCK_DISCUSSION);
         await discussion.edit(domainId, did, { lock });
         this.back();
     }
@@ -219,7 +219,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
     @param('emoji', Types.Emoji)
     @param('reverse', Types.Boolean)
     async postReaction(domainId: string, type: string, did: ObjectId, id: string, reverse = false) {
-        this.checkPerm(PERM.PERM_ADD_REACTION);
+        this.checkPerm(PERM.USER_PERM_ADD_REACTION);
         const docType = type === 'did' ? document.TYPE_DISCUSSION : document.TYPE_DISCUSSION_REPLY;
         const [doc, sdoc] = await discussion.react(domainId, docType, did, id, this.user._id, reverse);
         this.response.body = { doc, sdoc };
@@ -229,7 +229,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
     @param('did', Types.ObjectId)
     @param('content', Types.Content)
     async postReply(domainId: string, did: ObjectId, content: string) {
-        this.checkPerm(PERM.PERM_REPLY_DISCUSSION);
+        this.checkPerm(PERM.USER_PERM_REPLY_DISCUSSION);
         if (this.ddoc.lock) throw new DiscussionLockedError(domainId, did);
         await this.limitRate('add_discussion', 3600, 60);
         const targets = new Set(Array.from(content.matchAll(/@\[\]\(\/user\/(\d+)\)/g)).map((i) => +i[1]));
@@ -246,7 +246,7 @@ class DiscussionDetailHandler extends DiscussionHandler {
     @param('drid', Types.ObjectId)
     @param('content', Types.Content)
     async postTailReply(domainId: string, drid: ObjectId, content: string) {
-        this.checkPerm(PERM.PERM_REPLY_DISCUSSION);
+        this.checkPerm(PERM.USER_PERM_REPLY_DISCUSSION);
         if (this.ddoc.lock) throw new DiscussionLockedError(domainId, this.ddoc.docId);
         await this.limitRate('add_discussion', 3600, 60);
         const targets = new Set(Array.from(content.matchAll(/@\[\]\(\/user\/(\d+)\)/g)).map((i) => +i[1]));
@@ -263,8 +263,8 @@ class DiscussionDetailHandler extends DiscussionHandler {
     @param('drid', Types.ObjectId)
     @param('content', Types.Content)
     async postEditReply(domainId: string, drid: ObjectId, content: string) {
-        this.checkPerm(PERM.PERM_EDIT_DISCUSSION_REPLY_SELF);
-        if (!this.user.own(this.drdoc)) throw new PermissionError(PERM.PERM_EDIT_DISCUSSION_REPLY_SELF);
+        this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION_REPLY_SELF);
+        if (!this.user.own(this.drdoc)) throw new PermissionError(PERM.USER_PERM_EDIT_DISCUSSION_REPLY_SELF);
         await Promise.all([
             discussion.editReply(domainId, drid, content, this.user._id, this.request.ip),
             oplog.log(this, 'discussion.reply.edit', this.drdoc),
@@ -275,10 +275,10 @@ class DiscussionDetailHandler extends DiscussionHandler {
     @param('drid', Types.ObjectId)
     async postDeleteReply(domainId: string, drid: ObjectId) {
         const deleteBy = this.user.own(this.drdoc) ? 'self' : this.user.own(this.ddoc) ? 'DiscussionOwner' : 'Admin';
-        if (!this.user.own(this.ddoc) || !this.user.hasPerm(PERM.PERM_DELETE_DISCUSSION_REPLY_SELF_DISCUSSION)) {
+        if (!this.user.own(this.ddoc) || !this.user.hasPerm(PERM.USER_PERM_DELETE_DISCUSSION_REPLY_SELF_DISCUSSION)) {
             if (!this.user.own(this.drdoc)) {
-                this.checkPerm(PERM.PERM_DELETE_DISCUSSION_REPLY);
-            } else this.checkPerm(PERM.PERM_DELETE_DISCUSSION_REPLY_SELF);
+                this.checkPerm(PERM.USER_PERM_DELETE_DISCUSSION_REPLY);
+            } else this.checkPerm(PERM.USER_PERM_DELETE_DISCUSSION_REPLY_SELF);
         }
         const msg = JSON.stringify({
             message: '{0} {1} delete your discussion reply {2} in "{3}"({4:link}).',
@@ -302,8 +302,8 @@ class DiscussionDetailHandler extends DiscussionHandler {
     @param('drrid', Types.ObjectId)
     @param('content', Types.Content)
     async postEditTailReply(domainId: string, drid: ObjectId, drrid: ObjectId, content: string) {
-        this.checkPerm(PERM.PERM_EDIT_DISCUSSION_REPLY_SELF);
-        if (!this.user.own(this.drrdoc)) throw new PermissionError(PERM.PERM_EDIT_DISCUSSION_REPLY_SELF);
+        this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION_REPLY_SELF);
+        if (!this.user.own(this.drrdoc)) throw new PermissionError(PERM.USER_PERM_EDIT_DISCUSSION_REPLY_SELF);
         await Promise.all([
             discussion.editTailReply(domainId, drid, drrid, content, this.user._id, this.request.ip),
             oplog.log(this, 'discussion.tailReply.edit', this.drrdoc),
@@ -315,8 +315,8 @@ class DiscussionDetailHandler extends DiscussionHandler {
     @param('drrid', Types.ObjectId)
     async postDeleteTailReply(domainId: string, drid: ObjectId, drrid: ObjectId) {
         const deleteBy = this.user.own(this.drrdoc) ? 'self' : 'Admin';
-        if (!this.user.own(this.drrdoc) || !this.user.hasPerm(PERM.PERM_DELETE_DISCUSSION_REPLY_SELF)) {
-            this.checkPerm(PERM.PERM_DELETE_DISCUSSION_REPLY);
+        if (!this.user.own(this.drrdoc) || !this.user.hasPerm(PERM.USER_PERM_DELETE_DISCUSSION_REPLY_SELF)) {
+            this.checkPerm(PERM.USER_PERM_DELETE_DISCUSSION_REPLY);
         }
         const msg = JSON.stringify({
             message: 'Admin {0} delete your discussion tail reply {1} in "{2}"({3:link}).',
@@ -381,10 +381,10 @@ class DiscussionEditHandler extends DiscussionHandler {
         domainId: string, did: ObjectId, title: string, content: string,
         highlight = false, pin = false,
     ) {
-        if (!this.user.own(this.ddoc)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
-        else this.checkPerm(PERM.PERM_EDIT_DISCUSSION_SELF);
-        if (!this.user.hasPerm(PERM.PERM_HIGHLIGHT_DISCUSSION)) highlight = this.ddoc.highlight;
-        if (!this.user.hasPerm(PERM.PERM_PIN_DISCUSSION)) pin = this.ddoc.pin;
+        if (!this.user.own(this.ddoc)) this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
+        else this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION_SELF);
+        if (!this.user.hasPerm(PERM.USER_PERM_HIGHLIGHT_DISCUSSION)) highlight = this.ddoc.highlight;
+        if (!this.user.hasPerm(PERM.USER_PERM_PIN_DISCUSSION)) pin = this.ddoc.pin;
         const hidden = this.vnode.hidden ?? false;
         await Promise.all([
             discussion.edit(domainId, did, {
@@ -399,8 +399,8 @@ class DiscussionEditHandler extends DiscussionHandler {
     @param('did', Types.ObjectId)
     async postDelete(domainId: string, did: ObjectId) {
         const deleteBy = this.user.own(this.ddoc) ? 'self' : 'Admin';
-        if (!this.user.own(this.ddoc)) this.checkPerm(PERM.PERM_DELETE_DISCUSSION);
-        else this.checkPerm(PERM.PERM_DELETE_DISCUSSION_SELF);
+        if (!this.user.own(this.ddoc)) this.checkPerm(PERM.USER_PERM_DELETE_DISCUSSION);
+        else this.checkPerm(PERM.USER_PERM_DELETE_DISCUSSION_SELF);
         const msg = JSON.stringify({
             message: 'Admin {0} delete your discussion "{1}".',
             params: [
@@ -429,5 +429,5 @@ export async function apply(ctx) {
     ctx.Route('discussion_reply_raw', '/discuss/:did/:drid/raw', DiscussionRawHandler);
     ctx.Route('discussion_tail_reply_raw', '/discuss/:did/:drid/:drrid/raw', DiscussionRawHandler);
     ctx.Route('discussion_node', '/discuss/:type/:name', DiscussionNodeHandler);
-    ctx.Route('discussion_create', '/discuss/:type/:name/create', DiscussionCreateHandler, PRIV.PRIV_USER_PROFILE, PERM.PERM_CREATE_DISCUSSION);
+    ctx.Route('discussion_create', '/discuss/:type/:name/create', DiscussionCreateHandler, PRIV.USER_PRIV_USER_PROFILE, PERM.USER_PERM_CREATE_DISCUSSION);
 }

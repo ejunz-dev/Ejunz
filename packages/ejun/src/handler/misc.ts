@@ -58,7 +58,7 @@ class SwitchLanguageHandler extends Handler {
 
     @param('lang', Types.Name)
     async get(domainId: string, lang: string) {
-        if (this.user.hasPriv(PRIV.PRIV_USER_PROFILE)) {
+        if (this.user.hasPriv(PRIV.USER_PRIV_USER_PROFILE)) {
             this.session.viewLang = lang;
             await user.setById(this.user._id, { viewLang: lang });
         } else this.session.viewLang = lang;
@@ -73,7 +73,7 @@ export class FilesHandler extends Handler {
     @param('uid', Types.Int, true)
     async prepare({ domainId }, uid: number) {
         if (uid) {
-            this.checkPriv(PRIV.PRIV_EDIT_SYSTEM);
+            this.checkPriv(PRIV.USER_PRIV_EDIT_SYSTEM);
             this.udoc = await (await user.getById(domainId, uid)).private();
         } else {
             this.udoc = this.user;
@@ -81,7 +81,7 @@ export class FilesHandler extends Handler {
     }
 
     async get({ }) {
-        if (!this.udoc._files?.length) this.checkPriv(PRIV.PRIV_CREATE_FILE);
+        if (!this.udoc._files?.length) this.checkPriv(PRIV.USER_PRIV_CREATE_FILE);
         const files = sortFiles(this.udoc._files).map((file) => {
             let lastModified: Date | null = null;
             if (file.lastModified) {
@@ -103,15 +103,15 @@ export class FilesHandler extends Handler {
 
     @post('filename', Types.Filename)
     async postUploadFile({ }, filename: string) {
-        this.checkPriv(PRIV.PRIV_CREATE_FILE);
+        this.checkPriv(PRIV.USER_PRIV_CREATE_FILE);
         if ((this.user._files?.length || 0) >= system.get('limit.user_files')) {
-            if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('count');
+            if (!this.user.hasPriv(PRIV.USER_PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('count');
         }
         const file = this.request.files?.file;
         if (!file) throw new ValidationError('file');
         const size = Math.sum((this.user._files || []).map((i) => i.size)) + file.size;
         if (size >= system.get('limit.user_files_size')) {
-            if (!this.user.hasPriv(PRIV.PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('size');
+            if (!this.user.hasPriv(PRIV.USER_PRIV_UNLIMITED_QUOTA)) throw new FileLimitExceededError('size');
         }
         if (this.user._files.find((i) => i.name === filename)) throw new FileExistsError(filename);
         await storage.put(`user/${this.user._id}/${filename}`, file.filepath, this.user._id);
@@ -212,7 +212,7 @@ export class SwitchAccountHandler extends Handler {
 class HeapSnapshotHandler extends Handler {
     @param('worker', Types.Int)
     async post({ }, worker: number) {
-        this.checkPriv(PRIV.PRIV_EDIT_SYSTEM);
+        this.checkPriv(PRIV.USER_PRIV_EDIT_SYSTEM);
         if (worker && process.env.NODE_APP_INSTANCE !== worker.toString()) {
             this.response.body = { error: 'Not current worker' };
             return;
@@ -231,8 +231,8 @@ export async function apply(ctx: Context) {
     ctx.Route('fs_download', '/file/:uid/:filename', FSDownloadHandler);
     ctx.Route('storage_named', '/storage/:filename', StorageHandler);
     ctx.Route('storage', '/storage', StorageHandler);
-    ctx.Route('switch_account', '/account/:uid', SwitchAccountHandler, PRIV.PRIV_EDIT_SYSTEM);
+    ctx.Route('switch_account', '/account/:uid', SwitchAccountHandler, PRIV.USER_PRIV_EDIT_SYSTEM);
     if (process.argv.includes('--enable-heap-snapshot')) {
-        ctx.Route('heap_snapshot', '/heap-snapshot', HeapSnapshotHandler, PRIV.PRIV_EDIT_SYSTEM);
+        ctx.Route('heap_snapshot', '/heap-snapshot', HeapSnapshotHandler, PRIV.USER_PRIV_EDIT_SYSTEM);
     }
 }

@@ -33,7 +33,7 @@ const getLoader = (type: LoadTask, filename: string) => async function loader(pe
                 fail.push(i);
                 app.injectUI(
                     'Notification', `${loadType} load fail: {0}`,
-                    { args: [i], type: 'warn' }, PRIV.PRIV_VIEW_SYSTEM_NOTIFICATION,
+                    { args: [i], type: 'warn' }, PRIV.USER_PRIV_VIEW_SYSTEM_NOTIFICATION,
                 );
                 logger.info(`${loadType} load fail: %s`, i);
                 logger.error(e);
@@ -73,7 +73,7 @@ export async function locale(pending: Record<string, string>, fail: string[]) {
                 logger.info('Locale init: %s', i);
             } catch (e) {
                 fail.push(i);
-                app.injectUI('Notification', 'Locale load fail: {0}', { args: [i], type: 'warn' }, PRIV.PRIV_VIEW_SYSTEM_NOTIFICATION);
+                app.injectUI('Notification', 'Locale load fail: {0}', { args: [i], type: 'warn' }, PRIV.USER_PRIV_VIEW_SYSTEM_NOTIFICATION);
                 logger.error('Locale Load Fail: %s', i);
                 logger.error(e);
             }

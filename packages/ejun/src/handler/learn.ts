@@ -88,7 +88,7 @@ function lessonProblemTagUiExtras(handler: Handler, base: BaseDoc | null | undef
         ? sanitizeProblemTagRegistryList((base as BaseDoc & { problemTags?: unknown }).problemTags)
         : [];
     const lessonCanEditProblemTags = !!base
-        && (handler.user.own(base as any) || handler.user.hasPerm(PERM.PERM_EDIT_DISCUSSION));
+        && (handler.user.own(base as any) || handler.user.hasPerm(PERM.USER_PERM_EDIT_DISCUSSION));
     return { lessonProblemTagOptions, lessonCanEditProblemTags };
 }
 
@@ -3633,7 +3633,7 @@ class LessonHandler extends Handler {
             && sidBid > 0
         ) {
             pageBaseLesson = await getLearnSourceDoc(finalDomainId, sidBid);
-            if (!this.user.own(pageBaseLesson)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+            if (!this.user.own(pageBaseLesson)) this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
         } else {
             pageBaseLesson = await requireLearnPageBase(finalDomainId, this.user._id, this.user.priv);
         }
@@ -4765,7 +4765,7 @@ class LessonHandler extends Handler {
             let baseNodeStart: BaseDoc;
             if (Number.isFinite(explicitBaseNum) && explicitBaseNum > 0) {
                 baseNodeStart = await getLearnSourceDoc(finalDomainId, explicitBaseNum, learnSourceHint);
-                if (!this.user.own(baseNodeStart)) this.checkPerm(PERM.PERM_EDIT_DISCUSSION);
+                if (!this.user.own(baseNodeStart)) this.checkPerm(PERM.USER_PERM_EDIT_DISCUSSION);
                 const nodes = baseNodeStart.nodes || [];
                 if (!nodes.some((n: BaseNode) => n.id === nodeIdStart)) {
                     throw new ValidationError(nodeNotInBaseMsg);
@@ -6462,7 +6462,7 @@ class LearnSectionEditHandler extends Handler {
         let targetUid = uidParam ? parseInt(String(uidParam), 10) : this.user._id;
         if (Number.isNaN(targetUid)) targetUid = this.user._id;
         if (targetUid !== this.user._id) {
-            this.checkPerm(PERM.PERM_EDIT_DOMAIN);
+            this.checkPerm(PERM.USER_PERM_EDIT_DOMAIN);
         }
         const udoc = await user.getById(domainId, targetUid);
         if (!udoc) throw new NotFoundError('User not found');
@@ -6884,21 +6884,21 @@ class LearnProblemNotesHandler extends Handler {
 }
 
 export async function apply(ctx: Context) {
-    ctx.Route('learn', '/learn', LearnHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_set_base', '/learn/base', LearnHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_base_select', '/learn/base/select', LearnBaseSelectHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_set_daily_goal', '/learn/daily-goal', LearnHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_set_session_mode', '/learn/session-mode', LearnHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_set_sub_mode', '/learn/sub-mode', LearnHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_sections', '/learn/sections', LearnSectionsHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_section_edit', '/learn/section/edit', LearnSectionEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_edit', '/learn/edit', LearnEditHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_lesson', '/learn/lesson', LessonHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_lesson_result', '/learn/lesson/result/:resultId', LessonHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_lesson_pass', '/learn/lesson/pass', LessonHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_lesson_navigate', '/learn/lesson/navigate', LessonHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_lesson_start', '/learn/lesson/start', LessonHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_lesson_node_result', '/learn/lesson/node-result', LessonNodeResultHandler, PRIV.PRIV_USER_PROFILE);
-    ctx.Route('learn_problem_notes', '/learn/problem-notes', LearnProblemNotesHandler, PRIV.PRIV_USER_PROFILE);
+    ctx.Route('learn', '/learn', LearnHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('learn_set_base', '/learn/base', LearnHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('learn_base_select', '/learn/base/select', LearnBaseSelectHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('learn_set_daily_goal', '/learn/daily-goal', LearnHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('learn_set_session_mode', '/learn/session-mode', LearnHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('learn_set_sub_mode', '/learn/sub-mode', LearnHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('learn_sections', '/learn/sections', LearnSectionsHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('learn_section_edit', '/learn/section/edit', LearnSectionEditHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('learn_edit', '/learn/edit', LearnEditHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('learn_lesson', '/learn/lesson', LessonHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('learn_lesson_result', '/learn/lesson/result/:resultId', LessonHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('learn_lesson_pass', '/learn/lesson/pass', LessonHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('learn_lesson_navigate', '/learn/lesson/navigate', LessonHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('learn_lesson_start', '/learn/lesson/start', LessonHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('learn_lesson_node_result', '/learn/lesson/node-result', LessonNodeResultHandler, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Route('learn_problem_notes', '/learn/problem-notes', LearnProblemNotesHandler, PRIV.USER_PRIV_USER_PROFILE);
     void LearnProblemNoteModel.ensureIndexes();
 }
