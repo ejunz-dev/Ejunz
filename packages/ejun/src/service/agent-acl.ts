@@ -1,5 +1,5 @@
 import { BUILTIN_AGENT_ROLES, defaultAgentAcl, type AgentTeamAcl } from '../model/agent';
-import { AGENT, AGENT_TOOL_PERMISSION_DEFINITIONS, type AgentPermissionId } from '../model/builtin';
+import { PERM, AGENT_TOOL_PERMISSION_DEFINITIONS, type AgentPermissionId } from '../model/builtin';
 import { listAgentAddons } from './addons';
 
 export { defaultAgentAcl };

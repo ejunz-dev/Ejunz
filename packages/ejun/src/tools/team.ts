@@ -1,6 +1,6 @@
 import Schema from 'schemastery';
 import type { Context } from 'ejun/src/context';
-import { AGENT, USER } from 'ejun/src/model/builtin';
+import { PERM, PRIV } from 'ejun/src/model/builtin';
 import { AgentSessionModel } from 'ejun/src/model/agent';
 import type { AgentTeamConfig } from 'ejun/src/model/agent';
 import { MAX_AGENTS_PER_CALL, MAX_TEAMS_PER_CALL } from '../lib/tool-limits';
@@ -441,18 +441,18 @@ export async function deleteTeamMany(ctx: ToolContext, args: ToolArgs) {
 }
 
 export function apply(ctx: Context) {
-    ctx.Tool('agent', 'agent_team_list', listTeams, TeamList, agentToolAccess(AGENT.TEAM_LIST), USER.PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_team_get', getTeam, TeamGet, agentToolAccess(AGENT.TEAM_GET), USER.PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_team_create', createTeam, TeamCreate, agentToolAccess(AGENT.TEAM_CREATE), USER.PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_team_update', updateTeam, TeamUpdate, agentToolAccess(AGENT.TEAM_UPDATE), USER.PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_team_delete', removeTeam, TeamRemove, agentToolAccess(AGENT.TEAM_DELETE), USER.PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_role_list', listAgentRoles, AgentRoleList, agentToolAccess(AGENT.ROLE_LIST), USER.PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_role_get', getAgentRole, AgentRoleGet, agentToolAccess(AGENT.ROLE_GET), USER.PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_role_create', createAgentRole, AgentRoleCreate, agentToolAccess(AGENT.ROLE_CREATE), USER.PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_role_update', updateAgentRole, AgentRoleUpdate, agentToolAccess(AGENT.ROLE_UPDATE), USER.PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_role_delete', removeAgentRole, AgentRoleRemove, agentToolAccess(AGENT.ROLE_DELETE), USER.PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_team_create_many', createTeamMany, TeamCreateMany, agentToolAccess(AGENT.TEAM_CREATE_MANY), USER.PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_team_get_many', getTeamMany, TeamGetMany, agentToolAccess(AGENT.TEAM_GET_MANY), USER.PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_team_update_many', updateTeamMany, TeamUpdateMany, agentToolAccess(AGENT.TEAM_UPDATE_MANY), USER.PRIV.PRIV_USER_PROFILE);
-    ctx.Tool('agent', 'agent_team_delete_many', deleteTeamMany, TeamDeleteMany, agentToolAccess(AGENT.TEAM_DELETE_MANY), USER.PRIV.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_list', listTeams, TeamList, agentToolAccess(PERM.AGENT.TEAM_LIST), PRIV.USER.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_get', getTeam, TeamGet, agentToolAccess(PERM.AGENT.TEAM_GET), PRIV.USER.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_create', createTeam, TeamCreate, agentToolAccess(PERM.AGENT.TEAM_CREATE), PRIV.USER.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_update', updateTeam, TeamUpdate, agentToolAccess(PERM.AGENT.TEAM_UPDATE), PRIV.USER.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_delete', removeTeam, TeamRemove, agentToolAccess(PERM.AGENT.TEAM_DELETE), PRIV.USER.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_role_list', listAgentRoles, AgentRoleList, agentToolAccess(PERM.AGENT.ROLE_LIST), PRIV.USER.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_role_get', getAgentRole, AgentRoleGet, agentToolAccess(PERM.AGENT.ROLE_GET), PRIV.USER.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_role_create', createAgentRole, AgentRoleCreate, agentToolAccess(PERM.AGENT.ROLE_CREATE), PRIV.USER.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_role_update', updateAgentRole, AgentRoleUpdate, agentToolAccess(PERM.AGENT.ROLE_UPDATE), PRIV.USER.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_role_delete', removeAgentRole, AgentRoleRemove, agentToolAccess(PERM.AGENT.ROLE_DELETE), PRIV.USER.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_create_many', createTeamMany, TeamCreateMany, agentToolAccess(PERM.AGENT.TEAM_CREATE_MANY), PRIV.USER.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_get_many', getTeamMany, TeamGetMany, agentToolAccess(PERM.AGENT.TEAM_GET_MANY), PRIV.USER.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_update_many', updateTeamMany, TeamUpdateMany, agentToolAccess(PERM.AGENT.TEAM_UPDATE_MANY), PRIV.USER.PRIV_USER_PROFILE);
+    ctx.Tool('agent', 'agent_team_delete_many', deleteTeamMany, TeamDeleteMany, agentToolAccess(PERM.AGENT.TEAM_DELETE_MANY), PRIV.USER.PRIV_USER_PROFILE);
 }
