@@ -1,4 +1,5 @@
 import Schema from 'schemastery';
+import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PERM } from 'ejun/src/model/builtin';
 import { agentRuntimeHandlerContext } from '../service/runtime';
@@ -96,11 +97,11 @@ export function apply(ctx: Context) {
         defaultEnabled: true,
     });
     ctx.effect(() => unregister);
-    ctx.Tool('agent', 'agent_permission_list', listAgentPermissions, AgentPermissionList, PERM.AGENT_PERM_PERMISSION_LIST);
-    ctx.Tool('agent', 'agent_permission_get', getAgentPermission, AgentPermissionGet, PERM.AGENT_PERM_PERMISSION_GET);
-    ctx.Tool('agent', 'agent_addon_list', listAgentAddons, AgentAddonList, PERM.AGENT_PERM_ADDON_LIST);
-    ctx.Tool('agent', 'agent_addon_get', getAgentAddon, AgentAddonGet, PERM.AGENT_PERM_ADDON_GET);
-    ctx.Tool('agent', 'agent_addon_install', installAgentAddon, AgentAddonInstall, PERM.AGENT_PERM_ADDON_INSTALL);
-    ctx.Tool('agent', 'agent_addon_uninstall', uninstallAgentAddon, AgentAddonUninstall, PERM.AGENT_PERM_ADDON_UNINSTALL);
-    ctx.Tool('agent', 'agent_addon_update', updateAgentAddon, AgentAddonUpdate, PERM.AGENT_PERM_ADDON_UPDATE);
+    ctx.Tool('agent', 'agent_permission_list', Executor.wrap(listAgentPermissions), AgentPermissionList, PERM.AGENT_PERM_PERMISSION_LIST);
+    ctx.Tool('agent', 'agent_permission_get', Executor.wrap(getAgentPermission), AgentPermissionGet, PERM.AGENT_PERM_PERMISSION_GET);
+    ctx.Tool('agent', 'agent_addon_list', Executor.wrap(listAgentAddons), AgentAddonList, PERM.AGENT_PERM_ADDON_LIST);
+    ctx.Tool('agent', 'agent_addon_get', Executor.wrap(getAgentAddon), AgentAddonGet, PERM.AGENT_PERM_ADDON_GET);
+    ctx.Tool('agent', 'agent_addon_install', Executor.wrap(installAgentAddon), AgentAddonInstall, PERM.AGENT_PERM_ADDON_INSTALL);
+    ctx.Tool('agent', 'agent_addon_uninstall', Executor.wrap(uninstallAgentAddon), AgentAddonUninstall, PERM.AGENT_PERM_ADDON_UNINSTALL);
+    ctx.Tool('agent', 'agent_addon_update', Executor.wrap(updateAgentAddon), AgentAddonUpdate, PERM.AGENT_PERM_ADDON_UPDATE);
 }

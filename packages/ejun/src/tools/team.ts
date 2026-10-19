@@ -1,4 +1,5 @@
 import Schema from 'schemastery';
+import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PERM } from 'ejun/src/model/builtin';
 import { AgentSessionModel, normalizeAgentAcl } from 'ejun/src/model/agent';
@@ -440,18 +441,18 @@ export async function deleteTeamMany(ctx: ToolContext, args: ToolArgs) {
 }
 
 export function apply(ctx: Context) {
-    ctx.Tool('agent', 'agent_team_list', listTeams, TeamList, PERM.AGENT_PERM_TEAM_LIST);
-    ctx.Tool('agent', 'agent_team_get', getTeam, TeamGet, PERM.AGENT_PERM_TEAM_GET);
-    ctx.Tool('agent', 'agent_team_create', createTeam, TeamCreate, PERM.AGENT_PERM_TEAM_CREATE);
-    ctx.Tool('agent', 'agent_team_update', updateTeam, TeamUpdate, PERM.AGENT_PERM_TEAM_UPDATE);
-    ctx.Tool('agent', 'agent_team_delete', removeTeam, TeamRemove, PERM.AGENT_PERM_TEAM_DELETE);
-    ctx.Tool('agent', 'agent_role_list', listAgentRoles, AgentRoleList, PERM.AGENT_PERM_ROLE_LIST);
-    ctx.Tool('agent', 'agent_role_get', getAgentRole, AgentRoleGet, PERM.AGENT_PERM_ROLE_GET);
-    ctx.Tool('agent', 'agent_role_create', createAgentRole, AgentRoleCreate, PERM.AGENT_PERM_ROLE_CREATE);
-    ctx.Tool('agent', 'agent_role_update', updateAgentRole, AgentRoleUpdate, PERM.AGENT_PERM_ROLE_UPDATE);
-    ctx.Tool('agent', 'agent_role_delete', removeAgentRole, AgentRoleRemove, PERM.AGENT_PERM_ROLE_DELETE);
-    ctx.Tool('agent', 'agent_team_create_many', createTeamMany, TeamCreateMany, PERM.AGENT_PERM_TEAM_CREATE_MANY);
-    ctx.Tool('agent', 'agent_team_get_many', getTeamMany, TeamGetMany, PERM.AGENT_PERM_TEAM_GET_MANY);
-    ctx.Tool('agent', 'agent_team_update_many', updateTeamMany, TeamUpdateMany, PERM.AGENT_PERM_TEAM_UPDATE_MANY);
-    ctx.Tool('agent', 'agent_team_delete_many', deleteTeamMany, TeamDeleteMany, PERM.AGENT_PERM_TEAM_DELETE_MANY);
+    ctx.Tool('agent', 'agent_team_list', Executor.wrap(listTeams), TeamList, PERM.AGENT_PERM_TEAM_LIST);
+    ctx.Tool('agent', 'agent_team_get', Executor.wrap(getTeam), TeamGet, PERM.AGENT_PERM_TEAM_GET);
+    ctx.Tool('agent', 'agent_team_create', Executor.wrap(createTeam), TeamCreate, PERM.AGENT_PERM_TEAM_CREATE);
+    ctx.Tool('agent', 'agent_team_update', Executor.wrap(updateTeam), TeamUpdate, PERM.AGENT_PERM_TEAM_UPDATE);
+    ctx.Tool('agent', 'agent_team_delete', Executor.wrap(removeTeam), TeamRemove, PERM.AGENT_PERM_TEAM_DELETE);
+    ctx.Tool('agent', 'agent_role_list', Executor.wrap(listAgentRoles), AgentRoleList, PERM.AGENT_PERM_ROLE_LIST);
+    ctx.Tool('agent', 'agent_role_get', Executor.wrap(getAgentRole), AgentRoleGet, PERM.AGENT_PERM_ROLE_GET);
+    ctx.Tool('agent', 'agent_role_create', Executor.wrap(createAgentRole), AgentRoleCreate, PERM.AGENT_PERM_ROLE_CREATE);
+    ctx.Tool('agent', 'agent_role_update', Executor.wrap(updateAgentRole), AgentRoleUpdate, PERM.AGENT_PERM_ROLE_UPDATE);
+    ctx.Tool('agent', 'agent_role_delete', Executor.wrap(removeAgentRole), AgentRoleRemove, PERM.AGENT_PERM_ROLE_DELETE);
+    ctx.Tool('agent', 'agent_team_create_many', Executor.wrap(createTeamMany), TeamCreateMany, PERM.AGENT_PERM_TEAM_CREATE_MANY);
+    ctx.Tool('agent', 'agent_team_get_many', Executor.wrap(getTeamMany), TeamGetMany, PERM.AGENT_PERM_TEAM_GET_MANY);
+    ctx.Tool('agent', 'agent_team_update_many', Executor.wrap(updateTeamMany), TeamUpdateMany, PERM.AGENT_PERM_TEAM_UPDATE_MANY);
+    ctx.Tool('agent', 'agent_team_delete_many', Executor.wrap(deleteTeamMany), TeamDeleteMany, PERM.AGENT_PERM_TEAM_DELETE_MANY);
 }

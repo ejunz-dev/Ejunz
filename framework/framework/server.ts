@@ -266,6 +266,52 @@ export class Handler<C = CordisContext> extends HandlerCommon<C> {
     }
 }
 
+export abstract class Executor<C = unknown, A = unknown, R = unknown> {
+    constructor(public context: C, public args: A) { }
+
+    async init(): Promise<void> { }
+
+    async prepare(): Promise<void> { }
+
+    abstract execute(): R | Promise<R>;
+
+    async after(_result: R): Promise<void> { }
+
+    async cleanup(): Promise<void> { }
+
+    async finish(): Promise<void> { }
+
+    async onerror(error: unknown): Promise<never> {
+        throw error;
+    }
+
+    async run(): Promise<R> {
+        try {
+            await this.init();
+            await this.prepare();
+            const result = await this.execute();
+            await this.after(result);
+            return result;
+        } catch (error) {
+            return await this.onerror(error);
+        } finally {
+            try {
+                await this.cleanup();
+            } finally {
+                await this.finish();
+            }
+        }
+    }
+
+    static wrap<C, A, R>(execute: (context: C, args: A) => R | Promise<R>) {
+        return class WrappedExecutor extends Executor<C, A, R> {
+            execute() {
+                return execute(this.context, this.args);
+            }
+        };
+    }
+}
+
 export class ConnectionHandler<C> extends HandlerCommon<C> {
     static [kHandler] = 'ConnectionHandler';
 
@@ -799,6 +845,11 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
             Tool(addonId: string, name: string, execute: unknown, ...args: unknown[]): unknown;
         } | undefined;
         if (!tools) throw new Error('Tool service is unavailable.');
+        if (typeof execute === 'function' && execute.prototype instanceof Executor) {
+            const ExecutorClass = execute as new(context: unknown, args: unknown) => Executor<unknown, unknown, unknown>;
+            const invoke = (context: unknown, toolArgs: unknown) => new ExecutorClass(context, toolArgs).run();
+            return tools.Tool(addonId, name, invoke, ...args);
+        }
         return tools.Tool(addonId, name, execute, ...args);
     }
 
