@@ -93,6 +93,7 @@ export async function updateGroup(ctx: ToolContext, args: ToolArgs) {
     if (!Object.keys(updates).length) throw new Error('Nothing to update');
     const group = await GroupDefinitionModel.edit(ctx.domainId, groupId, updates);
     if (updates.title !== undefined) await AgentSessionModel.syncGroupRootTitle(ctx.domainId, groupId, updates.title);
+    await ctx.broadcastAgentEvent?.('agent/group-context', { domainId: ctx.domainId, groupId });
     return { ok: true, group: groupView(group) };
 }
 

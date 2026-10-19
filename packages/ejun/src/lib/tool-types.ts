@@ -10,7 +10,7 @@ export interface ToolContext {
     mountedAddons?: ReadonlySet<string>;
     /** Permissions granted to the Agent role active in this session's Group. */
     agentPermissions?: ReadonlySet<string>;
-    broadcastAgentEvent?: (event: 'agent/addon-state' | 'agent/team-context' | 'agent/agent-context' | 'agent/acl-update', payload: Record<string, unknown>) => Promise<unknown> | unknown;
+    broadcastAgentEvent?: (event: 'agent/addon-state' | 'agent/team-context' | 'agent/group-context' | 'agent/agent-context' | 'agent/acl-update', payload: Record<string, unknown>) => Promise<unknown> | unknown;
     setting?: { get: (k: string) => unknown };
 }
 

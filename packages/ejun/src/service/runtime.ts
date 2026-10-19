@@ -14,7 +14,7 @@ import { AgentModel, AgentSessionModel, AgentRuntimeModel, AgentLinkModel, Agent
 import { type AgentConfig, type AgentDoc, type AgentSettings, type AgentDisplayPrefs, type AgentDomainSettings, type AgentTeamConfig, type AgentTeamDoc, type AgentSessionDoc, type AgentSessionSummary, type AgentSessionType } from '../model/agent';
 import { type AgentRuntimeSummary } from '../model/agent';
 import { listAgentAddons } from './addons';
-import type { AgentAddonStateChange, AgentContextChange, AgentTeamContextChange } from './bus';
+import type { AgentAddonStateChange, AgentContextChange, AgentGroupContextChange, AgentTeamContextChange } from './bus';
 
 interface EjunContext {
     server?: { config?: { port?: number; host?: string } };
@@ -474,6 +474,9 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
     const teamId = selectedAgent.teamId;
     const team = await agentDataAdapter.getTeam(sessionScope, teamId);
     if (!team) return rpcError(envelope.rpcId, 'Team not found for this Agent');
+    const group = typeof sessionScope.groupId === 'number'
+        ? await GroupDefinitionModel.get(scope.domainId, sessionScope.groupId, GroupDefinitionModel.PROJECTION_LIST)
+        : null;
     const selectedBaseDocId = metadata.baseDocId ?? agentSettings.baseDocId;
     if (metadata.baseDocId && agentSettings.baseDocId && metadata.baseDocId !== agentSettings.baseDocId) {
         return rpcError(envelope.rpcId, 'Base tutor Session must use an Agent configured for this Base');
@@ -569,6 +572,10 @@ async function sessionCreate(envelope: RpcEnvelope, scope: AgentScope, metadata:
             }],
         }, link);
         if (!injected.body.result?.ok) logger.warn('[agent-base] context injection failed session=%s domain=%s baseId=%d error=%s', sessionId, scope.domainId, selectedBase.docId, injected.body.error?.message || 'unknown error');
+    }
+    if (group) {
+        const injected = await injectGroupContext(sessionScope, sessionId, group.docId, group.title, group.content, link);
+        if (!injected) logger.warn('[agent-group] context injection failed session=%s group=%d', sessionId, group.docId);
     }
     if (team.config?.context?.trim()) {
         const injected = await injectTeamContext(sessionScope, sessionId, team.teamId, team.config.context, link);
@@ -1114,6 +1121,25 @@ async function syncSessionAddonsForTeam(scope: AgentScope, sessionId: string, te
     return failedAddonIds;
 }
 
+async function injectGroupContext(
+    scope: AgentScope,
+    sessionId: string,
+    groupId: number,
+    title: string | undefined,
+    content: string | undefined,
+    target?: RuntimeLink,
+): Promise<boolean> {
+    const text = content?.trim()
+        ? `当前会话属于 Group「${title?.trim() || groupId}」（${groupId}）。以下是该 Group 配置的专属上下文；它替代先前注入的 Group 专属上下文，请以此为准：\n\n${content.trim()}`
+        : `当前会话所属的 Group「${title?.trim() || groupId}」（${groupId}）没有配置专属上下文。请忽略此前注入的 Group 专属上下文。`;
+    const injected = await callUpstream('session.inject', {
+        sessionId,
+        plugin: 'group',
+        sections: [{ name: 'group', text }],
+    }, target ?? await linkForSession(scope, sessionId));
+    return injected.body.result?.ok === true;
+}
+
 async function injectTeamContext(
     scope: AgentScope,
     sessionId: string,
@@ -1175,6 +1201,27 @@ async function syncSessionTeamContextForTeam(scope: AgentScope, sessionId: strin
     } catch (error) {
         logger.warn('[agent-team] context sync failed session=%s team=%s error=%s', sessionId, teamId, error instanceof Error ? error.message : String(error));
         return true;
+    }
+}
+
+async function recordGroupContextForSessions(change: AgentGroupContextChange): Promise<void> {
+    const group = await GroupDefinitionModel.get(change.domainId, change.groupId, GroupDefinitionModel.PROJECTION_LIST);
+    const sessions = (await AgentSessionModel.listAllSessions()).filter((session) =>
+        session.domainId === change.domainId
+        && !session.archived
+        && session.started !== false
+        && session.groupId === change.groupId);
+    for (let offset = 0; offset < sessions.length; offset += 8) {
+        const batch = sessions.slice(offset, offset + 8);
+        await Promise.all(batch.map(async (session) => {
+            try {
+                const scope: AgentScope = { domainId: session.domainId, userId: session.userId, groupId: change.groupId };
+                const injected = await injectGroupContext(scope, session.sessionId, change.groupId, group?.title, group?.content);
+                if (!injected) logger.warn('[agent-group] context sync failed session=%s group=%d', session.sessionId, change.groupId);
+            } catch (error) {
+                logger.warn('[agent-group] context sync failed session=%s group=%d error=%s', session.sessionId, change.groupId, error instanceof Error ? error.message : String(error));
+            }
+        }));
     }
 }
 
@@ -2683,6 +2730,11 @@ export async function initializeAgentRuntime(ctx: EjunContext): Promise<() => Pr
     ctx.on?.('agent/team-context', (change: AgentTeamContextChange) => {
         void recordTeamContextForSessions(change).catch((error) => {
             logger.warn('[agent-team] context fanout failed domain=%s team=%s error=%s', change.domainId, change.teamId, error instanceof Error ? error.message : String(error));
+        });
+    });
+    ctx.on?.('agent/group-context', (change: AgentGroupContextChange) => {
+        void recordGroupContextForSessions(change).catch((error) => {
+            logger.warn('[agent-group] context fanout failed domain=%s group=%d error=%s', change.domainId, change.groupId, error instanceof Error ? error.message : String(error));
         });
     });
     ctx.on?.('agent/agent-context', (change: AgentContextChange) => {

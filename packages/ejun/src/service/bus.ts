@@ -48,6 +48,11 @@ export interface AgentTeamContextChange {
     teamId: string;
 }
 
+export interface AgentGroupContextChange {
+    domainId: string;
+    groupId: number;
+}
+
 export interface AgentAclChange {
     domainId: string;
     userId: number;
@@ -88,6 +93,7 @@ export interface EventMap {
     'agent/addon-state': (change: AgentAddonStateChange) => VoidReturn;
     'agent/acl-update': (change: AgentAclChange) => VoidReturn;
     'agent/team-context': (change: AgentTeamContextChange) => VoidReturn;
+    'agent/group-context': (change: AgentGroupContextChange) => VoidReturn;
     'agent/agent-context': (change: AgentContextChange) => VoidReturn;
     'bus/broadcast': (event: keyof EventMap, payload: any, trace?: string) => VoidReturn;
     'monitor/update': (type: 'server' | 'worker', $set: any) => VoidReturn;

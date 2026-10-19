@@ -630,6 +630,7 @@ export class EjunzAgentRpcHandler extends Handler<Context> {
             }
             const updated = await GroupDefinitionModel.edit(scope.domainId, groupId, { title, content });
             await AgentSessionModel.syncGroupRootTitle(scope.domainId, groupId, title);
+            await this.ctx.broadcast('agent/group-context', { domainId: scope.domainId, groupId });
             this.response.type = 'application/json';
             this.response.body = JSON.stringify(rpcOk(envelope.rpcId, {
                 group: groupDefinitionView(updated as unknown as Record<string, unknown>),
