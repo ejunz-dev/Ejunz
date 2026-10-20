@@ -26,8 +26,7 @@ async function instructions(context: ToolInstructionsContext): Promise<string> {
 }
 
 class BaseContextExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(){
-
+    async execute() {
         const baseId = Number(this.ctx.baseDocId);
         if (!Number.isSafeInteger(baseId) || baseId <= 0) return { domain: this.ctx.domainId };
         const base = await BaseModel.get(this.ctx.domainId, baseId, document.TYPE_BASE);
@@ -41,9 +40,7 @@ class BaseContextExecutor extends Executor<ToolContext, ToolArgs> {
 
 export function apply(ctx: Context) {
     class BaseSelectExecutor extends Executor<ToolContext, ToolArgs> {
-        async execute(){
-
-
+        async execute() {
             const sessionId = this.ctx.sessionId;
             if (!sessionId) throw new Error('base_select requires an Agent session');
             const baseDocId = Number(this.args.baseId);
