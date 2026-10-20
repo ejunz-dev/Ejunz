@@ -216,6 +216,7 @@ function assertAccess(tool: StoredTool, access: ToolAccess | undefined): void {
 export default class ToolService extends Service {
     private readonly sources = new Map<string, StoredSource>();
     private readonly owners = new Map<string, string>();
+    private readonly executors = new Map<string, ExecutorClass>();
 
     constructor(ctx: Context) {
         super(ctx, 'tools');
@@ -298,15 +299,26 @@ export default class ToolService extends Service {
         if (options.instructions && !entry.instructions) entry.instructions = options.instructions;
         entry.tools.push(tool);
         this.owners.set(tool.name, source);
-        if (tool.executorClass) void (this.ctx.parallel as any)(`executor/register/${tool.name}`, tool.executorClass);
+        if (tool.executorClass) {
+            const name = tool.executorClass.name.replace(/Executor$/, '');
+            this.executors.set(name, tool.executorClass);
+            void (this.ctx.parallel as any)(`executor/register/${name}`, tool.executorClass);
+        }
     }
 
     private removeTool(source: string, name: string): void {
         const entry = this.sources.get(source);
         if (!entry) return;
-        entry.tools = entry.tools.filter(tool => tool.name !== name);
+        const removed = entry.tools.find((tool) => tool.name === name);
+        entry.tools = entry.tools.filter((tool) => tool.name !== name);
         this.owners.delete(name);
         if (!entry.tools.length) this.sources.delete(source);
+        if (removed?.executorClass) {
+            const executorName = removed.executorClass.name.replace(/Executor$/, '');
+            const stillRegistered = [...this.sources.values()].some((item) =>
+                item.tools.some((tool) => tool.executorClass === removed.executorClass));
+            if (!stillRegistered) this.executors.delete(executorName);
+        }
     }
 
     private lookup(name: string): { source: StoredSource; tool: StoredTool } | undefined {
@@ -376,7 +388,8 @@ export default class ToolService extends Service {
     }
 
     withExecutorClass(name: string, callback: (ExecutorClass: ExecutorClass) => unknown): void {
-        const executorClass = this.lookup(name)?.tool.executorClass;
+        name = name.replace(/Executor$/, '');
+        const executorClass = this.executors.get(name);
         if (executorClass) callback(executorClass);
         (this.ctx.on as any)(`executor/register/${name}`, callback);
     }
