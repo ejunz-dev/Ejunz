@@ -303,13 +303,6 @@ export abstract class Executor<C = unknown, A = unknown, R = unknown> {
         }
     }
 
-    static wrap<C, A, R>(execute: (context: C, args: A) => R | Promise<R>): ExecutorClass<C, A, R> {
-        return class WrappedExecutor extends Executor<C, A, R> {
-            execute() {
-                return execute(this.context, this.args);
-            }
-        };
-    }
 }
 
 export type ExecutorClass<C = unknown, A = unknown, R = unknown> = new(context: C, args: A) => Executor<C, A, R>;

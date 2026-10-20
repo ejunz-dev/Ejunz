@@ -1,4 +1,5 @@
 import Schema from 'schemastery';
+import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PRIV } from 'ejun/src/model/builtin';
 import { toGitInput } from '../lib/tool-shared';
@@ -66,12 +67,48 @@ export async function configSet(ctx: ToolContext, args: ToolArgs) {
     return handlers().baseGitConfigSet({ ...toGitInput(ctx, args), githubRepo: githubRepo || null });
 }
 
+class BaseGitStatusExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return status(this.context, this.args);
+    }
+}
+
+class BaseGitCommitExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return commit(this.context, this.args);
+    }
+}
+
+class BaseGitPushExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return push(this.context, this.args);
+    }
+}
+
+class BaseGitPullExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return pull(this.context, this.args);
+    }
+}
+
+class BaseGitConfigGetExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return configGet(this.context, this.args);
+    }
+}
+
+class BaseGitConfigSetExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return configSet(this.context, this.args);
+    }
+}
+
 export function apply(ctx: Context) {
     const opts = { source: 'base' as const, bindBase: 'session' as const };
-    ctx.Tool('base', 'base_git_status', status, Status, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_git_commit', commit, Commit, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_git_push', push, Push, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_git_pull', pull, Pull, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_git_config_get', configGet, ConfigGet, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_git_config_set', configSet, ConfigSet, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_status', BaseGitStatusExecutor, Status, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_commit', BaseGitCommitExecutor, Commit, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_push', BaseGitPushExecutor, Push, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_pull', BaseGitPullExecutor, Pull, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_config_get', BaseGitConfigGetExecutor, ConfigGet, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_config_set', BaseGitConfigSetExecutor, ConfigSet, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }

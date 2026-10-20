@@ -1,4 +1,5 @@
 import Schema from 'schemastery';
+import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PRIV } from 'ejun/src/model/builtin';
 import type { CardDoc, Problem } from 'ejun/src/interface';
@@ -365,15 +366,69 @@ export async function removeMany(ctx: ToolContext, args: ToolArgs) {
     };
 }
 
+class BaseProblemListExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return list(this.context, this.args);
+    }
+}
+
+class BaseProblemGetExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return get(this.context, this.args);
+    }
+}
+
+class BaseProblemCreateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return create(this.context, this.args);
+    }
+}
+
+class BaseProblemUpdateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return update(this.context, this.args);
+    }
+}
+
+class BaseProblemDeleteExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return remove(this.context, this.args);
+    }
+}
+
+class BaseProblemCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return createMany(this.context, this.args);
+    }
+}
+
+class BaseProblemGetManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return getMany(this.context, this.args);
+    }
+}
+
+class BaseProblemUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return updateMany(this.context, this.args);
+    }
+}
+
+class BaseProblemDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return removeMany(this.context, this.args);
+    }
+}
+
 export function apply(ctx: Context) {
     const opts = { source: 'base' as const, bindBase: 'session' as const };
-    ctx.Tool('base', 'base_problem_list', list, List, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_problem_get', get, Get, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_problem_create', create, Create, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_problem_update', update, Update, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_problem_delete', remove, Remove, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_problem_create_many', createMany, CreateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_problem_get_many', getMany, GetMany, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_problem_update_many', updateMany, UpdateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_problem_delete_many', removeMany, RemoveMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_list', BaseProblemListExecutor, List, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_get', BaseProblemGetExecutor, Get, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_create', BaseProblemCreateExecutor, Create, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_update', BaseProblemUpdateExecutor, Update, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_delete', BaseProblemDeleteExecutor, Remove, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_create_many', BaseProblemCreateManyExecutor, CreateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_get_many', BaseProblemGetManyExecutor, GetMany, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_update_many', BaseProblemUpdateManyExecutor, UpdateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_delete_many', BaseProblemDeleteManyExecutor, RemoveMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }

@@ -1,4 +1,5 @@
 import Schema from 'schemastery';
+import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PRIV } from 'ejun/src/model/builtin';
 import type { CardDoc, Problem } from 'ejun/src/interface';
@@ -294,14 +295,62 @@ export async function removeMany(ctx: ToolContext, args: ToolArgs) {
     };
 }
 
+class BaseCardCreateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return create(this.context, this.args);
+    }
+}
+
+class BaseCardUpdateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return update(this.context, this.args);
+    }
+}
+
+class BaseCardGetExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return get(this.context, this.args);
+    }
+}
+
+class BaseCardDeleteExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return remove(this.context, this.args);
+    }
+}
+
+class BaseCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return createMany(this.context, this.args);
+    }
+}
+
+class BaseCardGetManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return getMany(this.context, this.args);
+    }
+}
+
+class BaseCardUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return updateMany(this.context, this.args);
+    }
+}
+
+class BaseCardDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return removeMany(this.context, this.args);
+    }
+}
+
 export function apply(ctx: Context) {
     const opts = { source: 'base' as const, bindBase: 'session' as const };
-    ctx.Tool('base', 'base_card_create', create, Create, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_card_update', update, Update, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_card_get', get, Get, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_card_delete', remove, Remove, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_card_create_many', createMany, CreateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_card_get_many', getMany, GetMany, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_card_update_many', updateMany, UpdateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_card_delete_many', removeMany, RemoveMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_card_create', BaseCardCreateExecutor, Create, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_card_update', BaseCardUpdateExecutor, Update, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_card_get', BaseCardGetExecutor, Get, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_card_delete', BaseCardDeleteExecutor, Remove, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_card_create_many', BaseCardCreateManyExecutor, CreateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_card_get_many', BaseCardGetManyExecutor, GetMany, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_card_update_many', BaseCardUpdateManyExecutor, UpdateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_card_delete_many', BaseCardDeleteManyExecutor, RemoveMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }

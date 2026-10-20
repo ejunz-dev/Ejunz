@@ -295,22 +295,124 @@ export async function removeAgentSessions(ctx:ToolContext,args:ToolArgs) {const 
 
 export async function removeAgentSession(ctx:ToolContext,args:ToolArgs) {const {groupId}=await requireGroup(ctx,args,'delete');const sessionId=asText(args.sessionId);if(!sessionId)throw new Error('sessionId is required');await AgentSessionModel.deleteSession(ctx.domainId,ctx.owner,sessionId,groupId);return {ok:true,groupId,sessionId,deleted:true};}
 
+class AgentAgentListExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return listAgents(this.context, this.args);
+    }
+}
+
+class AgentAgentGetExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return getAgent(this.context, this.args);
+    }
+}
+
+class AgentAgentCreateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return createAgent(this.context, this.args);
+    }
+}
+
+class AgentAgentUpdateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return updateAgent(this.context, this.args);
+    }
+}
+
+class AgentAgentDeleteExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return removeAgent(this.context, this.args);
+    }
+}
+
+class AgentAgentCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return createAgents(this.context, this.args);
+    }
+}
+
+class AgentAgentGetManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return getAgents(this.context, this.args);
+    }
+}
+
+class AgentAgentUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return updateAgents(this.context, this.args);
+    }
+}
+
+class AgentAgentDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return removeAgents(this.context, this.args);
+    }
+}
+
+class AgentSessionListExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return listAgentSessions(this.context, this.args);
+    }
+}
+
+class AgentSessionGetExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return getAgentSession(this.context, this.args);
+    }
+}
+
+class AgentSessionCreateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return createAgentSession(this.context, this.args);
+    }
+}
+
+class AgentSessionCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return createAgentSessionsForExistingAgents(this.context, this.args);
+    }
+}
+
+class AgentSessionUpdateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return updateAgentSession(this.context, this.args);
+    }
+}
+
+class AgentSessionDeleteExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return removeAgentSession(this.context, this.args);
+    }
+}
+
+class AgentSessionGetManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return getAgentSessions(this.context, this.args);
+    }
+}
+
+class AgentSessionDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return removeAgentSessions(this.context, this.args);
+    }
+}
+
 export function apply(ctx: Context) {
-    ctx.Tool('agent', 'agent_agent_list', Executor.wrap(listAgents), AgentList, PERM.AGENT_PERM_AGENT_LIST);
-    ctx.Tool('agent', 'agent_agent_get', Executor.wrap(getAgent), AgentGet, PERM.AGENT_PERM_AGENT_GET);
-    ctx.Tool('agent', 'agent_agent_create', Executor.wrap(createAgent), AgentCreate, PERM.AGENT_PERM_AGENT_CREATE);
-    ctx.Tool('agent', 'agent_agent_update', Executor.wrap(updateAgent), AgentUpdate, PERM.AGENT_PERM_AGENT_UPDATE);
-    ctx.Tool('agent', 'agent_agent_delete', Executor.wrap(removeAgent), AgentRemove, PERM.AGENT_PERM_AGENT_DELETE);
-    ctx.Tool('agent', 'agent_agent_create_many', Executor.wrap(createAgents), AgentCreateMany, PERM.AGENT_PERM_AGENT_CREATE_MANY);
-    ctx.Tool('agent', 'agent_agent_get_many', Executor.wrap(getAgents), AgentGetMany, PERM.AGENT_PERM_AGENT_GET_MANY);
-    ctx.Tool('agent', 'agent_agent_update_many', Executor.wrap(updateAgents), AgentUpdateMany, PERM.AGENT_PERM_AGENT_UPDATE_MANY);
-    ctx.Tool('agent', 'agent_agent_delete_many', Executor.wrap(removeAgents), AgentRemoveMany, PERM.AGENT_PERM_AGENT_DELETE_MANY);
-    ctx.Tool('agent', 'agent_session_list', Executor.wrap(listAgentSessions), AgentSessionList, PERM.AGENT_PERM_SESSION_LIST);
-    ctx.Tool('agent', 'agent_session_get', Executor.wrap(getAgentSession), AgentSessionGet, PERM.AGENT_PERM_SESSION_GET);
-    ctx.Tool('agent', 'agent_session_create', Executor.wrap(createAgentSession), AgentSessionCreate, PERM.AGENT_PERM_SESSION_CREATE);
-    ctx.Tool('agent', 'agent_session_create_many', Executor.wrap(createAgentSessionsForExistingAgents), AgentSessionCreateMany, PERM.AGENT_PERM_SESSION_CREATE_MANY);
-    ctx.Tool('agent', 'agent_session_update', Executor.wrap(updateAgentSession), AgentSessionUpdate, PERM.AGENT_PERM_SESSION_UPDATE);
-    ctx.Tool('agent', 'agent_session_delete', Executor.wrap(removeAgentSession), AgentSessionDelete, PERM.AGENT_PERM_SESSION_DELETE);
-    ctx.Tool('agent', 'agent_session_get_many', Executor.wrap(getAgentSessions), AgentSessionGetMany, PERM.AGENT_PERM_SESSION_GET_MANY);
-    ctx.Tool('agent', 'agent_session_delete_many', Executor.wrap(removeAgentSessions), AgentSessionDeleteMany, PERM.AGENT_PERM_SESSION_DELETE_MANY);
+    ctx.Tool('agent', 'agent_agent_list', AgentAgentListExecutor, AgentList, PERM.AGENT_PERM_AGENT_LIST);
+    ctx.Tool('agent', 'agent_agent_get', AgentAgentGetExecutor, AgentGet, PERM.AGENT_PERM_AGENT_GET);
+    ctx.Tool('agent', 'agent_agent_create', AgentAgentCreateExecutor, AgentCreate, PERM.AGENT_PERM_AGENT_CREATE);
+    ctx.Tool('agent', 'agent_agent_update', AgentAgentUpdateExecutor, AgentUpdate, PERM.AGENT_PERM_AGENT_UPDATE);
+    ctx.Tool('agent', 'agent_agent_delete', AgentAgentDeleteExecutor, AgentRemove, PERM.AGENT_PERM_AGENT_DELETE);
+    ctx.Tool('agent', 'agent_agent_create_many', AgentAgentCreateManyExecutor, AgentCreateMany, PERM.AGENT_PERM_AGENT_CREATE_MANY);
+    ctx.Tool('agent', 'agent_agent_get_many', AgentAgentGetManyExecutor, AgentGetMany, PERM.AGENT_PERM_AGENT_GET_MANY);
+    ctx.Tool('agent', 'agent_agent_update_many', AgentAgentUpdateManyExecutor, AgentUpdateMany, PERM.AGENT_PERM_AGENT_UPDATE_MANY);
+    ctx.Tool('agent', 'agent_agent_delete_many', AgentAgentDeleteManyExecutor, AgentRemoveMany, PERM.AGENT_PERM_AGENT_DELETE_MANY);
+    ctx.Tool('agent', 'agent_session_list', AgentSessionListExecutor, AgentSessionList, PERM.AGENT_PERM_SESSION_LIST);
+    ctx.Tool('agent', 'agent_session_get', AgentSessionGetExecutor, AgentSessionGet, PERM.AGENT_PERM_SESSION_GET);
+    ctx.Tool('agent', 'agent_session_create', AgentSessionCreateExecutor, AgentSessionCreate, PERM.AGENT_PERM_SESSION_CREATE);
+    ctx.Tool('agent', 'agent_session_create_many', AgentSessionCreateManyExecutor, AgentSessionCreateMany, PERM.AGENT_PERM_SESSION_CREATE_MANY);
+    ctx.Tool('agent', 'agent_session_update', AgentSessionUpdateExecutor, AgentSessionUpdate, PERM.AGENT_PERM_SESSION_UPDATE);
+    ctx.Tool('agent', 'agent_session_delete', AgentSessionDeleteExecutor, AgentSessionDelete, PERM.AGENT_PERM_SESSION_DELETE);
+    ctx.Tool('agent', 'agent_session_get_many', AgentSessionGetManyExecutor, AgentSessionGetMany, PERM.AGENT_PERM_SESSION_GET_MANY);
+    ctx.Tool('agent', 'agent_session_delete_many', AgentSessionDeleteManyExecutor, AgentSessionDeleteMany, PERM.AGENT_PERM_SESSION_DELETE_MANY);
 }

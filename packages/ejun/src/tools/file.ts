@@ -1,4 +1,5 @@
 import Schema from 'schemastery';
+import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PRIV } from 'ejun/src/model/builtin';
 import type { CardDoc } from 'ejun/src/interface';
@@ -343,15 +344,69 @@ export async function removeMany(ctx: ToolContext, args: ToolArgs) {
     };
 }
 
+class BaseNodeFileCardListExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return list(this.context, this.args);
+    }
+}
+
+class BaseNodeFileCardGetExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return get(this.context, this.args);
+    }
+}
+
+class BaseNodeFileCardContentGetExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return contentGet(this.context, this.args);
+    }
+}
+
+class BaseNodeFileCardDeleteExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return remove(this.context, this.args);
+    }
+}
+
+class BaseNodeFileCardCreateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return create(this.context, this.args);
+    }
+}
+
+class BaseNodeFileCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return createMany(this.context, this.args);
+    }
+}
+
+class BaseNodeFileCardListManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return listMany(this.context, this.args);
+    }
+}
+
+class BaseNodeFileCardGetManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return getMany(this.context, this.args);
+    }
+}
+
+class BaseNodeFileCardDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return removeMany(this.context, this.args);
+    }
+}
+
 export function apply(ctx: Context) {
     const opts = { source: 'base' as const, bindBase: 'session' as const };
-    ctx.Tool('base', 'base_node_fileCard_list', list, List, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_get', get, Get, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_content_get', contentGet, ContentGet, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_delete', remove, Remove, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_create', create, Create, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_create_many', createMany, CreateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_list_many', listMany, ListMany, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_get_many', getMany, GetMany, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_delete_many', removeMany, RemoveMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_list', BaseNodeFileCardListExecutor, List, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_get', BaseNodeFileCardGetExecutor, Get, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_content_get', BaseNodeFileCardContentGetExecutor, ContentGet, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_delete', BaseNodeFileCardDeleteExecutor, Remove, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_create', BaseNodeFileCardCreateExecutor, Create, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_create_many', BaseNodeFileCardCreateManyExecutor, CreateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_list_many', BaseNodeFileCardListManyExecutor, ListMany, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_get_many', BaseNodeFileCardGetManyExecutor, GetMany, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_delete_many', BaseNodeFileCardDeleteManyExecutor, RemoveMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }

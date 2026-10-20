@@ -1,4 +1,5 @@
 import Schema from 'schemastery';
+import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PRIV } from 'ejun/src/model/builtin';
 import * as document from 'ejun/src/model/document';
@@ -203,13 +204,49 @@ export async function remove(ctx: ToolContext, _args: ToolArgs) {
     return { ok: true, baseId: ctx.baseDocId };
 }
 
+class BaseCreateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return create(this.context, this.args);
+    }
+}
+
+class BaseListExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return list(this.context, this.args);
+    }
+}
+
+class BaseSearchExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return search(this.context, this.args);
+    }
+}
+
+class BaseGetExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return get(this.context, this.args);
+    }
+}
+
+class BaseUpdateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return update(this.context, this.args);
+    }
+}
+
+class BaseDeleteExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return remove(this.context, this.args);
+    }
+}
+
 export function apply(ctx: Context) {
     const none = { source: 'base' as const, bindBase: 'none' as const };
     const explicit = { source: 'base' as const, bindBase: 'explicit' as const };
-    ctx.Tool('base', 'base_create', create, Create, { ...none, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_list', list, List, none, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_search', search, Search, none, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_get', get, Get, explicit, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_update', update, Update, { ...explicit, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_delete', remove, Remove, { ...explicit, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_create', BaseCreateExecutor, Create, { ...none, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_list', BaseListExecutor, List, none, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_search', BaseSearchExecutor, Search, none, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_get', BaseGetExecutor, Get, explicit, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_update', BaseUpdateExecutor, Update, { ...explicit, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_delete', BaseDeleteExecutor, Remove, { ...explicit, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }

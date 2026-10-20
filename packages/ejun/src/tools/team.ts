@@ -440,19 +440,103 @@ export async function deleteTeamMany(ctx: ToolContext, args: ToolArgs) {
     };
 }
 
+class AgentTeamListExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return listTeams(this.context, this.args);
+    }
+}
+
+class AgentTeamGetExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return getTeam(this.context, this.args);
+    }
+}
+
+class AgentTeamCreateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return createTeam(this.context, this.args);
+    }
+}
+
+class AgentTeamUpdateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return updateTeam(this.context, this.args);
+    }
+}
+
+class AgentTeamDeleteExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return removeTeam(this.context, this.args);
+    }
+}
+
+class AgentRoleListExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return listAgentRoles(this.context, this.args);
+    }
+}
+
+class AgentRoleGetExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return getAgentRole(this.context, this.args);
+    }
+}
+
+class AgentRoleCreateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return createAgentRole(this.context, this.args);
+    }
+}
+
+class AgentRoleUpdateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return updateAgentRole(this.context, this.args);
+    }
+}
+
+class AgentRoleDeleteExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return removeAgentRole(this.context, this.args);
+    }
+}
+
+class AgentTeamCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return createTeamMany(this.context, this.args);
+    }
+}
+
+class AgentTeamGetManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return getTeamMany(this.context, this.args);
+    }
+}
+
+class AgentTeamUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return updateTeamMany(this.context, this.args);
+    }
+}
+
+class AgentTeamDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return deleteTeamMany(this.context, this.args);
+    }
+}
+
 export function apply(ctx: Context) {
-    ctx.Tool('agent', 'agent_team_list', Executor.wrap(listTeams), TeamList, PERM.AGENT_PERM_TEAM_LIST);
-    ctx.Tool('agent', 'agent_team_get', Executor.wrap(getTeam), TeamGet, PERM.AGENT_PERM_TEAM_GET);
-    ctx.Tool('agent', 'agent_team_create', Executor.wrap(createTeam), TeamCreate, PERM.AGENT_PERM_TEAM_CREATE);
-    ctx.Tool('agent', 'agent_team_update', Executor.wrap(updateTeam), TeamUpdate, PERM.AGENT_PERM_TEAM_UPDATE);
-    ctx.Tool('agent', 'agent_team_delete', Executor.wrap(removeTeam), TeamRemove, PERM.AGENT_PERM_TEAM_DELETE);
-    ctx.Tool('agent', 'agent_role_list', Executor.wrap(listAgentRoles), AgentRoleList, PERM.AGENT_PERM_ROLE_LIST);
-    ctx.Tool('agent', 'agent_role_get', Executor.wrap(getAgentRole), AgentRoleGet, PERM.AGENT_PERM_ROLE_GET);
-    ctx.Tool('agent', 'agent_role_create', Executor.wrap(createAgentRole), AgentRoleCreate, PERM.AGENT_PERM_ROLE_CREATE);
-    ctx.Tool('agent', 'agent_role_update', Executor.wrap(updateAgentRole), AgentRoleUpdate, PERM.AGENT_PERM_ROLE_UPDATE);
-    ctx.Tool('agent', 'agent_role_delete', Executor.wrap(removeAgentRole), AgentRoleRemove, PERM.AGENT_PERM_ROLE_DELETE);
-    ctx.Tool('agent', 'agent_team_create_many', Executor.wrap(createTeamMany), TeamCreateMany, PERM.AGENT_PERM_TEAM_CREATE_MANY);
-    ctx.Tool('agent', 'agent_team_get_many', Executor.wrap(getTeamMany), TeamGetMany, PERM.AGENT_PERM_TEAM_GET_MANY);
-    ctx.Tool('agent', 'agent_team_update_many', Executor.wrap(updateTeamMany), TeamUpdateMany, PERM.AGENT_PERM_TEAM_UPDATE_MANY);
-    ctx.Tool('agent', 'agent_team_delete_many', Executor.wrap(deleteTeamMany), TeamDeleteMany, PERM.AGENT_PERM_TEAM_DELETE_MANY);
+    ctx.Tool('agent', 'agent_team_list', AgentTeamListExecutor, TeamList, PERM.AGENT_PERM_TEAM_LIST);
+    ctx.Tool('agent', 'agent_team_get', AgentTeamGetExecutor, TeamGet, PERM.AGENT_PERM_TEAM_GET);
+    ctx.Tool('agent', 'agent_team_create', AgentTeamCreateExecutor, TeamCreate, PERM.AGENT_PERM_TEAM_CREATE);
+    ctx.Tool('agent', 'agent_team_update', AgentTeamUpdateExecutor, TeamUpdate, PERM.AGENT_PERM_TEAM_UPDATE);
+    ctx.Tool('agent', 'agent_team_delete', AgentTeamDeleteExecutor, TeamRemove, PERM.AGENT_PERM_TEAM_DELETE);
+    ctx.Tool('agent', 'agent_role_list', AgentRoleListExecutor, AgentRoleList, PERM.AGENT_PERM_ROLE_LIST);
+    ctx.Tool('agent', 'agent_role_get', AgentRoleGetExecutor, AgentRoleGet, PERM.AGENT_PERM_ROLE_GET);
+    ctx.Tool('agent', 'agent_role_create', AgentRoleCreateExecutor, AgentRoleCreate, PERM.AGENT_PERM_ROLE_CREATE);
+    ctx.Tool('agent', 'agent_role_update', AgentRoleUpdateExecutor, AgentRoleUpdate, PERM.AGENT_PERM_ROLE_UPDATE);
+    ctx.Tool('agent', 'agent_role_delete', AgentRoleDeleteExecutor, AgentRoleRemove, PERM.AGENT_PERM_ROLE_DELETE);
+    ctx.Tool('agent', 'agent_team_create_many', AgentTeamCreateManyExecutor, TeamCreateMany, PERM.AGENT_PERM_TEAM_CREATE_MANY);
+    ctx.Tool('agent', 'agent_team_get_many', AgentTeamGetManyExecutor, TeamGetMany, PERM.AGENT_PERM_TEAM_GET_MANY);
+    ctx.Tool('agent', 'agent_team_update_many', AgentTeamUpdateManyExecutor, TeamUpdateMany, PERM.AGENT_PERM_TEAM_UPDATE_MANY);
+    ctx.Tool('agent', 'agent_team_delete_many', AgentTeamDeleteManyExecutor, TeamDeleteMany, PERM.AGENT_PERM_TEAM_DELETE_MANY);
 }

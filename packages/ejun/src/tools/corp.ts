@@ -88,6 +88,48 @@ export async function updateAgentAddon(ctx: ToolContext, args: ToolArgs) {
     return { ok: true, groupId, ...(value as Record<string, unknown>) };
 }
 
+class AgentPermissionListExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return listAgentPermissions(this.context, this.args);
+    }
+}
+
+class AgentPermissionGetExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return getAgentPermission(this.context, this.args);
+    }
+}
+
+class AgentAddonListExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return listAgentAddons(this.context, this.args);
+    }
+}
+
+class AgentAddonGetExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return getAgentAddon(this.context, this.args);
+    }
+}
+
+class AgentAddonInstallExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return installAgentAddon(this.context, this.args);
+    }
+}
+
+class AgentAddonUninstallExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return uninstallAgentAddon(this.context, this.args);
+    }
+}
+
+class AgentAddonUpdateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return updateAgentAddon(this.context, this.args);
+    }
+}
+
 export function apply(ctx: Context) {
     const unregister = registerAgentAddon({
         addonId: 'agent',
@@ -97,11 +139,11 @@ export function apply(ctx: Context) {
         defaultEnabled: true,
     });
     ctx.effect(() => unregister);
-    ctx.Tool('agent', 'agent_permission_list', Executor.wrap(listAgentPermissions), AgentPermissionList, PERM.AGENT_PERM_PERMISSION_LIST);
-    ctx.Tool('agent', 'agent_permission_get', Executor.wrap(getAgentPermission), AgentPermissionGet, PERM.AGENT_PERM_PERMISSION_GET);
-    ctx.Tool('agent', 'agent_addon_list', Executor.wrap(listAgentAddons), AgentAddonList, PERM.AGENT_PERM_ADDON_LIST);
-    ctx.Tool('agent', 'agent_addon_get', Executor.wrap(getAgentAddon), AgentAddonGet, PERM.AGENT_PERM_ADDON_GET);
-    ctx.Tool('agent', 'agent_addon_install', Executor.wrap(installAgentAddon), AgentAddonInstall, PERM.AGENT_PERM_ADDON_INSTALL);
-    ctx.Tool('agent', 'agent_addon_uninstall', Executor.wrap(uninstallAgentAddon), AgentAddonUninstall, PERM.AGENT_PERM_ADDON_UNINSTALL);
-    ctx.Tool('agent', 'agent_addon_update', Executor.wrap(updateAgentAddon), AgentAddonUpdate, PERM.AGENT_PERM_ADDON_UPDATE);
+    ctx.Tool('agent', 'agent_permission_list', AgentPermissionListExecutor, AgentPermissionList, PERM.AGENT_PERM_PERMISSION_LIST);
+    ctx.Tool('agent', 'agent_permission_get', AgentPermissionGetExecutor, AgentPermissionGet, PERM.AGENT_PERM_PERMISSION_GET);
+    ctx.Tool('agent', 'agent_addon_list', AgentAddonListExecutor, AgentAddonList, PERM.AGENT_PERM_ADDON_LIST);
+    ctx.Tool('agent', 'agent_addon_get', AgentAddonGetExecutor, AgentAddonGet, PERM.AGENT_PERM_ADDON_GET);
+    ctx.Tool('agent', 'agent_addon_install', AgentAddonInstallExecutor, AgentAddonInstall, PERM.AGENT_PERM_ADDON_INSTALL);
+    ctx.Tool('agent', 'agent_addon_uninstall', AgentAddonUninstallExecutor, AgentAddonUninstall, PERM.AGENT_PERM_ADDON_UNINSTALL);
+    ctx.Tool('agent', 'agent_addon_update', AgentAddonUpdateExecutor, AgentAddonUpdate, PERM.AGENT_PERM_ADDON_UPDATE);
 }

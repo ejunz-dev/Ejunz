@@ -105,11 +105,47 @@ export async function removeGroup(ctx: ToolContext, args: ToolArgs) {
     return { ok: true, groupId, deleted: true };
 }
 
+class AgentGroupListExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return listGroups(this.context, this.args);
+    }
+}
+
+class AgentGroupSearchExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return searchGroups(this.context, this.args);
+    }
+}
+
+class AgentGroupGetExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return getGroup(this.context, this.args);
+    }
+}
+
+class AgentGroupCreateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return createGroup(this.context, this.args);
+    }
+}
+
+class AgentGroupUpdateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return updateGroup(this.context, this.args);
+    }
+}
+
+class AgentGroupDeleteExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return removeGroup(this.context, this.args);
+    }
+}
+
 export function apply(ctx: Context) {
-    ctx.Tool('agent', 'agent_group_list', Executor.wrap(listGroups), GroupList, PERM.AGENT_PERM_GROUP_LIST);
-    ctx.Tool('agent', 'agent_group_search', Executor.wrap(searchGroups), GroupSearch, PERM.AGENT_PERM_GROUP_SEARCH);
-    ctx.Tool('agent', 'agent_group_get', Executor.wrap(getGroup), GroupGet, PERM.AGENT_PERM_GROUP_GET);
-    ctx.Tool('agent', 'agent_group_create', Executor.wrap(createGroup), GroupCreate, PERM.AGENT_PERM_GROUP_CREATE);
-    ctx.Tool('agent', 'agent_group_update', Executor.wrap(updateGroup), GroupUpdate, PERM.AGENT_PERM_GROUP_UPDATE);
-    ctx.Tool('agent', 'agent_group_delete', Executor.wrap(removeGroup), GroupRemove, PERM.AGENT_PERM_GROUP_DELETE);
+    ctx.Tool('agent', 'agent_group_list', AgentGroupListExecutor, GroupList, PERM.AGENT_PERM_GROUP_LIST);
+    ctx.Tool('agent', 'agent_group_search', AgentGroupSearchExecutor, GroupSearch, PERM.AGENT_PERM_GROUP_SEARCH);
+    ctx.Tool('agent', 'agent_group_get', AgentGroupGetExecutor, GroupGet, PERM.AGENT_PERM_GROUP_GET);
+    ctx.Tool('agent', 'agent_group_create', AgentGroupCreateExecutor, GroupCreate, PERM.AGENT_PERM_GROUP_CREATE);
+    ctx.Tool('agent', 'agent_group_update', AgentGroupUpdateExecutor, GroupUpdate, PERM.AGENT_PERM_GROUP_UPDATE);
+    ctx.Tool('agent', 'agent_group_delete', AgentGroupDeleteExecutor, GroupRemove, PERM.AGENT_PERM_GROUP_DELETE);
 }

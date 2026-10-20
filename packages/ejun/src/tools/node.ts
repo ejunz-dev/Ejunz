@@ -1,4 +1,5 @@
 import Schema from 'schemastery';
+import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PRIV } from 'ejun/src/model/builtin';
 import type { BaseEdge, BaseNode } from 'ejun/src/interface';
@@ -346,14 +347,62 @@ export async function removeMany(ctx: ToolContext, args: ToolArgs) {
     };
 }
 
+class BaseNodeCreateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return create(this.context, this.args);
+    }
+}
+
+class BaseNodeUpdateExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return update(this.context, this.args);
+    }
+}
+
+class BaseNodeGetExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return get(this.context, this.args);
+    }
+}
+
+class BaseNodeDeleteExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return remove(this.context, this.args);
+    }
+}
+
+class BaseNodeCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return createMany(this.context, this.args);
+    }
+}
+
+class BaseNodeGetManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return getMany(this.context, this.args);
+    }
+}
+
+class BaseNodeUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return updateMany(this.context, this.args);
+    }
+}
+
+class BaseNodeDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return removeMany(this.context, this.args);
+    }
+}
+
 export function apply(ctx: Context) {
     const opts = { source: 'base' as const, bindBase: 'session' as const };
-    ctx.Tool('base', 'base_node_create', create, Create, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_update', update, Update, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_get', get, Get, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_delete', remove, Remove, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_create_many', createMany, CreateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_get_many', getMany, GetMany, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_update_many', updateMany, UpdateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_delete_many', removeMany, RemoveMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_create', BaseNodeCreateExecutor, Create, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_update', BaseNodeUpdateExecutor, Update, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_get', BaseNodeGetExecutor, Get, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_delete', BaseNodeDeleteExecutor, Remove, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_create_many', BaseNodeCreateManyExecutor, CreateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_get_many', BaseNodeGetManyExecutor, GetMany, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_update_many', BaseNodeUpdateManyExecutor, UpdateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_delete_many', BaseNodeDeleteManyExecutor, RemoveMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }

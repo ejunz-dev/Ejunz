@@ -1,4 +1,5 @@
 import Schema from 'schemastery';
+import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PRIV } from 'ejun/src/model/builtin';
 import * as document from 'ejun/src/model/document';
@@ -53,7 +54,18 @@ export async function select(app: Context, ctx: ToolContext, args: ToolArgs) {
     return { sessionId, baseDocId, baseName: base.title || undefined };
 }
 
+class BaseContextExecutor extends Executor<ToolContext, ToolArgs> {
+    execute() {
+        return context(this.context);
+    }
+}
+
 export function apply(ctx: Context) {
+    class BaseSelectExecutor extends Executor<ToolContext, ToolArgs> {
+        execute() {
+            return select(ctx, this.context, this.args);
+        }
+    }
     const unregister = registerAgentAddon({
         addonId: 'base',
         displayName: 'Ejunz Base',
@@ -68,6 +80,6 @@ export function apply(ctx: Context) {
     });
     ctx.effect(() => unregister);
     const session = { source: 'session' as const, bindBase: 'none' as const };
-    ctx.Tool('base', 'base_context', context, ContextConfig, { ...session, instructions }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_select', (toolCtx, args) => select(ctx, toolCtx, args), SelectConfig, { ...session, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_context', BaseContextExecutor, ContextConfig, { ...session, instructions }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_select', BaseSelectExecutor, SelectConfig, { ...session, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }
