@@ -90,256 +90,256 @@ function problemsOf(raw: unknown, label: string): Problem[] {
     });
 }
 
-export async function create(ctx: ToolContext, args: ToolArgs) {
-    const nodeId = String(args.nodeId || '');
-    const title = String(args.title || '').trim();
-    if (!nodeId) throw new Error('nodeId is required');
-    const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
-    if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
-    if (!(base.nodes || []).some((node) => node.id === nodeId)) throw new Error(`Node not found: ${nodeId}`);
-    if (!title) throw new Error('title is required');
-    const docId = await CardModel.create(ctx.domainId, ctx.baseDocId, nodeId, ctx.owner, title, String(args.content || ''), undefined, undefined, undefined, undefined);
-    return { ok: true, cardId: String(docId), nodeId, url: cardUrl(ctx, ctx.baseDocId, String(docId)) };
-}
 
-export async function update(ctx: ToolContext, args: ToolArgs) {
-    const card = await requireCard(ctx, args.cardId);
-    const updates: Record<string, any> = {};
-    if (typeof args.title === 'string') updates.title = args.title;
-    if (typeof args.content === 'string') updates.content = args.content;
-    if (!Object.keys(updates).length) throw new Error('Nothing to update (title or content required)');
-    await CardModel.update(ctx.domainId, card.docId, updates);
-    return { ok: true, cardId: String(card.docId), url: cardUrl(ctx, ctx.baseDocId, String(card.docId)) };
-}
 
-export async function get(ctx: ToolContext, args: ToolArgs) {
-    const card = await requireCard(ctx, args.cardId);
-    return {
-        ok: true,
-        cardId: String(card.docId),
-        title: card.title || '',
-        content: card.content || '',
-        url: cardUrl(ctx, ctx.baseDocId, String(card.docId)),
-    };
-}
 
-export async function remove(ctx: ToolContext, args: ToolArgs) {
-    const card = await requireCard(ctx, args.cardId);
-    await CardModel.delete(ctx.domainId, card.docId);
-    return { ok: true, cardId: String(card.docId) };
-}
 
-export async function createMany(ctx: ToolContext, args: ToolArgs) {
-    const raw = args.cards;
-    if (!Array.isArray(raw) || !raw.length) throw new Error('cards must be a non-empty array of { nodeId, title, ... }');
-    if (raw.length > MAX_CARDS_PER_CALL) {
-        throw new Error(`cards holds ${raw.length} entries and one call creates ${MAX_CARDS_PER_CALL}; split the work across calls`);
-    }
-    const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
-    if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
-    const nodeIds = new Set((base.nodes || []).map((node) => node.id));
-    const planned = raw.map((entry, index) => {
-        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`cards[${index}] must be an object with nodeId and title`);
-        const fields = entry as Record<string, unknown>;
-        const label = `cards[${index}]`;
-        const nodeId = asText(fields.nodeId);
-        if (!nodeId) throw new Error(`${label}.nodeId is required`);
-        if (!nodeIds.has(nodeId)) throw new Error(`${label}.nodeId ${nodeId} is not a node of this Base`);
-        const title = asText(fields.title);
-        if (!title) throw new Error(`${label}.title is required`);
-        const tags = tagsOf(fields.tags, label);
-        return {
-            index,
-            nodeId,
-            title,
-            content: fields.content === undefined || fields.content === null ? '' : String(fields.content),
-            ...(tags ? { tags } : {}),
-            problems: problemsOf(fields.problems, label),
-        };
-    });
-    const positions = new Map<string, number>();
-    for (const nodeId of new Set(planned.map((card) => card.nodeId))) {
-        const existing = await CardModel.getByNodeId(ctx.domainId, ctx.baseDocId, nodeId);
-        positions.set(nodeId, existing.reduce((max, card) => Math.max(max, card.order ?? -1), -1) + 1);
-    }
-    const created: { index: number; cardId: string; nodeId: string; title: string; order: number; problems: string[]; url: string }[] = [];
-    const refused: { index: number; nodeId: string; title: string; error: string }[] = [];
-    for (const card of planned) {
-        const order = positions.get(card.nodeId) as number;
-        positions.set(card.nodeId, order + 1);
-        try {
-            const cardId = await CardModel.create(
-                ctx.domainId, ctx.baseDocId, card.nodeId, ctx.owner, card.title, card.content,
-                undefined, card.problems.length ? card.problems : undefined, order,
-                undefined, undefined, undefined, undefined, card.tags,
-            );
-            created.push({
-                index: card.index,
-                cardId: String(cardId),
-                nodeId: card.nodeId,
-                title: card.title,
-                order,
-                problems: card.problems.map((problem) => problem.pid),
-                url: cardUrl(ctx, ctx.baseDocId, String(cardId)),
-            });
-        } catch (error) {
-            refused.push({ index: card.index, nodeId: card.nodeId, title: card.title, error: (error as Error).message });
-        }
-    }
-    return {
-        ok: refused.length === 0,
-        baseId: ctx.baseDocId,
-        cardCount: created.length,
-        cards: created,
-        refusedCards: refused,
-        writes: { cards: created.length },
-    };
-}
 
-export async function getMany(ctx: ToolContext, args: ToolArgs) {
-    const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
-    const byId = await cardsById(ctx, cardIds);
-    const found: unknown[] = [];
-    const missing: string[] = [];
-    for (const [index, cardId] of cardIds.entries()) {
-        const card = byId.get(cardId);
-        if (!card) {
-            missing.push(cardId);
-            continue;
-        }
-        found.push({
-            index,
-            cardId: String(card.docId),
-            title: card.title || '',
-            content: card.content || '',
-            url: cardUrl(ctx, ctx.baseDocId, String(card.docId)),
-        });
-    }
-    return {
-        ok: missing.length === 0,
-        baseId: ctx.baseDocId,
-        cardCount: found.length,
-        cards: found,
-        missingCardIds: missing,
-        reads: { cards: 1 },
-    };
-}
 
-export async function updateMany(ctx: ToolContext, args: ToolArgs) {
-    const raw = args.entries;
-    if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, title?, content? }');
-    if (raw.length > MAX_CARDS_PER_CALL) {
-        throw new Error(`entries holds ${raw.length} entries and one call updates ${MAX_CARDS_PER_CALL}; split the work across calls`);
-    }
-    const planned: { index: number; cardId: string; fields: string[]; update: { title?: string; content?: string } }[] = [];
-    const seen = new Set<string>();
-    for (const [index, entry] of raw.entries()) {
-        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`entries[${index}] must be an object with cardId`);
-        const fields = entry as Record<string, unknown>;
-        const cardId = asText(fields.cardId);
-        if (!cardId) throw new Error(`entries[${index}].cardId is required`);
-        if (seen.has(cardId)) throw new Error(`entries[${index}].cardId ${cardId} appears twice; send one entry per card`);
-        seen.add(cardId);
-        const update: { title?: string; content?: string } = {};
-        const changed: string[] = [];
-        for (const field of ['title', 'content'] as const) {
-            if (!Object.prototype.hasOwnProperty.call(fields, field)) continue;
-            if (typeof fields[field] !== 'string') throw new Error(`entries[${index}].${field} must be a string`);
-            update[field] = fields[field] as string;
-            changed.push(field);
-        }
-        if (!changed.length) throw new Error(`entries[${index}] names nothing to change; give title, content, or both`);
-        planned.push({ index, cardId, fields: changed, update });
-    }
-    const byId = await cardsById(ctx, planned.map((entry) => entry.cardId));
-    for (const entry of planned) {
-        if (!byId.has(entry.cardId)) throw new Error(`Card not found: ${entry.cardId}`);
-    }
-    const updated: { index: number; cardId: string; changed: string[]; url: string }[] = [];
-    const refused: { index: number; cardId: string; error: string }[] = [];
-    for (const entry of planned) {
-        const card = byId.get(entry.cardId) as CardDoc;
-        try {
-            await CardModel.update(ctx.domainId, card.docId, entry.update);
-            updated.push({ index: entry.index, cardId: entry.cardId, changed: entry.fields, url: cardUrl(ctx, ctx.baseDocId, entry.cardId) });
-        } catch (error) {
-            refused.push({ index: entry.index, cardId: entry.cardId, error: (error as Error).message });
-        }
-    }
-    return {
-        ok: refused.length === 0,
-        baseId: ctx.baseDocId,
-        cardCount: updated.length,
-        cards: updated,
-        refusedCards: refused,
-        reads: { cards: 1 },
-        writes: { cards: updated.length },
-    };
-}
 
-export async function removeMany(ctx: ToolContext, args: ToolArgs) {
-    const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
-    const objectIds = cardIds.map((cardId) => toObjectId(cardId));
-    const byId = await cardsById(ctx, cardIds);
-    for (const cardId of cardIds) {
-        if (!byId.has(cardId)) throw new Error(`Card not found: ${cardId}`);
-    }
-    await CardModel.deleteMany(ctx.domainId, objectIds);
-    return {
-        ok: true,
-        baseId: ctx.baseDocId,
-        removedCardIds: cardIds,
-        removedCount: cardIds.length,
-        reads: { cards: 1 },
-        writes: { statements: 2 },
-    };
-}
+
+
+
+
+
+
+
+
 
 class BaseCardCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return create(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const nodeId = String(args.nodeId || '');
+            const title = String(args.title || '').trim();
+            if (!nodeId) throw new Error('nodeId is required');
+            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
+            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            if (!(base.nodes || []).some((node) => node.id === nodeId)) throw new Error(`Node not found: ${nodeId}`);
+            if (!title) throw new Error('title is required');
+            const docId = await CardModel.create(ctx.domainId, ctx.baseDocId, nodeId, ctx.owner, title, String(args.content || ''), undefined, undefined, undefined, undefined);
+            return { ok: true, cardId: String(docId), nodeId, url: cardUrl(ctx, ctx.baseDocId, String(docId)) };
     }
 }
 
 class BaseCardUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return update(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const card = await requireCard(ctx, args.cardId);
+            const updates: Record<string, any> = {};
+            if (typeof args.title === 'string') updates.title = args.title;
+            if (typeof args.content === 'string') updates.content = args.content;
+            if (!Object.keys(updates).length) throw new Error('Nothing to update (title or content required)');
+            await CardModel.update(ctx.domainId, card.docId, updates);
+            return { ok: true, cardId: String(card.docId), url: cardUrl(ctx, ctx.baseDocId, String(card.docId)) };
     }
 }
 
 class BaseCardGetExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return get(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const card = await requireCard(ctx, args.cardId);
+            return {
+                ok: true,
+                cardId: String(card.docId),
+                title: card.title || '',
+                content: card.content || '',
+                url: cardUrl(ctx, ctx.baseDocId, String(card.docId)),
+            };
     }
 }
 
 class BaseCardDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return remove(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const card = await requireCard(ctx, args.cardId);
+            await CardModel.delete(ctx.domainId, card.docId);
+            return { ok: true, cardId: String(card.docId) };
     }
 }
 
 class BaseCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return createMany(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const raw = args.cards;
+            if (!Array.isArray(raw) || !raw.length) throw new Error('cards must be a non-empty array of { nodeId, title, ... }');
+            if (raw.length > MAX_CARDS_PER_CALL) {
+                throw new Error(`cards holds ${raw.length} entries and one call creates ${MAX_CARDS_PER_CALL}; split the work across calls`);
+            }
+            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
+            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            const nodeIds = new Set((base.nodes || []).map((node) => node.id));
+            const planned = raw.map((entry, index) => {
+                if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`cards[${index}] must be an object with nodeId and title`);
+                const fields = entry as Record<string, unknown>;
+                const label = `cards[${index}]`;
+                const nodeId = asText(fields.nodeId);
+                if (!nodeId) throw new Error(`${label}.nodeId is required`);
+                if (!nodeIds.has(nodeId)) throw new Error(`${label}.nodeId ${nodeId} is not a node of this Base`);
+                const title = asText(fields.title);
+                if (!title) throw new Error(`${label}.title is required`);
+                const tags = tagsOf(fields.tags, label);
+                return {
+                    index,
+                    nodeId,
+                    title,
+                    content: fields.content === undefined || fields.content === null ? '' : String(fields.content),
+                    ...(tags ? { tags } : {}),
+                    problems: problemsOf(fields.problems, label),
+                };
+            });
+            const positions = new Map<string, number>();
+            for (const nodeId of new Set(planned.map((card) => card.nodeId))) {
+                const existing = await CardModel.getByNodeId(ctx.domainId, ctx.baseDocId, nodeId);
+                positions.set(nodeId, existing.reduce((max, card) => Math.max(max, card.order ?? -1), -1) + 1);
+            }
+            const created: { index: number; cardId: string; nodeId: string; title: string; order: number; problems: string[]; url: string }[] = [];
+            const refused: { index: number; nodeId: string; title: string; error: string }[] = [];
+            for (const card of planned) {
+                const order = positions.get(card.nodeId) as number;
+                positions.set(card.nodeId, order + 1);
+                try {
+                    const cardId = await CardModel.create(
+                        ctx.domainId, ctx.baseDocId, card.nodeId, ctx.owner, card.title, card.content,
+                        undefined, card.problems.length ? card.problems : undefined, order,
+                        undefined, undefined, undefined, undefined, card.tags,
+                    );
+                    created.push({
+                        index: card.index,
+                        cardId: String(cardId),
+                        nodeId: card.nodeId,
+                        title: card.title,
+                        order,
+                        problems: card.problems.map((problem) => problem.pid),
+                        url: cardUrl(ctx, ctx.baseDocId, String(cardId)),
+                    });
+                } catch (error) {
+                    refused.push({ index: card.index, nodeId: card.nodeId, title: card.title, error: (error as Error).message });
+                }
+            }
+            return {
+                ok: refused.length === 0,
+                baseId: ctx.baseDocId,
+                cardCount: created.length,
+                cards: created,
+                refusedCards: refused,
+                writes: { cards: created.length },
+            };
     }
 }
 
 class BaseCardGetManyExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return getMany(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
+            const byId = await cardsById(ctx, cardIds);
+            const found: unknown[] = [];
+            const missing: string[] = [];
+            for (const [index, cardId] of cardIds.entries()) {
+                const card = byId.get(cardId);
+                if (!card) {
+                    missing.push(cardId);
+                    continue;
+                }
+                found.push({
+                    index,
+                    cardId: String(card.docId),
+                    title: card.title || '',
+                    content: card.content || '',
+                    url: cardUrl(ctx, ctx.baseDocId, String(card.docId)),
+                });
+            }
+            return {
+                ok: missing.length === 0,
+                baseId: ctx.baseDocId,
+                cardCount: found.length,
+                cards: found,
+                missingCardIds: missing,
+                reads: { cards: 1 },
+            };
     }
 }
 
 class BaseCardUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return updateMany(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const raw = args.entries;
+            if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, title?, content? }');
+            if (raw.length > MAX_CARDS_PER_CALL) {
+                throw new Error(`entries holds ${raw.length} entries and one call updates ${MAX_CARDS_PER_CALL}; split the work across calls`);
+            }
+            const planned: { index: number; cardId: string; fields: string[]; update: { title?: string; content?: string } }[] = [];
+            const seen = new Set<string>();
+            for (const [index, entry] of raw.entries()) {
+                if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`entries[${index}] must be an object with cardId`);
+                const fields = entry as Record<string, unknown>;
+                const cardId = asText(fields.cardId);
+                if (!cardId) throw new Error(`entries[${index}].cardId is required`);
+                if (seen.has(cardId)) throw new Error(`entries[${index}].cardId ${cardId} appears twice; send one entry per card`);
+                seen.add(cardId);
+                const update: { title?: string; content?: string } = {};
+                const changed: string[] = [];
+                for (const field of ['title', 'content'] as const) {
+                    if (!Object.prototype.hasOwnProperty.call(fields, field)) continue;
+                    if (typeof fields[field] !== 'string') throw new Error(`entries[${index}].${field} must be a string`);
+                    update[field] = fields[field] as string;
+                    changed.push(field);
+                }
+                if (!changed.length) throw new Error(`entries[${index}] names nothing to change; give title, content, or both`);
+                planned.push({ index, cardId, fields: changed, update });
+            }
+            const byId = await cardsById(ctx, planned.map((entry) => entry.cardId));
+            for (const entry of planned) {
+                if (!byId.has(entry.cardId)) throw new Error(`Card not found: ${entry.cardId}`);
+            }
+            const updated: { index: number; cardId: string; changed: string[]; url: string }[] = [];
+            const refused: { index: number; cardId: string; error: string }[] = [];
+            for (const entry of planned) {
+                const card = byId.get(entry.cardId) as CardDoc;
+                try {
+                    await CardModel.update(ctx.domainId, card.docId, entry.update);
+                    updated.push({ index: entry.index, cardId: entry.cardId, changed: entry.fields, url: cardUrl(ctx, ctx.baseDocId, entry.cardId) });
+                } catch (error) {
+                    refused.push({ index: entry.index, cardId: entry.cardId, error: (error as Error).message });
+                }
+            }
+            return {
+                ok: refused.length === 0,
+                baseId: ctx.baseDocId,
+                cardCount: updated.length,
+                cards: updated,
+                refusedCards: refused,
+                reads: { cards: 1 },
+                writes: { cards: updated.length },
+            };
     }
 }
 
 class BaseCardDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return removeMany(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
+            const objectIds = cardIds.map((cardId) => toObjectId(cardId));
+            const byId = await cardsById(ctx, cardIds);
+            for (const cardId of cardIds) {
+                if (!byId.has(cardId)) throw new Error(`Card not found: ${cardId}`);
+            }
+            await CardModel.deleteMany(ctx.domainId, objectIds);
+            return {
+                ok: true,
+                baseId: ctx.baseDocId,
+                removedCardIds: cardIds,
+                removedCount: cardIds.length,
+                reads: { cards: 1 },
+                writes: { statements: 2 },
+            };
     }
 }
 

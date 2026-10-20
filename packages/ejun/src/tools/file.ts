@@ -89,312 +89,312 @@ function optionalCount(raw: unknown, label: string, limit: number): number | und
     return value;
 }
 
-export async function list(ctx: ToolContext, args: ToolArgs) {
-    const nodeId = String(args.nodeId || '');
-    if (!nodeId) throw new Error('nodeId is required');
-    const base = await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
-    if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
-    if (!(base.nodes || []).some((node) => node.id === nodeId)) throw new Error(`Node not found: ${nodeId}`);
-    const cards = await CardModel.getByNodeId(ctx.domainId, ctx.baseDocId, nodeId);
-    return cards.filter((card) => (card as CardDoc).cardType === 'file').map((card) => fileCardSummary(ctx, card));
-}
 
-export async function get(ctx: ToolContext, args: ToolArgs) {
-    const card = await requireCard(ctx, args.cardId);
-    if ((card as CardDoc).cardType !== 'file') throw new Error(`Not a file-card: ${args.cardId}`);
-    return fileCardDetail(ctx, card);
-}
 
-export async function contentGet(ctx: ToolContext, args: ToolArgs) {
-    const card = await requireCard(ctx, args.cardId) as CardDoc;
-    if (card.cardType !== 'file') throw new Error(`Not a file-card: ${args.cardId}`);
-    const fileName = card.fileName || '';
-    if (!fileName) throw new Error(`File-card ${args.cardId} names no stored file`);
-    const firstPage = optionalCount(args.firstPage, 'firstPage', MAX_FILE_CONTENT_PAGES);
-    const lastPage = optionalCount(args.lastPage, 'lastPage', MAX_FILE_CONTENT_PAGES);
-    if (firstPage !== undefined && lastPage !== undefined && lastPage < firstPage) {
-        throw new Error(`lastPage ${lastPage} is before firstPage ${firstPage}`);
-    }
-    const content = await readFileContent({
-        storagePath: fileStoragePath(ctx, card.nodeId, fileName),
-        fileType: card.fileType || '',
-        fileSize: card.fileSize || 0,
-        firstPage,
-        lastPage,
-        maxChars: optionalCount(args.maxChars, 'maxChars', MAX_FILE_CONTENT_CHARS_LIMIT) ?? MAX_FILE_CONTENT_CHARS,
-    });
-    return {
-        ok: true,
-        ...fileCardDetail(ctx, card),
-        ...content,
-        reads: { cards: 1, files: 1 },
-    };
-}
 
-export async function remove(ctx: ToolContext, args: ToolArgs) {
-    const card = await requireCard(ctx, args.cardId);
-    if ((card as CardDoc).cardType !== 'file') throw new Error(`Not a file-card: ${args.cardId}`);
-    const fileName = (card as CardDoc).fileName;
-    if (fileName) {
-        const storagePath = fileStoragePath(ctx, card.nodeId, fileName);
-        try { await storage.del([storagePath], ctx.owner); } catch { /* ignore missing storage */ }
-    }
-    await CardModel.delete(ctx.domainId, card.docId);
-    return { ok: true, cardId: String(args.cardId), deletedFile: !!fileName };
-}
 
-export async function create(ctx: ToolContext, args: ToolArgs) {
-    const nodeId = String(args.nodeId || '');
-    const fileName = String(args.fileName || '').trim();
-    const fileUrl = String(args.fileUrl || '').trim();
-    if (!nodeId) throw new Error('nodeId is required');
-    const base = await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
-    if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
-    if (!(base.nodes || []).some((node) => node.id === nodeId)) throw new Error(`Node not found: ${nodeId}`);
-    if (!fileName) throw new Error('fileName is required');
-    if (!fileUrl) throw new Error('fileUrl is required');
-    const response = await fetch(fileUrl);
-    if (!response.ok) throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
-    const storagePath = fileStoragePath(ctx, nodeId, fileName);
-    await storage.put(storagePath, Buffer.from(await response.arrayBuffer()), ctx.owner);
-    const meta = await storage.getMeta(storagePath);
-    if (!meta) throw new Error('Failed to store file');
-    const fileType = fileTypeOf(fileName);
-    const title = String(args.title || '').trim() || fileName;
-    const cardDocId = await CardModel.create(ctx.domainId, ctx.baseDocId, nodeId, ctx.owner, title, '', undefined, undefined, undefined, 'file', fileType, fileName, meta.size || 0);
-    return {
-        ok: true,
-        cardId: String(cardDocId),
-        nodeId,
-        fileName,
-        fileType,
-        fileSize: meta.size,
-        url: cardUrl(ctx, ctx.baseDocId, String(cardDocId)),
-        downloadUrl: fileDownloadUrl(ctx, ctx.baseDocId, nodeId, fileName),
-    };
-}
 
-export async function createMany(ctx: ToolContext, args: ToolArgs) {
-    const raw = args.files;
-    if (!Array.isArray(raw) || !raw.length) throw new Error('files must be a non-empty array of { nodeId, fileName, fileUrl }');
-    if (raw.length > MAX_FILE_CREATES_PER_CALL) {
-        throw new Error(`files holds ${raw.length} entries and one call stores ${MAX_FILE_CREATES_PER_CALL}; split the work across calls`);
-    }
-    const base = await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
-    if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
-    const nodeIds = new Set((base.nodes || []).map((node) => node.id));
-    const planned: { index: number; nodeId: string; fileName: string; fileUrl: string; title: string }[] = [];
-    const seen = new Set<string>();
-    for (const [index, entry] of raw.entries()) {
-        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`files[${index}] must be an object`);
-        const fields = entry as Record<string, unknown>;
-        const nodeId = asText(fields.nodeId);
-        if (!nodeId) throw new Error(`files[${index}].nodeId is required`);
-        if (!nodeIds.has(nodeId)) throw new Error(`files[${index}].nodeId ${nodeId} is not a node of this Base`);
-        const fileName = asText(fields.fileName);
-        if (!fileName) throw new Error(`files[${index}].fileName is required`);
-        const fileUrl = asText(fields.fileUrl);
-        if (!fileUrl) throw new Error(`files[${index}].fileUrl is required`);
-        const stored = `${nodeId}/${fileName}`;
-        if (seen.has(stored)) throw new Error(`files[${index}] stores ${fileName} on ${nodeId} twice; one file per node holds one path`);
-        seen.add(stored);
-        planned.push({ index, nodeId, fileName, fileUrl, title: asText(fields.title) || fileName });
-    }
-    type StoredFile = {
-        ok: true; index: number; cardId: string; nodeId: string; fileName: string;
-        fileType: string; fileSize: number; url: string; downloadUrl: string;
-    };
-    type RefusedFile = { ok: false; index: number; nodeId: string; fileName: string; error: string };
-    const results: (StoredFile | RefusedFile)[] = new Array(planned.length);
-    const storeOne = async (file: typeof planned[number]): Promise<StoredFile | RefusedFile> => {
-        const storagePath = fileStoragePath(ctx, file.nodeId, file.fileName);
-        try {
-            const response = await fetch(file.fileUrl);
-            if (!response.ok) throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
-            await storage.put(storagePath, Buffer.from(await response.arrayBuffer()), ctx.owner);
-            const meta = await storage.getMeta(storagePath);
-            if (!meta) throw new Error('Failed to store file');
-            const fileType = fileTypeOf(file.fileName);
-            try {
-                const cardId = await CardModel.create(
-                    ctx.domainId, ctx.baseDocId, file.nodeId, ctx.owner, file.title, '',
-                    undefined, undefined, undefined, 'file', fileType, file.fileName, meta.size || 0,
-                );
-                return {
-                    ok: true,
-                    index: file.index,
-                    cardId: String(cardId),
-                    nodeId: file.nodeId,
-                    fileName: file.fileName,
-                    fileType,
-                    fileSize: meta.size || 0,
-                    url: cardUrl(ctx, ctx.baseDocId, String(cardId)),
-                    downloadUrl: fileDownloadUrl(ctx, ctx.baseDocId, file.nodeId, file.fileName),
-                };
-            } catch (error) {
-                try { await storage.del([storagePath], ctx.owner); } catch { /* ignore cleanup */ }
-                throw error;
-            }
-        } catch (error) {
-            return { ok: false, index: file.index, nodeId: file.nodeId, fileName: file.fileName, error: (error as Error).message };
-        }
-    };
-    let next = 0;
-    const worker = async () => {
-        while (next < planned.length) {
-            const file = planned[next];
-            next += 1;
-            results[file.index] = await storeOne(file);
-        }
-    };
-    await Promise.all(Array.from({ length: Math.min(MAX_FILE_DOWNLOADS_IN_FLIGHT, planned.length) }, worker));
-    const stored = results.filter((result) => result.ok) as StoredFile[];
-    const refused = results.filter((result) => !result.ok) as RefusedFile[];
-    return {
-        ok: refused.length === 0,
-        baseId: ctx.baseDocId,
-        fileCount: stored.length,
-        files: stored,
-        refusedFiles: refused,
-        reads: { base: 1 },
-        writes: { files: stored.length, cards: stored.length },
-    };
-}
 
-export async function listMany(ctx: ToolContext, args: ToolArgs) {
-    const nodeIds = idList(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
-    const base = await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
-    if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
-    const known = new Set((base.nodes || []).map((node) => node.id));
-    const missing = nodeIds.filter((nodeId) => !known.has(nodeId));
-    const present = nodeIds.filter((nodeId) => known.has(nodeId));
-    const cardsByNode = await CardModel.getByNodeIds(ctx.domainId, ctx.baseDocId, present);
-    const nodes = present.map((nodeId, index) => {
-        const files = (cardsByNode.get(nodeId) || []).filter((card) => (card as CardDoc).cardType === 'file');
-        return { index, nodeId, files: files.map((card) => fileCardSummary(ctx, card)) };
-    });
-    return {
-        ok: missing.length === 0,
-        baseId: ctx.baseDocId,
-        nodeCount: nodes.length,
-        nodes,
-        fileCount: nodes.reduce((sum, node) => sum + node.files.length, 0),
-        missingNodeIds: missing,
-        reads: { base: 1, cards: 1 },
-    };
-}
 
-export async function getMany(ctx: ToolContext, args: ToolArgs) {
-    const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
-    const byId = await cardsById(ctx, cardIds);
-    const files: unknown[] = [];
-    const missing: { index: number; cardId: string; error: string }[] = [];
-    for (const [index, cardId] of cardIds.entries()) {
-        const card = byId.get(cardId);
-        if (!card) {
-            missing.push({ index, cardId, error: 'Card not found' });
-            continue;
-        }
-        if ((card as CardDoc).cardType !== 'file') {
-            missing.push({ index, cardId, error: `Not a file-card: ${cardId}` });
-            continue;
-        }
-        files.push({ index, ...fileCardDetail(ctx, card) });
-    }
-    return {
-        ok: missing.length === 0,
-        baseId: ctx.baseDocId,
-        fileCount: files.length,
-        files,
-        missing,
-        reads: { cards: 1 },
-    };
-}
 
-export async function removeMany(ctx: ToolContext, args: ToolArgs) {
-    const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
-    const byId = await cardsById(ctx, cardIds);
-    for (const cardId of cardIds) {
-        const card = byId.get(cardId);
-        if (!card) throw new Error(`Card not found: ${cardId}`);
-        if ((card as CardDoc).cardType !== 'file') throw new Error(`Not a file-card: ${cardId}`);
-    }
-    const removed: string[] = [];
-    let deletedFiles = 0;
-    for (const cardId of cardIds) {
-        const card = byId.get(cardId) as CardDoc;
-        const fileName = card.fileName;
-        if (fileName) {
-            try {
-                await storage.del([fileStoragePath(ctx, card.nodeId, fileName)], ctx.owner);
-                deletedFiles += 1;
-            } catch { /* ignore missing storage */ }
-        }
-        await CardModel.delete(ctx.domainId, card.docId);
-        removed.push(cardId);
-    }
-    return {
-        ok: true,
-        baseId: ctx.baseDocId,
-        removedCardIds: removed,
-        removedCount: removed.length,
-        deletedFiles,
-        reads: { cards: 1 },
-        writes: { files: deletedFiles, cards: removed.length },
-    };
-}
+
+
+
+
+
+
+
+
+
 
 class BaseNodeFileCardListExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return list(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const nodeId = String(args.nodeId || '');
+            if (!nodeId) throw new Error('nodeId is required');
+            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
+            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            if (!(base.nodes || []).some((node) => node.id === nodeId)) throw new Error(`Node not found: ${nodeId}`);
+            const cards = await CardModel.getByNodeId(ctx.domainId, ctx.baseDocId, nodeId);
+            return cards.filter((card) => (card as CardDoc).cardType === 'file').map((card) => fileCardSummary(ctx, card));
     }
 }
 
 class BaseNodeFileCardGetExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return get(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const card = await requireCard(ctx, args.cardId);
+            if ((card as CardDoc).cardType !== 'file') throw new Error(`Not a file-card: ${args.cardId}`);
+            return fileCardDetail(ctx, card);
     }
 }
 
 class BaseNodeFileCardContentGetExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return contentGet(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const card = await requireCard(ctx, args.cardId) as CardDoc;
+            if (card.cardType !== 'file') throw new Error(`Not a file-card: ${args.cardId}`);
+            const fileName = card.fileName || '';
+            if (!fileName) throw new Error(`File-card ${args.cardId} names no stored file`);
+            const firstPage = optionalCount(args.firstPage, 'firstPage', MAX_FILE_CONTENT_PAGES);
+            const lastPage = optionalCount(args.lastPage, 'lastPage', MAX_FILE_CONTENT_PAGES);
+            if (firstPage !== undefined && lastPage !== undefined && lastPage < firstPage) {
+                throw new Error(`lastPage ${lastPage} is before firstPage ${firstPage}`);
+            }
+            const content = await readFileContent({
+                storagePath: fileStoragePath(ctx, card.nodeId, fileName),
+                fileType: card.fileType || '',
+                fileSize: card.fileSize || 0,
+                firstPage,
+                lastPage,
+                maxChars: optionalCount(args.maxChars, 'maxChars', MAX_FILE_CONTENT_CHARS_LIMIT) ?? MAX_FILE_CONTENT_CHARS,
+            });
+            return {
+                ok: true,
+                ...fileCardDetail(ctx, card),
+                ...content,
+                reads: { cards: 1, files: 1 },
+            };
     }
 }
 
 class BaseNodeFileCardDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return remove(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const card = await requireCard(ctx, args.cardId);
+            if ((card as CardDoc).cardType !== 'file') throw new Error(`Not a file-card: ${args.cardId}`);
+            const fileName = (card as CardDoc).fileName;
+            if (fileName) {
+                const storagePath = fileStoragePath(ctx, card.nodeId, fileName);
+                try { await storage.del([storagePath], ctx.owner); } catch { /* ignore missing storage */ }
+            }
+            await CardModel.delete(ctx.domainId, card.docId);
+            return { ok: true, cardId: String(args.cardId), deletedFile: !!fileName };
     }
 }
 
 class BaseNodeFileCardCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return create(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const nodeId = String(args.nodeId || '');
+            const fileName = String(args.fileName || '').trim();
+            const fileUrl = String(args.fileUrl || '').trim();
+            if (!nodeId) throw new Error('nodeId is required');
+            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
+            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            if (!(base.nodes || []).some((node) => node.id === nodeId)) throw new Error(`Node not found: ${nodeId}`);
+            if (!fileName) throw new Error('fileName is required');
+            if (!fileUrl) throw new Error('fileUrl is required');
+            const response = await fetch(fileUrl);
+            if (!response.ok) throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
+            const storagePath = fileStoragePath(ctx, nodeId, fileName);
+            await storage.put(storagePath, Buffer.from(await response.arrayBuffer()), ctx.owner);
+            const meta = await storage.getMeta(storagePath);
+            if (!meta) throw new Error('Failed to store file');
+            const fileType = fileTypeOf(fileName);
+            const title = String(args.title || '').trim() || fileName;
+            const cardDocId = await CardModel.create(ctx.domainId, ctx.baseDocId, nodeId, ctx.owner, title, '', undefined, undefined, undefined, 'file', fileType, fileName, meta.size || 0);
+            return {
+                ok: true,
+                cardId: String(cardDocId),
+                nodeId,
+                fileName,
+                fileType,
+                fileSize: meta.size,
+                url: cardUrl(ctx, ctx.baseDocId, String(cardDocId)),
+                downloadUrl: fileDownloadUrl(ctx, ctx.baseDocId, nodeId, fileName),
+            };
     }
 }
 
 class BaseNodeFileCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return createMany(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const raw = args.files;
+            if (!Array.isArray(raw) || !raw.length) throw new Error('files must be a non-empty array of { nodeId, fileName, fileUrl }');
+            if (raw.length > MAX_FILE_CREATES_PER_CALL) {
+                throw new Error(`files holds ${raw.length} entries and one call stores ${MAX_FILE_CREATES_PER_CALL}; split the work across calls`);
+            }
+            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
+            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            const nodeIds = new Set((base.nodes || []).map((node) => node.id));
+            const planned: { index: number; nodeId: string; fileName: string; fileUrl: string; title: string }[] = [];
+            const seen = new Set<string>();
+            for (const [index, entry] of raw.entries()) {
+                if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`files[${index}] must be an object`);
+                const fields = entry as Record<string, unknown>;
+                const nodeId = asText(fields.nodeId);
+                if (!nodeId) throw new Error(`files[${index}].nodeId is required`);
+                if (!nodeIds.has(nodeId)) throw new Error(`files[${index}].nodeId ${nodeId} is not a node of this Base`);
+                const fileName = asText(fields.fileName);
+                if (!fileName) throw new Error(`files[${index}].fileName is required`);
+                const fileUrl = asText(fields.fileUrl);
+                if (!fileUrl) throw new Error(`files[${index}].fileUrl is required`);
+                const stored = `${nodeId}/${fileName}`;
+                if (seen.has(stored)) throw new Error(`files[${index}] stores ${fileName} on ${nodeId} twice; one file per node holds one path`);
+                seen.add(stored);
+                planned.push({ index, nodeId, fileName, fileUrl, title: asText(fields.title) || fileName });
+            }
+            type StoredFile = {
+                ok: true; index: number; cardId: string; nodeId: string; fileName: string;
+                fileType: string; fileSize: number; url: string; downloadUrl: string;
+            };
+            type RefusedFile = { ok: false; index: number; nodeId: string; fileName: string; error: string };
+            const results: (StoredFile | RefusedFile)[] = new Array(planned.length);
+            const storeOne = async (file: typeof planned[number]): Promise<StoredFile | RefusedFile> => {
+                const storagePath = fileStoragePath(ctx, file.nodeId, file.fileName);
+                try {
+                    const response = await fetch(file.fileUrl);
+                    if (!response.ok) throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
+                    await storage.put(storagePath, Buffer.from(await response.arrayBuffer()), ctx.owner);
+                    const meta = await storage.getMeta(storagePath);
+                    if (!meta) throw new Error('Failed to store file');
+                    const fileType = fileTypeOf(file.fileName);
+                    try {
+                        const cardId = await CardModel.create(
+                            ctx.domainId, ctx.baseDocId, file.nodeId, ctx.owner, file.title, '',
+                            undefined, undefined, undefined, 'file', fileType, file.fileName, meta.size || 0,
+                        );
+                        return {
+                            ok: true,
+                            index: file.index,
+                            cardId: String(cardId),
+                            nodeId: file.nodeId,
+                            fileName: file.fileName,
+                            fileType,
+                            fileSize: meta.size || 0,
+                            url: cardUrl(ctx, ctx.baseDocId, String(cardId)),
+                            downloadUrl: fileDownloadUrl(ctx, ctx.baseDocId, file.nodeId, file.fileName),
+                        };
+                    } catch (error) {
+                        try { await storage.del([storagePath], ctx.owner); } catch { /* ignore cleanup */ }
+                        throw error;
+                    }
+                } catch (error) {
+                    return { ok: false, index: file.index, nodeId: file.nodeId, fileName: file.fileName, error: (error as Error).message };
+                }
+            };
+            let next = 0;
+            const worker = async () => {
+                while (next < planned.length) {
+                    const file = planned[next];
+                    next += 1;
+                    results[file.index] = await storeOne(file);
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(MAX_FILE_DOWNLOADS_IN_FLIGHT, planned.length) }, worker));
+            const stored = results.filter((result) => result.ok) as StoredFile[];
+            const refused = results.filter((result) => !result.ok) as RefusedFile[];
+            return {
+                ok: refused.length === 0,
+                baseId: ctx.baseDocId,
+                fileCount: stored.length,
+                files: stored,
+                refusedFiles: refused,
+                reads: { base: 1 },
+                writes: { files: stored.length, cards: stored.length },
+            };
     }
 }
 
 class BaseNodeFileCardListManyExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return listMany(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const nodeIds = idList(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
+            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
+            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            const known = new Set((base.nodes || []).map((node) => node.id));
+            const missing = nodeIds.filter((nodeId) => !known.has(nodeId));
+            const present = nodeIds.filter((nodeId) => known.has(nodeId));
+            const cardsByNode = await CardModel.getByNodeIds(ctx.domainId, ctx.baseDocId, present);
+            const nodes = present.map((nodeId, index) => {
+                const files = (cardsByNode.get(nodeId) || []).filter((card) => (card as CardDoc).cardType === 'file');
+                return { index, nodeId, files: files.map((card) => fileCardSummary(ctx, card)) };
+            });
+            return {
+                ok: missing.length === 0,
+                baseId: ctx.baseDocId,
+                nodeCount: nodes.length,
+                nodes,
+                fileCount: nodes.reduce((sum, node) => sum + node.files.length, 0),
+                missingNodeIds: missing,
+                reads: { base: 1, cards: 1 },
+            };
     }
 }
 
 class BaseNodeFileCardGetManyExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return getMany(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
+            const byId = await cardsById(ctx, cardIds);
+            const files: unknown[] = [];
+            const missing: { index: number; cardId: string; error: string }[] = [];
+            for (const [index, cardId] of cardIds.entries()) {
+                const card = byId.get(cardId);
+                if (!card) {
+                    missing.push({ index, cardId, error: 'Card not found' });
+                    continue;
+                }
+                if ((card as CardDoc).cardType !== 'file') {
+                    missing.push({ index, cardId, error: `Not a file-card: ${cardId}` });
+                    continue;
+                }
+                files.push({ index, ...fileCardDetail(ctx, card) });
+            }
+            return {
+                ok: missing.length === 0,
+                baseId: ctx.baseDocId,
+                fileCount: files.length,
+                files,
+                missing,
+                reads: { cards: 1 },
+            };
     }
 }
 
 class BaseNodeFileCardDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return removeMany(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
+            const byId = await cardsById(ctx, cardIds);
+            for (const cardId of cardIds) {
+                const card = byId.get(cardId);
+                if (!card) throw new Error(`Card not found: ${cardId}`);
+                if ((card as CardDoc).cardType !== 'file') throw new Error(`Not a file-card: ${cardId}`);
+            }
+            const removed: string[] = [];
+            let deletedFiles = 0;
+            for (const cardId of cardIds) {
+                const card = byId.get(cardId) as CardDoc;
+                const fileName = card.fileName;
+                if (fileName) {
+                    try {
+                        await storage.del([fileStoragePath(ctx, card.nodeId, fileName)], ctx.owner);
+                        deletedFiles += 1;
+                    } catch { /* ignore missing storage */ }
+                }
+                await CardModel.delete(ctx.domainId, card.docId);
+                removed.push(cardId);
+            }
+            return {
+                ok: true,
+                baseId: ctx.baseDocId,
+                removedCardIds: removed,
+                removedCount: removed.length,
+                deletedFiles,
+                reads: { cards: 1 },
+                writes: { files: deletedFiles, cards: removed.length },
+            };
     }
 }
 

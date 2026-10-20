@@ -41,65 +41,65 @@ export const ConfigSetSchema = Schema.object({
     githubRepo: Schema.string().required().description('e.g. org/repo, https://github.com/org/repo, or empty string to clear.'),
 }).description('Set or clear the GitHub repository for this base. Pass `githubRepo` as owner/repo, full https URL, or null/empty to clear.');
 
-export async function status(ctx: ToolContext, args: ToolArgs) {
-    return handlers().baseGitStatus(toGitInput(ctx, args));
-}
 
-export async function commit(ctx: ToolContext, args: ToolArgs) {
-    return handlers().baseGitCommit(toGitInput(ctx, args));
-}
 
-export async function push(ctx: ToolContext, args: ToolArgs) {
-    return handlers().baseGitPush(toGitInput(ctx, args));
-}
 
-export async function pull(ctx: ToolContext, args: ToolArgs) {
-    return handlers().baseGitPull(toGitInput(ctx, args));
-}
 
-export async function configGet(ctx: ToolContext, _args: ToolArgs) {
-    return handlers().baseGitConfigGet({ domainId: ctx.domainId, baseDocId: ctx.baseDocId });
-}
 
-export async function configSet(ctx: ToolContext, args: ToolArgs) {
-    const raw = args.githubRepo;
-    const githubRepo = raw == null ? null : String(raw).trim();
-    return handlers().baseGitConfigSet({ ...toGitInput(ctx, args), githubRepo: githubRepo || null });
-}
+
+
+
+
+
+
 
 class BaseGitStatusExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return status(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            return handlers().baseGitStatus(toGitInput(ctx, args));
     }
 }
 
 class BaseGitCommitExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return commit(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            return handlers().baseGitCommit(toGitInput(ctx, args));
     }
 }
 
 class BaseGitPushExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return push(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            return handlers().baseGitPush(toGitInput(ctx, args));
     }
 }
 
 class BaseGitPullExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return pull(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            return handlers().baseGitPull(toGitInput(ctx, args));
     }
 }
 
 class BaseGitConfigGetExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return configGet(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const _args = this.args;
+            return handlers().baseGitConfigGet({ domainId: ctx.domainId, baseDocId: ctx.baseDocId });
     }
 }
 
 class BaseGitConfigSetExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return configSet(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const raw = args.githubRepo;
+            const githubRepo = raw == null ? null : String(raw).trim();
+            return handlers().baseGitConfigSet({ ...toGitInput(ctx, args), githubRepo: githubRepo || null });
     }
 }
 

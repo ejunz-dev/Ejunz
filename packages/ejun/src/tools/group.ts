@@ -35,109 +35,109 @@ export const GroupUpdateSchema = Schema.object({
 export const GroupRemoveSchema = Schema.object({
     groupId: Schema.number().step(1).min(1).required().description('Group id.'),
 }).description('Delete a Group by groupId. Existing sessions and workspace teams are detached, as in the Group management UI.');
-export async function listGroups(ctx: ToolContext, args: ToolArgs) {
-    const limit = resultLimit(args.limit);
-    const groups = (await GroupDefinitionModel.getMulti(ctx.domainId).toArray()).slice(0, limit);
-    const listed = await Promise.all(groups.map(async (group) => {
-        const workspace = await groupWorkspace(ctx, group.docId);
-        return { ...groupView(group), teamCount: workspace.teams.length, agentCount: workspace.sessions.length };
-    }));
-    return { ok: true, count: listed.length, groups: listed };
-}
 
-export async function searchGroups(ctx: ToolContext, args: ToolArgs) {
-    const query = String(args.query || '').trim().toLowerCase();
-    if (!query) throw new Error('query is required');
-    const limit = resultLimit(args.limit);
-    const groups = await GroupDefinitionModel.getMulti(ctx.domainId).toArray();
-    const matches = groups.filter((group) => [group.title, group.content].some((value) => typeof value === 'string' && value.toLowerCase().includes(query)));
-    return { ok: true, query, count: Math.min(matches.length, limit), groups: matches.slice(0, limit).map(groupView) };
-}
 
-export async function getGroup(ctx: ToolContext, args: ToolArgs) {
-    const { groupId, group } = await requireGroup(ctx, args);
-    await ensureGroupRoot(ctx, groupId, group.title);
-    const workspace = await groupWorkspace(ctx, groupId);
-    return {
-        ok: true,
-        group: groupView(group),
-        teamCount: workspace.teams.length,
-        agentCount: workspace.sessions.length,
-        outline: buildOutline(workspace.teams, workspace.sessions),
-    };
-}
 
-export async function createGroup(ctx: ToolContext, args: ToolArgs) {
-    const title = String(args.title || '').trim();
-    const content = typeof args.content === 'string' ? args.content : '';
-    if (!title || title.length > 256) throw new Error('title is required and must be at most 256 characters');
-    if (content.length > 100000) throw new Error('content must be at most 100000 characters');
-    const aid = await GroupDefinitionModel.add(ctx.domainId, ctx.owner, title, content);
-    const group = await GroupDefinitionModel.get(ctx.domainId, aid, GroupDefinitionModel.PROJECTION_LIST);
-    if (!group) throw new Error('Failed to read the created Group');
-    await ensureGroupRoot(ctx, group.docId, group.title);
-    return { ok: true, group: groupView(group) };
-}
 
-export async function updateGroup(ctx: ToolContext, args: ToolArgs) {
-    const { groupId } = await requireGroup(ctx, args, 'edit');
-    const updates: Record<string, string> = {};
-    if (Object.prototype.hasOwnProperty.call(args, 'title')) {
-        const title = String(args.title || '').trim();
-        if (!title || title.length > 256) throw new Error('title must be between 1 and 256 characters');
-        updates.title = title;
-    }
-    if (typeof args.content === 'string') {
-        if (args.content.length > 100000) throw new Error('content must be at most 100000 characters');
-        updates.content = args.content;
-    }
-    if (!Object.keys(updates).length) throw new Error('Nothing to update');
-    const group = await GroupDefinitionModel.edit(ctx.domainId, groupId, updates);
-    if (updates.title !== undefined) await AgentSessionModel.syncGroupRootTitle(ctx.domainId, groupId, updates.title);
-    await ctx.broadcastAgentEvent?.('agent/group-context', { domainId: ctx.domainId, groupId });
-    return { ok: true, group: groupView(group) };
-}
 
-export async function removeGroup(ctx: ToolContext, args: ToolArgs) {
-    const { groupId } = await requireGroup(ctx, args, 'delete');
-    await AgentSessionModel.detachGroup(ctx.domainId, groupId);
-    await GroupDefinitionModel.del(ctx.domainId, groupId);
-    return { ok: true, groupId, deleted: true };
-}
+
+
+
+
+
+
 
 class AgentGroupListExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return listGroups(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const limit = resultLimit(args.limit);
+            const groups = (await GroupDefinitionModel.getMulti(ctx.domainId).toArray()).slice(0, limit);
+            const listed = await Promise.all(groups.map(async (group) => {
+                const workspace = await groupWorkspace(ctx, group.docId);
+                return { ...groupView(group), teamCount: workspace.teams.length, agentCount: workspace.sessions.length };
+            }));
+            return { ok: true, count: listed.length, groups: listed };
     }
 }
 
 class AgentGroupSearchExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return searchGroups(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const query = String(args.query || '').trim().toLowerCase();
+            if (!query) throw new Error('query is required');
+            const limit = resultLimit(args.limit);
+            const groups = await GroupDefinitionModel.getMulti(ctx.domainId).toArray();
+            const matches = groups.filter((group) => [group.title, group.content].some((value) => typeof value === 'string' && value.toLowerCase().includes(query)));
+            return { ok: true, query, count: Math.min(matches.length, limit), groups: matches.slice(0, limit).map(groupView) };
     }
 }
 
 class AgentGroupGetExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return getGroup(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const { groupId, group } = await requireGroup(ctx, args);
+            await ensureGroupRoot(ctx, groupId, group.title);
+            const workspace = await groupWorkspace(ctx, groupId);
+            return {
+                ok: true,
+                group: groupView(group),
+                teamCount: workspace.teams.length,
+                agentCount: workspace.sessions.length,
+                outline: buildOutline(workspace.teams, workspace.sessions),
+            };
     }
 }
 
 class AgentGroupCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return createGroup(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const title = String(args.title || '').trim();
+            const content = typeof args.content === 'string' ? args.content : '';
+            if (!title || title.length > 256) throw new Error('title is required and must be at most 256 characters');
+            if (content.length > 100000) throw new Error('content must be at most 100000 characters');
+            const aid = await GroupDefinitionModel.add(ctx.domainId, ctx.owner, title, content);
+            const group = await GroupDefinitionModel.get(ctx.domainId, aid, GroupDefinitionModel.PROJECTION_LIST);
+            if (!group) throw new Error('Failed to read the created Group');
+            await ensureGroupRoot(ctx, group.docId, group.title);
+            return { ok: true, group: groupView(group) };
     }
 }
 
 class AgentGroupUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return updateGroup(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const { groupId } = await requireGroup(ctx, args, 'edit');
+            const updates: Record<string, string> = {};
+            if (Object.prototype.hasOwnProperty.call(args, 'title')) {
+                const title = String(args.title || '').trim();
+                if (!title || title.length > 256) throw new Error('title must be between 1 and 256 characters');
+                updates.title = title;
+            }
+            if (typeof args.content === 'string') {
+                if (args.content.length > 100000) throw new Error('content must be at most 100000 characters');
+                updates.content = args.content;
+            }
+            if (!Object.keys(updates).length) throw new Error('Nothing to update');
+            const group = await GroupDefinitionModel.edit(ctx.domainId, groupId, updates);
+            if (updates.title !== undefined) await AgentSessionModel.syncGroupRootTitle(ctx.domainId, groupId, updates.title);
+            await ctx.broadcastAgentEvent?.('agent/group-context', { domainId: ctx.domainId, groupId });
+            return { ok: true, group: groupView(group) };
     }
 }
 
 class AgentGroupDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return removeGroup(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const { groupId } = await requireGroup(ctx, args, 'delete');
+            await AgentSessionModel.detachGroup(ctx.domainId, groupId);
+            await GroupDefinitionModel.del(ctx.domainId, groupId);
+            return { ok: true, groupId, deleted: true };
     }
 }
 

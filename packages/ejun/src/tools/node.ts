@@ -83,315 +83,315 @@ function newEdgeId() {
     return `edge_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
-export async function create(ctx: ToolContext, args: ToolArgs) {
-    const text = String(args.text || '').trim();
-    if (!text) throw new Error('text is required');
-    const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
-    if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
-    const parentId = args.parentId ? String(args.parentId).trim() : findRootNodeId(base.nodes || [], base.edges || []);
-    if (parentId && !(base.nodes || []).some((node) => node.id === parentId)) throw new Error(`Parent node not found: ${parentId}`);
-    const result = await BaseModel.addNode(ctx.domainId, ctx.baseDocId, { text } as any, parentId, parentId);
-    return { ok: true, nodeId: result.nodeId, edgeId: result.edgeId, parentId: parentId ?? null, url: nodeUrl(ctx, ctx.baseDocId, result.nodeId) };
-}
 
-export async function update(ctx: ToolContext, args: ToolArgs) {
-    const nodeId = String(args.nodeId || '');
-    const text = String(args.text || '');
-    if (!nodeId) throw new Error('nodeId is required');
-    const updates: Record<string, unknown> = { text };
-    if (Object.prototype.hasOwnProperty.call(args, 'parentId')) {
-        const parentId = String(args.parentId || '').trim();
-        if (!parentId) throw new Error('parentId is required when provided');
-        updates.parentId = parentId;
-    }
-    await BaseModel.updateNode(ctx.domainId, ctx.baseDocId, nodeId, updates as any);
-    return {
-        ok: true,
-        nodeId,
-        ...(updates.parentId ? { parentId: updates.parentId } : {}),
-        url: nodeUrl(ctx, ctx.baseDocId, nodeId),
-    };
-}
 
-export async function get(ctx: ToolContext, args: ToolArgs) {
-    const nodeId = String(args.nodeId || '').trim();
-    if (!nodeId) throw new Error('nodeId is required');
-    const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
-    if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
-    const node = (base.nodes || []).find((item) => item.id === nodeId);
-    if (!node) throw new Error(`Node not found: ${nodeId}`);
-    const nodeById = new Map((base.nodes || []).map((item) => [item.id, item]));
-    const childIds = new Set<string>();
-    for (const child of base.nodes || []) {
-        if (child.parentId === nodeId) childIds.add(child.id);
-    }
-    for (const edge of base.edges || []) {
-        const child = nodeById.get(edge.target);
-        if (edge.source === nodeId && child && !child.parentId) childIds.add(child.id);
-    }
-    for (const childId of node.children || []) {
-        const child = nodeById.get(childId);
-        if (child && !child.parentId) childIds.add(childId);
-    }
-    const cards = await CardModel.getByNodeId(ctx.domainId, ctx.baseDocId, nodeId);
-    return {
-        ok: true,
-        node: {
-            nodeId: node.id,
-            title: node.text || '',
-            url: nodeUrl(ctx, ctx.baseDocId, node.id),
-        },
-        childNodes: (base.nodes || [])
-            .filter((child) => childIds.has(child.id))
-            .map((child) => ({ nodeId: child.id, title: child.text || '' })),
-        cards: cards.map((card) => ({
-            cardId: String(card.docId),
-            title: card.title || '',
-            content: card.content || '',
-        })),
-    };
-}
 
-export async function remove(ctx: ToolContext, args: ToolArgs) {
-    const nodeId = String(args.nodeId || '');
-    if (!nodeId) throw new Error('nodeId is required');
-    await BaseModel.deleteNode(ctx.domainId, ctx.baseDocId, nodeId);
-    return { ok: true, nodeId };
-}
 
-export async function createMany(ctx: ToolContext, args: ToolArgs) {
-    const raw = args.nodes;
-    if (!Array.isArray(raw) || !raw.length) throw new Error('nodes must be a non-empty array of { text, ref?, parentId?, parentRef? }');
-    if (raw.length > MAX_NODES_PER_CALL) {
-        throw new Error(`nodes holds ${raw.length} entries and one call creates ${MAX_NODES_PER_CALL}; split the work across calls`);
-    }
-    const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
-    if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
-    const nodes: BaseNode[] = base.nodes || [];
-    const edges: BaseEdge[] = base.edges || [];
-    const nodeById = new Map(nodes.map((node) => [node.id, node]));
-    const namedParent = asText(args.parentId);
-    if (namedParent && !nodeById.has(namedParent)) throw new Error(`Parent node not found: ${namedParent}`);
-    const defaultParent = namedParent || findRootNodeId(nodes, edges) || '';
-    const planned: { index: number; ref: string; text: string; parentId: string; level: number; nodeId: string }[] = [];
-    const byRef = new Map<string, typeof planned[number]>();
-    const refOwner = new Map<string, number>();
-    for (const [index, entry] of raw.entries()) {
-        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`nodes[${index}] must be an object with text`);
-        const fields = entry as Record<string, unknown>;
-        const text = asText(fields.text);
-        if (!text) throw new Error(`nodes[${index}].text is required`);
-        const ref = asText(fields.ref);
-        if (ref && refOwner.has(ref)) throw new Error(`nodes[${index}].ref ${ref} is already the ref of nodes[${refOwner.get(ref)}]`);
-        const parentRef = asText(fields.parentRef);
-        const ownParent = asText(fields.parentId);
-        if (parentRef && ownParent) throw new Error(`nodes[${index}] names both parentRef and parentId; keep one`);
-        let parentId: string;
-        if (parentRef) {
-            const referenced = byRef.get(parentRef);
-            if (!referenced) throw new Error(`nodes[${index}].parentRef ${parentRef} does not name an earlier entry; list a parent before its children`);
-            parentId = referenced.nodeId;
-        } else if (ownParent) {
-            if (!nodeById.has(ownParent)) throw new Error(`nodes[${index}].parentId ${ownParent} is not a node of this Base`);
-            parentId = ownParent;
-        } else {
-            if (!defaultParent) throw new Error('This Base has no node to attach the new nodes to; pass parentId');
-            parentId = defaultParent;
-        }
-        const parent = nodeById.get(parentId);
-        if (!parent) throw new Error(`Parent node not found: ${parentId}`);
-        const nodeId = newNodeId();
-        const level = (parent.level ?? -1) + 1;
-        const now = new Date();
-        const node: BaseNode = { id: nodeId, text, parentId, level, createdAt: now, updateAt: now };
-        nodes.push(node);
-        parent.children = [...(parent.children || []), nodeId];
-        edges.push({ id: newEdgeId(), source: parentId, target: nodeId });
-        nodeById.set(nodeId, node);
-        const created = { index, ref, text, parentId, level, nodeId };
-        planned.push(created);
-        if (ref) {
-            byRef.set(ref, created);
-            refOwner.set(ref, index);
-        }
-    }
-    await BaseModel.updateFull(ctx.domainId, ctx.baseDocId, { nodes, edges });
-    const parentMap = buildParentMap(edges);
-    return {
-        ok: true,
-        baseId: ctx.baseDocId,
-        nodeCount: planned.length,
-        nodes: planned.map((entry) => ({
-            index: entry.index,
-            ref: entry.ref,
-            nodeId: entry.nodeId,
-            parentId: entry.parentId,
-            level: entry.level,
-            path: pathLabelFor(entry.nodeId, parentMap, nodeById),
-            url: nodeUrl(ctx, ctx.baseDocId, entry.nodeId),
-        })),
-        writes: 1,
-    };
-}
 
-export async function getMany(ctx: ToolContext, args: ToolArgs) {
-    const nodeIds = idList(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
-    const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
-    if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
-    const nodes = base.nodes || [];
-    const edges = base.edges || [];
-    const nodeById = new Map(nodes.map((node) => [node.id, node]));
-    const cardsByNode = await CardModel.getByNodeIds(ctx.domainId, ctx.baseDocId, nodeIds);
-    const found: unknown[] = [];
-    const missing: string[] = [];
-    for (const [index, nodeId] of nodeIds.entries()) {
-        const node = nodeById.get(nodeId);
-        if (!node) {
-            missing.push(nodeId);
-            continue;
-        }
-        const childIds = new Set<string>();
-        for (const child of nodes) {
-            if (child.parentId === nodeId) childIds.add(child.id);
-        }
-        for (const edge of edges) {
-            const child = nodeById.get(edge.target);
-            if (edge.source === nodeId && child && !child.parentId) childIds.add(child.id);
-        }
-        for (const childId of node.children || []) {
-            const child = nodeById.get(childId);
-            if (child && !child.parentId) childIds.add(childId);
-        }
-        const cards = cardsByNode.get(nodeId) || [];
-        found.push({
-            index,
-            nodeId,
-            title: node.text || '',
-            url: nodeUrl(ctx, ctx.baseDocId, nodeId),
-            childNodes: nodes
-                .filter((child) => childIds.has(child.id))
-                .map((child) => ({ nodeId: child.id, title: child.text || '' })),
-            cards: cards.map((card) => ({
-                cardId: String(card.docId),
-                title: card.title || '',
-                content: card.content || '',
-            })),
-        });
-    }
-    return {
-        ok: missing.length === 0,
-        baseId: ctx.baseDocId,
-        nodeCount: found.length,
-        nodes: found,
-        missingNodeIds: missing,
-        reads: { base: 1, cards: 1 },
-    };
-}
 
-export async function updateMany(ctx: ToolContext, args: ToolArgs) {
-    const raw = args.entries;
-    if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { nodeId, text?, parentId? }');
-    if (raw.length > MAX_NODES_PER_CALL) {
-        throw new Error(`entries holds ${raw.length} entries and one call updates ${MAX_NODES_PER_CALL}; split the work across calls`);
-    }
-    const planned: { index: number; nodeId: string; update: Partial<BaseNode> & { nodeId: string }; fields: string[] }[] = [];
-    const seen = new Set<string>();
-    for (const [index, entry] of raw.entries()) {
-        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`entries[${index}] must be an object with nodeId`);
-        const fields = entry as Record<string, unknown>;
-        const nodeId = asText(fields.nodeId);
-        if (!nodeId) throw new Error(`entries[${index}].nodeId is required`);
-        if (seen.has(nodeId)) throw new Error(`entries[${index}].nodeId ${nodeId} appears twice; send one entry per node`);
-        seen.add(nodeId);
-        const update: Partial<BaseNode> & { nodeId: string } = { nodeId };
-        const changed: string[] = [];
-        if (Object.prototype.hasOwnProperty.call(fields, 'text')) {
-            if (typeof fields.text !== 'string') throw new Error(`entries[${index}].text must be a string`);
-            update.text = fields.text;
-            changed.push('text');
-        }
-        if (Object.prototype.hasOwnProperty.call(fields, 'parentId')) {
-            const parentId = asText(fields.parentId);
-            if (!parentId) throw new Error(`entries[${index}].parentId is required when provided`);
-            update.parentId = parentId;
-            changed.push('parentId');
-        }
-        if (!changed.length) throw new Error(`entries[${index}] names nothing to change; give text, parentId, or both`);
-        planned.push({ index, nodeId, update, fields: changed });
-    }
-    await BaseModel.applyNodeUpdates(ctx.domainId, ctx.baseDocId, planned.map((entry) => entry.update));
-    return {
-        ok: true,
-        baseId: ctx.baseDocId,
-        nodeCount: planned.length,
-        nodes: planned.map((entry) => ({
-            index: entry.index,
-            changed: entry.fields,
-            ...entry.update,
-            url: nodeUrl(ctx, ctx.baseDocId, entry.nodeId),
-        })),
-        reads: 1,
-        writes: 1,
-    };
-}
 
-export async function removeMany(ctx: ToolContext, args: ToolArgs) {
-    const nodeIds = idList(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
-    const result = await BaseModel.deleteNodes(ctx.domainId, ctx.baseDocId, nodeIds);
-    return {
-        ok: result.missing.length === 0,
-        baseId: ctx.baseDocId,
-        removedNodeIds: result.removed,
-        missingNodeIds: result.missing,
-        writes: { graph: 1 },
-    };
-}
+
+
+
+
+
+
+
+
 
 class BaseNodeCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return create(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const text = String(args.text || '').trim();
+            if (!text) throw new Error('text is required');
+            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
+            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            const parentId = args.parentId ? String(args.parentId).trim() : findRootNodeId(base.nodes || [], base.edges || []);
+            if (parentId && !(base.nodes || []).some((node) => node.id === parentId)) throw new Error(`Parent node not found: ${parentId}`);
+            const result = await BaseModel.addNode(ctx.domainId, ctx.baseDocId, { text } as any, parentId, parentId);
+            return { ok: true, nodeId: result.nodeId, edgeId: result.edgeId, parentId: parentId ?? null, url: nodeUrl(ctx, ctx.baseDocId, result.nodeId) };
     }
 }
 
 class BaseNodeUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return update(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const nodeId = String(args.nodeId || '');
+            const text = String(args.text || '');
+            if (!nodeId) throw new Error('nodeId is required');
+            const updates: Record<string, unknown> = { text };
+            if (Object.prototype.hasOwnProperty.call(args, 'parentId')) {
+                const parentId = String(args.parentId || '').trim();
+                if (!parentId) throw new Error('parentId is required when provided');
+                updates.parentId = parentId;
+            }
+            await BaseModel.updateNode(ctx.domainId, ctx.baseDocId, nodeId, updates as any);
+            return {
+                ok: true,
+                nodeId,
+                ...(updates.parentId ? { parentId: updates.parentId } : {}),
+                url: nodeUrl(ctx, ctx.baseDocId, nodeId),
+            };
     }
 }
 
 class BaseNodeGetExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return get(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const nodeId = String(args.nodeId || '').trim();
+            if (!nodeId) throw new Error('nodeId is required');
+            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
+            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            const node = (base.nodes || []).find((item) => item.id === nodeId);
+            if (!node) throw new Error(`Node not found: ${nodeId}`);
+            const nodeById = new Map((base.nodes || []).map((item) => [item.id, item]));
+            const childIds = new Set<string>();
+            for (const child of base.nodes || []) {
+                if (child.parentId === nodeId) childIds.add(child.id);
+            }
+            for (const edge of base.edges || []) {
+                const child = nodeById.get(edge.target);
+                if (edge.source === nodeId && child && !child.parentId) childIds.add(child.id);
+            }
+            for (const childId of node.children || []) {
+                const child = nodeById.get(childId);
+                if (child && !child.parentId) childIds.add(childId);
+            }
+            const cards = await CardModel.getByNodeId(ctx.domainId, ctx.baseDocId, nodeId);
+            return {
+                ok: true,
+                node: {
+                    nodeId: node.id,
+                    title: node.text || '',
+                    url: nodeUrl(ctx, ctx.baseDocId, node.id),
+                },
+                childNodes: (base.nodes || [])
+                    .filter((child) => childIds.has(child.id))
+                    .map((child) => ({ nodeId: child.id, title: child.text || '' })),
+                cards: cards.map((card) => ({
+                    cardId: String(card.docId),
+                    title: card.title || '',
+                    content: card.content || '',
+                })),
+            };
     }
 }
 
 class BaseNodeDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return remove(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const nodeId = String(args.nodeId || '');
+            if (!nodeId) throw new Error('nodeId is required');
+            await BaseModel.deleteNode(ctx.domainId, ctx.baseDocId, nodeId);
+            return { ok: true, nodeId };
     }
 }
 
 class BaseNodeCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return createMany(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const raw = args.nodes;
+            if (!Array.isArray(raw) || !raw.length) throw new Error('nodes must be a non-empty array of { text, ref?, parentId?, parentRef? }');
+            if (raw.length > MAX_NODES_PER_CALL) {
+                throw new Error(`nodes holds ${raw.length} entries and one call creates ${MAX_NODES_PER_CALL}; split the work across calls`);
+            }
+            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
+            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            const nodes: BaseNode[] = base.nodes || [];
+            const edges: BaseEdge[] = base.edges || [];
+            const nodeById = new Map(nodes.map((node) => [node.id, node]));
+            const namedParent = asText(args.parentId);
+            if (namedParent && !nodeById.has(namedParent)) throw new Error(`Parent node not found: ${namedParent}`);
+            const defaultParent = namedParent || findRootNodeId(nodes, edges) || '';
+            const planned: { index: number; ref: string; text: string; parentId: string; level: number; nodeId: string }[] = [];
+            const byRef = new Map<string, typeof planned[number]>();
+            const refOwner = new Map<string, number>();
+            for (const [index, entry] of raw.entries()) {
+                if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`nodes[${index}] must be an object with text`);
+                const fields = entry as Record<string, unknown>;
+                const text = asText(fields.text);
+                if (!text) throw new Error(`nodes[${index}].text is required`);
+                const ref = asText(fields.ref);
+                if (ref && refOwner.has(ref)) throw new Error(`nodes[${index}].ref ${ref} is already the ref of nodes[${refOwner.get(ref)}]`);
+                const parentRef = asText(fields.parentRef);
+                const ownParent = asText(fields.parentId);
+                if (parentRef && ownParent) throw new Error(`nodes[${index}] names both parentRef and parentId; keep one`);
+                let parentId: string;
+                if (parentRef) {
+                    const referenced = byRef.get(parentRef);
+                    if (!referenced) throw new Error(`nodes[${index}].parentRef ${parentRef} does not name an earlier entry; list a parent before its children`);
+                    parentId = referenced.nodeId;
+                } else if (ownParent) {
+                    if (!nodeById.has(ownParent)) throw new Error(`nodes[${index}].parentId ${ownParent} is not a node of this Base`);
+                    parentId = ownParent;
+                } else {
+                    if (!defaultParent) throw new Error('This Base has no node to attach the new nodes to; pass parentId');
+                    parentId = defaultParent;
+                }
+                const parent = nodeById.get(parentId);
+                if (!parent) throw new Error(`Parent node not found: ${parentId}`);
+                const nodeId = newNodeId();
+                const level = (parent.level ?? -1) + 1;
+                const now = new Date();
+                const node: BaseNode = { id: nodeId, text, parentId, level, createdAt: now, updateAt: now };
+                nodes.push(node);
+                parent.children = [...(parent.children || []), nodeId];
+                edges.push({ id: newEdgeId(), source: parentId, target: nodeId });
+                nodeById.set(nodeId, node);
+                const created = { index, ref, text, parentId, level, nodeId };
+                planned.push(created);
+                if (ref) {
+                    byRef.set(ref, created);
+                    refOwner.set(ref, index);
+                }
+            }
+            await BaseModel.updateFull(ctx.domainId, ctx.baseDocId, { nodes, edges });
+            const parentMap = buildParentMap(edges);
+            return {
+                ok: true,
+                baseId: ctx.baseDocId,
+                nodeCount: planned.length,
+                nodes: planned.map((entry) => ({
+                    index: entry.index,
+                    ref: entry.ref,
+                    nodeId: entry.nodeId,
+                    parentId: entry.parentId,
+                    level: entry.level,
+                    path: pathLabelFor(entry.nodeId, parentMap, nodeById),
+                    url: nodeUrl(ctx, ctx.baseDocId, entry.nodeId),
+                })),
+                writes: 1,
+            };
     }
 }
 
 class BaseNodeGetManyExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return getMany(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const nodeIds = idList(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
+            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
+            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            const nodes = base.nodes || [];
+            const edges = base.edges || [];
+            const nodeById = new Map(nodes.map((node) => [node.id, node]));
+            const cardsByNode = await CardModel.getByNodeIds(ctx.domainId, ctx.baseDocId, nodeIds);
+            const found: unknown[] = [];
+            const missing: string[] = [];
+            for (const [index, nodeId] of nodeIds.entries()) {
+                const node = nodeById.get(nodeId);
+                if (!node) {
+                    missing.push(nodeId);
+                    continue;
+                }
+                const childIds = new Set<string>();
+                for (const child of nodes) {
+                    if (child.parentId === nodeId) childIds.add(child.id);
+                }
+                for (const edge of edges) {
+                    const child = nodeById.get(edge.target);
+                    if (edge.source === nodeId && child && !child.parentId) childIds.add(child.id);
+                }
+                for (const childId of node.children || []) {
+                    const child = nodeById.get(childId);
+                    if (child && !child.parentId) childIds.add(childId);
+                }
+                const cards = cardsByNode.get(nodeId) || [];
+                found.push({
+                    index,
+                    nodeId,
+                    title: node.text || '',
+                    url: nodeUrl(ctx, ctx.baseDocId, nodeId),
+                    childNodes: nodes
+                        .filter((child) => childIds.has(child.id))
+                        .map((child) => ({ nodeId: child.id, title: child.text || '' })),
+                    cards: cards.map((card) => ({
+                        cardId: String(card.docId),
+                        title: card.title || '',
+                        content: card.content || '',
+                    })),
+                });
+            }
+            return {
+                ok: missing.length === 0,
+                baseId: ctx.baseDocId,
+                nodeCount: found.length,
+                nodes: found,
+                missingNodeIds: missing,
+                reads: { base: 1, cards: 1 },
+            };
     }
 }
 
 class BaseNodeUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return updateMany(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const raw = args.entries;
+            if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { nodeId, text?, parentId? }');
+            if (raw.length > MAX_NODES_PER_CALL) {
+                throw new Error(`entries holds ${raw.length} entries and one call updates ${MAX_NODES_PER_CALL}; split the work across calls`);
+            }
+            const planned: { index: number; nodeId: string; update: Partial<BaseNode> & { nodeId: string }; fields: string[] }[] = [];
+            const seen = new Set<string>();
+            for (const [index, entry] of raw.entries()) {
+                if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`entries[${index}] must be an object with nodeId`);
+                const fields = entry as Record<string, unknown>;
+                const nodeId = asText(fields.nodeId);
+                if (!nodeId) throw new Error(`entries[${index}].nodeId is required`);
+                if (seen.has(nodeId)) throw new Error(`entries[${index}].nodeId ${nodeId} appears twice; send one entry per node`);
+                seen.add(nodeId);
+                const update: Partial<BaseNode> & { nodeId: string } = { nodeId };
+                const changed: string[] = [];
+                if (Object.prototype.hasOwnProperty.call(fields, 'text')) {
+                    if (typeof fields.text !== 'string') throw new Error(`entries[${index}].text must be a string`);
+                    update.text = fields.text;
+                    changed.push('text');
+                }
+                if (Object.prototype.hasOwnProperty.call(fields, 'parentId')) {
+                    const parentId = asText(fields.parentId);
+                    if (!parentId) throw new Error(`entries[${index}].parentId is required when provided`);
+                    update.parentId = parentId;
+                    changed.push('parentId');
+                }
+                if (!changed.length) throw new Error(`entries[${index}] names nothing to change; give text, parentId, or both`);
+                planned.push({ index, nodeId, update, fields: changed });
+            }
+            await BaseModel.applyNodeUpdates(ctx.domainId, ctx.baseDocId, planned.map((entry) => entry.update));
+            return {
+                ok: true,
+                baseId: ctx.baseDocId,
+                nodeCount: planned.length,
+                nodes: planned.map((entry) => ({
+                    index: entry.index,
+                    changed: entry.fields,
+                    ...entry.update,
+                    url: nodeUrl(ctx, ctx.baseDocId, entry.nodeId),
+                })),
+                reads: 1,
+                writes: 1,
+            };
     }
 }
 
 class BaseNodeDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return removeMany(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const nodeIds = idList(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
+            const result = await BaseModel.deleteNodes(ctx.domainId, ctx.baseDocId, nodeIds);
+            return {
+                ok: result.missing.length === 0,
+                baseId: ctx.baseDocId,
+                removedNodeIds: result.removed,
+                missingNodeIds: result.missing,
+                writes: { graph: 1 },
+            };
     }
 }
 

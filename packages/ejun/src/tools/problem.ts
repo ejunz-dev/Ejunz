@@ -104,319 +104,319 @@ function problemsOf(raw: unknown, label: string): Problem[] {
     });
 }
 
-export async function list(ctx: ToolContext, args: ToolArgs) {
-    const card = await requireCard(ctx, args.cardId);
-    const problems = card.problems || [];
-    return { cardId: String(card.docId), count: problems.length, problems: problems.map((problem) => summarizeProblem(ctx, card, problem)) };
-}
 
-export async function get(ctx: ToolContext, args: ToolArgs) {
-    const card = await requireCard(ctx, args.cardId);
-    const pid = String(args.pid || '').trim();
-    if (!pid) throw new Error('pid is required');
-    const problems = card.problems || [];
-    const index = findProblemIndex(problems, pid);
-    if (index < 0) throw new Error(`Problem not found: ${pid}`);
-    return { cardId: String(card.docId), problem: problems[index], url: problemUrl(ctx, ctx.baseDocId, String(card.docId), pid) };
-}
 
-export async function create(ctx: ToolContext, args: ToolArgs) {
-    const card = await requireCard(ctx, args.cardId);
-    const payload = parseProblemPayload(args.problem);
-    const pid = newProblemPid();
-    const problem = migrateRawProblem(buildProblemRaw(payload, pid));
-    await saveCardProblems(ctx.domainId, card, [...(card.problems || []), problem]);
-    return { ok: true, cardId: String(card.docId), pid: problem.pid, problem, url: problemUrl(ctx, ctx.baseDocId, String(card.docId), String(problem.pid)) };
-}
 
-export async function update(ctx: ToolContext, args: ToolArgs) {
-    const card = await requireCard(ctx, args.cardId);
-    const pid = String(args.pid || '').trim();
-    if (!pid) throw new Error('pid is required');
-    const payload = parseProblemPayload(args.problem);
-    const problems = [...(card.problems || [])];
-    const index = findProblemIndex(problems, pid);
-    if (index < 0) throw new Error(`Problem not found: ${pid}`);
-    const problem = migrateRawProblem(buildProblemRaw({ ...(problems[index] as unknown as Record<string, unknown>), ...payload }, pid));
-    problems[index] = problem;
-    await saveCardProblems(ctx.domainId, card, problems);
-    return { ok: true, cardId: String(card.docId), pid, problem, url: problemUrl(ctx, ctx.baseDocId, String(card.docId), pid) };
-}
 
-export async function remove(ctx: ToolContext, args: ToolArgs) {
-    const card = await requireCard(ctx, args.cardId);
-    const pid = String(args.pid || '').trim();
-    if (!pid) throw new Error('pid is required');
-    const problems = card.problems || [];
-    const index = findProblemIndex(problems, pid);
-    if (index < 0) throw new Error(`Problem not found: ${pid}`);
-    await saveCardProblems(ctx.domainId, card, problems.filter((_, itemIndex) => itemIndex !== index));
-    return { ok: true, cardId: String(card.docId), pid };
-}
 
-export async function createMany(ctx: ToolContext, args: ToolArgs) {
-    const raw = args.entries;
-    if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, problems }');
-    const planned = raw.map((entry, index) => {
-        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`entries[${index}] must be an object with cardId and problems`);
-        const fields = entry as Record<string, unknown>;
-        const cardId = asText(fields.cardId);
-        if (!cardId) throw new Error(`entries[${index}].cardId is required`);
-        return { index, cardId, problems: problemsOf(fields.problems, `entries[${index}]`) };
-    });
-    const total = planned.reduce((sum, entry) => sum + entry.problems.length, 0);
-    if (total > MAX_PROBLEMS_PER_CALL) {
-        throw new Error(`entries hold ${total} problems and one call adds ${MAX_PROBLEMS_PER_CALL}; split the work across calls`);
-    }
-    const seen = new Set<string>();
-    for (const entry of planned) {
-        if (seen.has(entry.cardId)) throw new Error(`entries[${entry.index}].cardId ${entry.cardId} appears twice; send one entry holding all of that card's problems`);
-        seen.add(entry.cardId);
-    }
-    const cards: CardDoc[] = [];
-    for (const entry of planned) cards.push(await requireCard(ctx, entry.cardId));
-    const added: { index: number; cardId: string; added: string[]; total: number; urls: string[] }[] = [];
-    const refused: { index: number; cardId: string; error: string }[] = [];
-    for (const [position, entry] of planned.entries()) {
-        const card = cards[position];
-        try {
-            await saveCardProblems(ctx.domainId, card, [...(card.problems || []), ...entry.problems]);
-            added.push({
-                index: entry.index,
-                cardId: entry.cardId,
-                added: entry.problems.map((problem) => problem.pid),
-                total: (card.problems || []).length + entry.problems.length,
-                urls: entry.problems.map((problem) => problemUrl(ctx, ctx.baseDocId, entry.cardId, String(problem.pid))),
-            });
-        } catch (error) {
-            refused.push({ index: entry.index, cardId: entry.cardId, error: (error as Error).message });
-        }
-    }
-    return {
-        ok: refused.length === 0,
-        baseId: ctx.baseDocId,
-        problemCount: added.reduce((sum, entry) => sum + entry.added.length, 0),
-        entries: added,
-        refusedEntries: refused,
-        writes: { cards: added.length },
-    };
-}
 
-export async function getMany(ctx: ToolContext, args: ToolArgs) {
-    const raw = args.entries;
-    if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, pid }');
-    if (raw.length > MAX_PROBLEMS_PER_CALL) {
-        throw new Error(`entries holds ${raw.length} entries and one call reads ${MAX_PROBLEMS_PER_CALL}; split the work across calls`);
-    }
-    const planned = raw.map((entry, index) => {
-        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`entries[${index}] must be an object with cardId and pid`);
-        const fields = entry as Record<string, unknown>;
-        const cardId = asText(fields.cardId);
-        if (!cardId) throw new Error(`entries[${index}].cardId is required`);
-        const pid = asText(fields.pid);
-        if (!pid) throw new Error(`entries[${index}].pid is required`);
-        return { index, cardId, pid };
-    });
-    const byId = await cardsById(ctx, [...new Set(planned.map((entry) => entry.cardId))]);
-    const found: unknown[] = [];
-    const missing: { index: number; cardId: string; pid: string; error: string }[] = [];
-    for (const entry of planned) {
-        const card = byId.get(entry.cardId);
-        if (!card) {
-            missing.push({ index: entry.index, cardId: entry.cardId, pid: entry.pid, error: 'Card not found' });
-            continue;
-        }
-        const problems = card.problems || [];
-        const position = findProblemIndex(problems, entry.pid);
-        if (position < 0) {
-            missing.push({ index: entry.index, cardId: entry.cardId, pid: entry.pid, error: `Problem not found: ${entry.pid}` });
-            continue;
-        }
-        found.push({
-            index: entry.index,
-            cardId: String(card.docId),
-            pid: entry.pid,
-            problem: problems[position],
-            url: problemUrl(ctx, ctx.baseDocId, String(card.docId), entry.pid),
-        });
-    }
-    return {
-        ok: missing.length === 0,
-        baseId: ctx.baseDocId,
-        problemCount: found.length,
-        problems: found,
-        missing,
-        reads: { cards: 1 },
-    };
-}
 
-export async function updateMany(ctx: ToolContext, args: ToolArgs) {
-    const raw = args.entries;
-    if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, pid, problem }');
-    if (raw.length > MAX_PROBLEMS_PER_CALL) {
-        throw new Error(`entries holds ${raw.length} entries and one call updates ${MAX_PROBLEMS_PER_CALL}; split the work across calls`);
-    }
-    const planned: { index: number; cardId: string; pid: string; payload: Record<string, unknown> }[] = [];
-    const seen = new Set<string>();
-    for (const [index, entry] of raw.entries()) {
-        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`entries[${index}] must be an object with cardId, pid and problem`);
-        const fields = entry as Record<string, unknown>;
-        const cardId = asText(fields.cardId);
-        if (!cardId) throw new Error(`entries[${index}].cardId is required`);
-        const pid = asText(fields.pid);
-        if (!pid) throw new Error(`entries[${index}].pid is required`);
-        const key = `${cardId}:${pid}`;
-        if (seen.has(key)) throw new Error(`entries[${index}] names ${pid} of card ${cardId} twice; send one entry per problem`);
-        seen.add(key);
-        planned.push({ index, cardId, pid, payload: parseProblemPayload(fields.problem) });
-    }
-    const byId = await cardsById(ctx, [...new Set(planned.map((entry) => entry.cardId))]);
-    for (const entry of planned) {
-        const card = byId.get(entry.cardId);
-        if (!card) throw new Error(`Card not found: ${entry.cardId}`);
-        if (findProblemIndex(card.problems || [], entry.pid) < 0) throw new Error(`Problem not found: ${entry.pid}`);
-    }
-    const updatesByCard = new Map<string, typeof planned>();
-    for (const entry of planned) {
-        const list = updatesByCard.get(entry.cardId);
-        if (list) list.push(entry);
-        else updatesByCard.set(entry.cardId, [entry]);
-    }
-    const updated: { index: number; cardId: string; pid: string; url: string }[] = [];
-    const refused: { index: number; cardId: string; pid: string; error: string }[] = [];
-    let writes = 0;
-    for (const [cardId, entries] of updatesByCard) {
-        const card = byId.get(cardId) as CardDoc;
-        const problems: Problem[] = [...(card.problems || [])];
-        for (const entry of entries) {
-            const position = findProblemIndex(problems, entry.pid);
-            const merged = { ...(problems[position] as unknown as Record<string, unknown>), ...entry.payload };
-            problems[position] = migrateRawProblem(buildProblemRaw(merged, entry.pid)) as unknown as Problem;
-        }
-        try {
-            await saveCardProblems(ctx.domainId, card, problems);
-            writes += 1;
-            for (const entry of entries) updated.push({ index: entry.index, cardId, pid: entry.pid, url: problemUrl(ctx, ctx.baseDocId, cardId, entry.pid) });
-        } catch (error) {
-            for (const entry of entries) refused.push({ index: entry.index, cardId, pid: entry.pid, error: (error as Error).message });
-        }
-    }
-    return {
-        ok: refused.length === 0,
-        baseId: ctx.baseDocId,
-        problemCount: updated.length,
-        problems: updated.sort((left, right) => left.index - right.index),
-        refusedEntries: refused,
-        reads: { cards: 1 },
-        writes: { cards: writes },
-    };
-}
 
-export async function removeMany(ctx: ToolContext, args: ToolArgs) {
-    const raw = args.entries;
-    if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, pids }');
-    const planned = raw.map((entry, index) => {
-        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`entries[${index}] must be an object with cardId and pids`);
-        const fields = entry as Record<string, unknown>;
-        const cardId = asText(fields.cardId);
-        if (!cardId) throw new Error(`entries[${index}].cardId is required`);
-        const pids = Array.isArray(fields.pids) ? fields.pids.map((pid) => asText(pid)) : [];
-        if (!pids.length || pids.some((pid) => !pid)) throw new Error(`entries[${index}].pids must be a non-empty array of ids`);
-        return { index, cardId, pids: [...new Set(pids)] };
-    });
-    const seen = new Set<string>();
-    for (const entry of planned) {
-        if (seen.has(entry.cardId)) throw new Error(`entries[${entry.index}].cardId ${entry.cardId} appears twice; send one entry holding all of that card's problems`);
-        seen.add(entry.cardId);
-    }
-    const total = planned.reduce((sum, entry) => sum + entry.pids.length, 0);
-    if (total > MAX_PROBLEMS_PER_CALL) {
-        throw new Error(`entries hold ${total} problems and one call removes ${MAX_PROBLEMS_PER_CALL}; split the work across calls`);
-    }
-    const byId = await cardsById(ctx, planned.map((entry) => entry.cardId));
-    for (const entry of planned) {
-        const card = byId.get(entry.cardId);
-        if (!card) throw new Error(`Card not found: ${entry.cardId}`);
-        for (const pid of entry.pids) {
-            if (findProblemIndex(card.problems || [], pid) < 0) throw new Error(`Problem not found: ${pid}`);
-        }
-    }
-    const removed: { index: number; cardId: string; removed: string[] }[] = [];
-    const refused: { index: number; cardId: string; error: string }[] = [];
-    let writes = 0;
-    for (const entry of planned) {
-        const card = byId.get(entry.cardId) as CardDoc;
-        const problems: Problem[] = (card.problems || []).filter((problem) => !entry.pids.includes(String(problem.pid)));
-        try {
-            await saveCardProblems(ctx.domainId, card, problems);
-            writes += 1;
-            removed.push({ index: entry.index, cardId: entry.cardId, removed: entry.pids });
-        } catch (error) {
-            refused.push({ index: entry.index, cardId: entry.cardId, error: (error as Error).message });
-        }
-    }
-    return {
-        ok: refused.length === 0,
-        baseId: ctx.baseDocId,
-        removedCount: removed.reduce((sum, entry) => sum + entry.removed.length, 0),
-        entries: removed.sort((left, right) => left.index - right.index),
-        refusedEntries: refused,
-        reads: { cards: 1 },
-        writes: { cards: writes },
-    };
-}
+
+
+
+
+
+
+
+
+
 
 class BaseProblemListExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return list(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const card = await requireCard(ctx, args.cardId);
+            const problems = card.problems || [];
+            return { cardId: String(card.docId), count: problems.length, problems: problems.map((problem) => summarizeProblem(ctx, card, problem)) };
     }
 }
 
 class BaseProblemGetExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return get(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const card = await requireCard(ctx, args.cardId);
+            const pid = String(args.pid || '').trim();
+            if (!pid) throw new Error('pid is required');
+            const problems = card.problems || [];
+            const index = findProblemIndex(problems, pid);
+            if (index < 0) throw new Error(`Problem not found: ${pid}`);
+            return { cardId: String(card.docId), problem: problems[index], url: problemUrl(ctx, ctx.baseDocId, String(card.docId), pid) };
     }
 }
 
 class BaseProblemCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return create(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const card = await requireCard(ctx, args.cardId);
+            const payload = parseProblemPayload(args.problem);
+            const pid = newProblemPid();
+            const problem = migrateRawProblem(buildProblemRaw(payload, pid));
+            await saveCardProblems(ctx.domainId, card, [...(card.problems || []), problem]);
+            return { ok: true, cardId: String(card.docId), pid: problem.pid, problem, url: problemUrl(ctx, ctx.baseDocId, String(card.docId), String(problem.pid)) };
     }
 }
 
 class BaseProblemUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return update(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const card = await requireCard(ctx, args.cardId);
+            const pid = String(args.pid || '').trim();
+            if (!pid) throw new Error('pid is required');
+            const payload = parseProblemPayload(args.problem);
+            const problems = [...(card.problems || [])];
+            const index = findProblemIndex(problems, pid);
+            if (index < 0) throw new Error(`Problem not found: ${pid}`);
+            const problem = migrateRawProblem(buildProblemRaw({ ...(problems[index] as unknown as Record<string, unknown>), ...payload }, pid));
+            problems[index] = problem;
+            await saveCardProblems(ctx.domainId, card, problems);
+            return { ok: true, cardId: String(card.docId), pid, problem, url: problemUrl(ctx, ctx.baseDocId, String(card.docId), pid) };
     }
 }
 
 class BaseProblemDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return remove(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const card = await requireCard(ctx, args.cardId);
+            const pid = String(args.pid || '').trim();
+            if (!pid) throw new Error('pid is required');
+            const problems = card.problems || [];
+            const index = findProblemIndex(problems, pid);
+            if (index < 0) throw new Error(`Problem not found: ${pid}`);
+            await saveCardProblems(ctx.domainId, card, problems.filter((_, itemIndex) => itemIndex !== index));
+            return { ok: true, cardId: String(card.docId), pid };
     }
 }
 
 class BaseProblemCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return createMany(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const raw = args.entries;
+            if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, problems }');
+            const planned = raw.map((entry, index) => {
+                if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`entries[${index}] must be an object with cardId and problems`);
+                const fields = entry as Record<string, unknown>;
+                const cardId = asText(fields.cardId);
+                if (!cardId) throw new Error(`entries[${index}].cardId is required`);
+                return { index, cardId, problems: problemsOf(fields.problems, `entries[${index}]`) };
+            });
+            const total = planned.reduce((sum, entry) => sum + entry.problems.length, 0);
+            if (total > MAX_PROBLEMS_PER_CALL) {
+                throw new Error(`entries hold ${total} problems and one call adds ${MAX_PROBLEMS_PER_CALL}; split the work across calls`);
+            }
+            const seen = new Set<string>();
+            for (const entry of planned) {
+                if (seen.has(entry.cardId)) throw new Error(`entries[${entry.index}].cardId ${entry.cardId} appears twice; send one entry holding all of that card's problems`);
+                seen.add(entry.cardId);
+            }
+            const cards: CardDoc[] = [];
+            for (const entry of planned) cards.push(await requireCard(ctx, entry.cardId));
+            const added: { index: number; cardId: string; added: string[]; total: number; urls: string[] }[] = [];
+            const refused: { index: number; cardId: string; error: string }[] = [];
+            for (const [position, entry] of planned.entries()) {
+                const card = cards[position];
+                try {
+                    await saveCardProblems(ctx.domainId, card, [...(card.problems || []), ...entry.problems]);
+                    added.push({
+                        index: entry.index,
+                        cardId: entry.cardId,
+                        added: entry.problems.map((problem) => problem.pid),
+                        total: (card.problems || []).length + entry.problems.length,
+                        urls: entry.problems.map((problem) => problemUrl(ctx, ctx.baseDocId, entry.cardId, String(problem.pid))),
+                    });
+                } catch (error) {
+                    refused.push({ index: entry.index, cardId: entry.cardId, error: (error as Error).message });
+                }
+            }
+            return {
+                ok: refused.length === 0,
+                baseId: ctx.baseDocId,
+                problemCount: added.reduce((sum, entry) => sum + entry.added.length, 0),
+                entries: added,
+                refusedEntries: refused,
+                writes: { cards: added.length },
+            };
     }
 }
 
 class BaseProblemGetManyExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return getMany(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const raw = args.entries;
+            if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, pid }');
+            if (raw.length > MAX_PROBLEMS_PER_CALL) {
+                throw new Error(`entries holds ${raw.length} entries and one call reads ${MAX_PROBLEMS_PER_CALL}; split the work across calls`);
+            }
+            const planned = raw.map((entry, index) => {
+                if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`entries[${index}] must be an object with cardId and pid`);
+                const fields = entry as Record<string, unknown>;
+                const cardId = asText(fields.cardId);
+                if (!cardId) throw new Error(`entries[${index}].cardId is required`);
+                const pid = asText(fields.pid);
+                if (!pid) throw new Error(`entries[${index}].pid is required`);
+                return { index, cardId, pid };
+            });
+            const byId = await cardsById(ctx, [...new Set(planned.map((entry) => entry.cardId))]);
+            const found: unknown[] = [];
+            const missing: { index: number; cardId: string; pid: string; error: string }[] = [];
+            for (const entry of planned) {
+                const card = byId.get(entry.cardId);
+                if (!card) {
+                    missing.push({ index: entry.index, cardId: entry.cardId, pid: entry.pid, error: 'Card not found' });
+                    continue;
+                }
+                const problems = card.problems || [];
+                const position = findProblemIndex(problems, entry.pid);
+                if (position < 0) {
+                    missing.push({ index: entry.index, cardId: entry.cardId, pid: entry.pid, error: `Problem not found: ${entry.pid}` });
+                    continue;
+                }
+                found.push({
+                    index: entry.index,
+                    cardId: String(card.docId),
+                    pid: entry.pid,
+                    problem: problems[position],
+                    url: problemUrl(ctx, ctx.baseDocId, String(card.docId), entry.pid),
+                });
+            }
+            return {
+                ok: missing.length === 0,
+                baseId: ctx.baseDocId,
+                problemCount: found.length,
+                problems: found,
+                missing,
+                reads: { cards: 1 },
+            };
     }
 }
 
 class BaseProblemUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return updateMany(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const raw = args.entries;
+            if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, pid, problem }');
+            if (raw.length > MAX_PROBLEMS_PER_CALL) {
+                throw new Error(`entries holds ${raw.length} entries and one call updates ${MAX_PROBLEMS_PER_CALL}; split the work across calls`);
+            }
+            const planned: { index: number; cardId: string; pid: string; payload: Record<string, unknown> }[] = [];
+            const seen = new Set<string>();
+            for (const [index, entry] of raw.entries()) {
+                if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`entries[${index}] must be an object with cardId, pid and problem`);
+                const fields = entry as Record<string, unknown>;
+                const cardId = asText(fields.cardId);
+                if (!cardId) throw new Error(`entries[${index}].cardId is required`);
+                const pid = asText(fields.pid);
+                if (!pid) throw new Error(`entries[${index}].pid is required`);
+                const key = `${cardId}:${pid}`;
+                if (seen.has(key)) throw new Error(`entries[${index}] names ${pid} of card ${cardId} twice; send one entry per problem`);
+                seen.add(key);
+                planned.push({ index, cardId, pid, payload: parseProblemPayload(fields.problem) });
+            }
+            const byId = await cardsById(ctx, [...new Set(planned.map((entry) => entry.cardId))]);
+            for (const entry of planned) {
+                const card = byId.get(entry.cardId);
+                if (!card) throw new Error(`Card not found: ${entry.cardId}`);
+                if (findProblemIndex(card.problems || [], entry.pid) < 0) throw new Error(`Problem not found: ${entry.pid}`);
+            }
+            const updatesByCard = new Map<string, typeof planned>();
+            for (const entry of planned) {
+                const list = updatesByCard.get(entry.cardId);
+                if (list) list.push(entry);
+                else updatesByCard.set(entry.cardId, [entry]);
+            }
+            const updated: { index: number; cardId: string; pid: string; url: string }[] = [];
+            const refused: { index: number; cardId: string; pid: string; error: string }[] = [];
+            let writes = 0;
+            for (const [cardId, entries] of updatesByCard) {
+                const card = byId.get(cardId) as CardDoc;
+                const problems: Problem[] = [...(card.problems || [])];
+                for (const entry of entries) {
+                    const position = findProblemIndex(problems, entry.pid);
+                    const merged = { ...(problems[position] as unknown as Record<string, unknown>), ...entry.payload };
+                    problems[position] = migrateRawProblem(buildProblemRaw(merged, entry.pid)) as unknown as Problem;
+                }
+                try {
+                    await saveCardProblems(ctx.domainId, card, problems);
+                    writes += 1;
+                    for (const entry of entries) updated.push({ index: entry.index, cardId, pid: entry.pid, url: problemUrl(ctx, ctx.baseDocId, cardId, entry.pid) });
+                } catch (error) {
+                    for (const entry of entries) refused.push({ index: entry.index, cardId, pid: entry.pid, error: (error as Error).message });
+                }
+            }
+            return {
+                ok: refused.length === 0,
+                baseId: ctx.baseDocId,
+                problemCount: updated.length,
+                problems: updated.sort((left, right) => left.index - right.index),
+                refusedEntries: refused,
+                reads: { cards: 1 },
+                writes: { cards: writes },
+            };
     }
 }
 
 class BaseProblemDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return removeMany(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const raw = args.entries;
+            if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, pids }');
+            const planned = raw.map((entry, index) => {
+                if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`entries[${index}] must be an object with cardId and pids`);
+                const fields = entry as Record<string, unknown>;
+                const cardId = asText(fields.cardId);
+                if (!cardId) throw new Error(`entries[${index}].cardId is required`);
+                const pids = Array.isArray(fields.pids) ? fields.pids.map((pid) => asText(pid)) : [];
+                if (!pids.length || pids.some((pid) => !pid)) throw new Error(`entries[${index}].pids must be a non-empty array of ids`);
+                return { index, cardId, pids: [...new Set(pids)] };
+            });
+            const seen = new Set<string>();
+            for (const entry of planned) {
+                if (seen.has(entry.cardId)) throw new Error(`entries[${entry.index}].cardId ${entry.cardId} appears twice; send one entry holding all of that card's problems`);
+                seen.add(entry.cardId);
+            }
+            const total = planned.reduce((sum, entry) => sum + entry.pids.length, 0);
+            if (total > MAX_PROBLEMS_PER_CALL) {
+                throw new Error(`entries hold ${total} problems and one call removes ${MAX_PROBLEMS_PER_CALL}; split the work across calls`);
+            }
+            const byId = await cardsById(ctx, planned.map((entry) => entry.cardId));
+            for (const entry of planned) {
+                const card = byId.get(entry.cardId);
+                if (!card) throw new Error(`Card not found: ${entry.cardId}`);
+                for (const pid of entry.pids) {
+                    if (findProblemIndex(card.problems || [], pid) < 0) throw new Error(`Problem not found: ${pid}`);
+                }
+            }
+            const removed: { index: number; cardId: string; removed: string[] }[] = [];
+            const refused: { index: number; cardId: string; error: string }[] = [];
+            let writes = 0;
+            for (const entry of planned) {
+                const card = byId.get(entry.cardId) as CardDoc;
+                const problems: Problem[] = (card.problems || []).filter((problem) => !entry.pids.includes(String(problem.pid)));
+                try {
+                    await saveCardProblems(ctx.domainId, card, problems);
+                    writes += 1;
+                    removed.push({ index: entry.index, cardId: entry.cardId, removed: entry.pids });
+                } catch (error) {
+                    refused.push({ index: entry.index, cardId: entry.cardId, error: (error as Error).message });
+                }
+            }
+            return {
+                ok: refused.length === 0,
+                baseId: ctx.baseDocId,
+                removedCount: removed.reduce((sum, entry) => sum + entry.removed.length, 0),
+                entries: removed.sort((left, right) => left.index - right.index),
+                refusedEntries: refused,
+                reads: { cards: 1 },
+                writes: { cards: writes },
+            };
     }
 }
 

@@ -25,45 +25,40 @@ async function instructions(context: ToolInstructionsContext): Promise<string> {
     return `Current Ejunz Base domain: ${context.domainId}; Base id: ${baseId}${base?.title ? ` (${base.title})` : ''}.`;
 }
 
-export async function context(ctx: ToolContext) {
-    const baseId = Number(ctx.baseDocId);
-    if (!Number.isSafeInteger(baseId) || baseId <= 0) return { domain: ctx.domainId };
-    const base = await BaseModel.get(ctx.domainId, baseId, document.TYPE_BASE);
-    return {
-        domain: ctx.domainId,
-        baseId,
-        ...(base?.title ? { baseName: base.title } : {}),
-    };
-}
-
-export async function select(app: Context, ctx: ToolContext, args: ToolArgs) {
-    const sessionId = ctx.sessionId;
-    if (!sessionId) throw new Error('base_select requires an Agent session');
-    const baseDocId = Number(args.baseId);
-    if (!Number.isSafeInteger(baseDocId) || baseDocId <= 0) throw new Error('baseId is required');
-    const base = await BaseModel.get(ctx.domainId, baseDocId, document.TYPE_BASE);
-    if (!base) throw new Error('Base not found in current domain');
-    const payload: ToolBaseSelectPayload = {
-        sessionId,
-        domainId: ctx.domainId,
-        owner: ctx.owner,
-        baseDocId,
-        ...(base.title ? { baseName: base.title } : {}),
-    };
-    await app.parallel('tool/base-select', payload);
-    return { sessionId, baseDocId, baseName: base.title || undefined };
-}
-
 class BaseContextExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return context(this.context);
+    async execute() {
+        const ctx = this.context;
+        const baseId = Number(ctx.baseDocId);
+        if (!Number.isSafeInteger(baseId) || baseId <= 0) return { domain: ctx.domainId };
+        const base = await BaseModel.get(ctx.domainId, baseId, document.TYPE_BASE);
+        return {
+            domain: ctx.domainId,
+            baseId,
+            ...(base?.title ? { baseName: base.title } : {}),
+        };
     }
 }
 
 export function apply(ctx: Context) {
     class BaseSelectExecutor extends Executor<ToolContext, ToolArgs> {
-        execute() {
-            return select(ctx, this.context, this.args);
+        async execute() {
+            const toolContext = this.context;
+            const args = this.args;
+            const sessionId = toolContext.sessionId;
+            if (!sessionId) throw new Error('base_select requires an Agent session');
+            const baseDocId = Number(args.baseId);
+            if (!Number.isSafeInteger(baseDocId) || baseDocId <= 0) throw new Error('baseId is required');
+            const base = await BaseModel.get(toolContext.domainId, baseDocId, document.TYPE_BASE);
+            if (!base) throw new Error('Base not found in current domain');
+            const payload: ToolBaseSelectPayload = {
+                sessionId,
+                domainId: toolContext.domainId,
+                owner: toolContext.owner,
+                baseDocId,
+                ...(base.title ? { baseName: base.title } : {}),
+            };
+            await ctx.parallel('tool/base-select', payload);
+            return { sessionId, baseDocId, baseName: base.title || undefined };
         }
     }
     const unregister = registerAgentAddon({

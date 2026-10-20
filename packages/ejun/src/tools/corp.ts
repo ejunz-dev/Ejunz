@@ -22,111 +22,111 @@ export const AgentAddonUpdateSchema = Schema.object({
     addonId: Schema.string().required(),
     enabled: Schema.boolean().required(),
 }).description('Enable or disable an installed Addon for one Group. This does not change domain installation. Requires Agent configuration permission.');
-export async function listAgentPermissions(_ctx: ToolContext, _args: ToolArgs) {
-    const permissions = agentPermissionCatalog();
-    return { ok: true, count: permissions.length, permissions };
-}
 
-export async function getAgentPermission(_ctx: ToolContext, args: ToolArgs) {
-    const permissionId = asText(args.permissionId);
-    const permission = agentPermissionCatalog().find((item) => item.id === permissionId);
-    if (!permission) throw new Error(`Agent permission not found: ${permissionId}`);
-    return { ok: true, permission };
-}
+
+
 
 async function addonRpcValue(response: { result?: { ok?: boolean; value?: unknown }; error?: { message?: string } }, label: string) {
     if (!response.result?.ok) throw new Error(response.error?.message || label);
     return response.result.value;
 }
 
-export async function listAgentAddons(ctx: ToolContext, args: ToolArgs) {
-    const { groupId } = await requireGroup(ctx, args);
-    const result = await agentRuntimeHandlerContext.agentAddonsList({ rpcId: 'agent_addons_list', method: 'agent.addons.list' }, sessionScope(ctx, groupId));
-    const value = await addonRpcValue(result, 'Failed to list Agent Addons') as { addons?: unknown[] };
-    return { ok: true, groupId, addons: value.addons ?? [], permissions: agentPermissionCatalog() };
-}
 
-export async function getAgentAddon(ctx: ToolContext, args: ToolArgs) {
-    const { groupId } = await requireGroup(ctx, args);
-    const addonId = asText(args.addonId);
-    const result = await agentRuntimeHandlerContext.agentAddonsList({ rpcId: 'agent_addons_get', method: 'agent.addons.list' }, sessionScope(ctx, groupId));
-    const value = await addonRpcValue(result, 'Failed to read Agent Addon') as { addons?: { addonId: string }[] };
-    const addon = value.addons?.find((item) => item.addonId === addonId);
-    if (!addon) throw new Error(`Agent Addon not found: ${addonId}`);
-    return { ok: true, groupId, addon };
-}
 
-export async function installAgentAddon(ctx: ToolContext, args: ToolArgs) {
-    await requireAgentConfigurationPermission(ctx);
-    const addonId = asText(args.addonId);
-    const result = await agentRuntimeHandlerContext.setAgentAddonInstalled({ rpcId: 'agent_addon_install', method: 'agent.addons.install', payload: { addonId } }, { domainId: ctx.domainId, userId: ctx.owner }, async (change) => {
-        await ctx.broadcastAgentEvent?.('agent/addon-state', { ...change });
-    }, true);
-    const value = await addonRpcValue(result, 'Failed to install Agent Addon');
-    return { ok: true, ...(value as Record<string, unknown>) };
-}
 
-export async function uninstallAgentAddon(ctx: ToolContext, args: ToolArgs) {
-    await requireAgentConfigurationPermission(ctx);
-    const addonId = asText(args.addonId);
-    const result = await agentRuntimeHandlerContext.setAgentAddonInstalled({ rpcId: 'agent_addon_uninstall', method: 'agent.addons.uninstall', payload: { addonId } }, { domainId: ctx.domainId, userId: ctx.owner }, async (change) => {
-        await ctx.broadcastAgentEvent?.('agent/addon-state', { ...change });
-    }, false);
-    const value = await addonRpcValue(result, 'Failed to uninstall Agent Addon');
-    return { ok: true, ...(value as Record<string, unknown>) };
-}
 
-export async function updateAgentAddon(ctx: ToolContext, args: ToolArgs) {
-    await requireAgentConfigurationPermission(ctx);
-    const { groupId } = await requireGroup(ctx, args, 'edit');
-    const addonId = asText(args.addonId);
-    if (typeof args.enabled !== 'boolean') throw new Error('enabled must be a boolean');
-    const result = await agentRuntimeHandlerContext.agentAddonSet({ rpcId: 'agent_addon_update', method: 'agent.addons.set', payload: { addonId, enabled: args.enabled } }, sessionScope(ctx, groupId), async (change) => {
-        await ctx.broadcastAgentEvent?.('agent/addon-state', { ...change });
-    });
-    const value = await addonRpcValue(result, 'Failed to update Agent Addon');
-    return { ok: true, groupId, ...(value as Record<string, unknown>) };
-}
+
+
+
+
+
 
 class AgentPermissionListExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return listAgentPermissions(this.context, this.args);
+    async execute() {
+        const _ctx = this.context;
+        const _args = this.args;
+            const permissions = agentPermissionCatalog();
+            return { ok: true, count: permissions.length, permissions };
     }
 }
 
 class AgentPermissionGetExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return getAgentPermission(this.context, this.args);
+    async execute() {
+        const _ctx = this.context;
+        const args = this.args;
+            const permissionId = asText(args.permissionId);
+            const permission = agentPermissionCatalog().find((item) => item.id === permissionId);
+            if (!permission) throw new Error(`Agent permission not found: ${permissionId}`);
+            return { ok: true, permission };
     }
 }
 
 class AgentAddonListExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return listAgentAddons(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const { groupId } = await requireGroup(ctx, args);
+            const result = await agentRuntimeHandlerContext.agentAddonsList({ rpcId: 'agent_addons_list', method: 'agent.addons.list' }, sessionScope(ctx, groupId));
+            const value = await addonRpcValue(result, 'Failed to list Agent Addons') as { addons?: unknown[] };
+            return { ok: true, groupId, addons: value.addons ?? [], permissions: agentPermissionCatalog() };
     }
 }
 
 class AgentAddonGetExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return getAgentAddon(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            const { groupId } = await requireGroup(ctx, args);
+            const addonId = asText(args.addonId);
+            const result = await agentRuntimeHandlerContext.agentAddonsList({ rpcId: 'agent_addons_get', method: 'agent.addons.list' }, sessionScope(ctx, groupId));
+            const value = await addonRpcValue(result, 'Failed to read Agent Addon') as { addons?: { addonId: string }[] };
+            const addon = value.addons?.find((item) => item.addonId === addonId);
+            if (!addon) throw new Error(`Agent Addon not found: ${addonId}`);
+            return { ok: true, groupId, addon };
     }
 }
 
 class AgentAddonInstallExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return installAgentAddon(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            await requireAgentConfigurationPermission(ctx);
+            const addonId = asText(args.addonId);
+            const result = await agentRuntimeHandlerContext.setAgentAddonInstalled({ rpcId: 'agent_addon_install', method: 'agent.addons.install', payload: { addonId } }, { domainId: ctx.domainId, userId: ctx.owner }, async (change) => {
+                await ctx.broadcastAgentEvent?.('agent/addon-state', { ...change });
+            }, true);
+            const value = await addonRpcValue(result, 'Failed to install Agent Addon');
+            return { ok: true, ...(value as Record<string, unknown>) };
     }
 }
 
 class AgentAddonUninstallExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return uninstallAgentAddon(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            await requireAgentConfigurationPermission(ctx);
+            const addonId = asText(args.addonId);
+            const result = await agentRuntimeHandlerContext.setAgentAddonInstalled({ rpcId: 'agent_addon_uninstall', method: 'agent.addons.uninstall', payload: { addonId } }, { domainId: ctx.domainId, userId: ctx.owner }, async (change) => {
+                await ctx.broadcastAgentEvent?.('agent/addon-state', { ...change });
+            }, false);
+            const value = await addonRpcValue(result, 'Failed to uninstall Agent Addon');
+            return { ok: true, ...(value as Record<string, unknown>) };
     }
 }
 
 class AgentAddonUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    execute() {
-        return updateAgentAddon(this.context, this.args);
+    async execute() {
+        const ctx = this.context;
+        const args = this.args;
+            await requireAgentConfigurationPermission(ctx);
+            const { groupId } = await requireGroup(ctx, args, 'edit');
+            const addonId = asText(args.addonId);
+            if (typeof args.enabled !== 'boolean') throw new Error('enabled must be a boolean');
+            const result = await agentRuntimeHandlerContext.agentAddonSet({ rpcId: 'agent_addon_update', method: 'agent.addons.set', payload: { addonId, enabled: args.enabled } }, sessionScope(ctx, groupId), async (change) => {
+                await ctx.broadcastAgentEvent?.('agent/addon-state', { ...change });
+            });
+            const value = await addonRpcValue(result, 'Failed to update Agent Addon');
+            return { ok: true, groupId, ...(value as Record<string, unknown>) };
     }
 }
 
