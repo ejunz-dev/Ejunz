@@ -8,31 +8,31 @@ import { buildOutline, ensureGroupRoot, groupView, groupWorkspace, requireGroup,
 
 export const inject = ['server'];
 
-export const GroupList = Schema.object({
+export const GroupListSchema = Schema.object({
     limit: Schema.number().min(1).max(50).description('Maximum result count, up to 50.'),
 }).description('List Groups available in the current domain. Each result includes its groupId, title, description, update time, and the current user’s team and agent counts.');
 
-export const GroupSearch = Schema.object({
+export const GroupSearchSchema = Schema.object({
     query: Schema.string().required().description('Search text.'),
     limit: Schema.number().min(1).max(50).description('Maximum result count, up to 50.'),
 }).description('Search Groups in the current domain by title or description.');
 
-export const GroupGet = Schema.object({
+export const GroupGetSchema = Schema.object({
     groupId: Schema.number().step(1).min(1).required().description('Group id.'),
 }).description('Read a Group by groupId. Returns its groupId, title, description, update time, and the current user’s team and agent tree.');
 
-export const GroupCreate = Schema.object({
+export const GroupCreateSchema = Schema.object({
     title: Schema.string().required().description('Group name (required, up to 256 characters).'),
     content: Schema.string().description('Group description or instructions (optional, up to 100000 characters).'),
 }).description('Create a Group in the current domain. The current user owns the new Group and its root team.');
 
-export const GroupUpdate = Schema.object({
+export const GroupUpdateSchema = Schema.object({
     groupId: Schema.number().step(1).min(1).required().description('Group id.'),
     title: Schema.string().description('New Group name (optional).'),
     content: Schema.string().description('New Group description or instructions (optional).'),
 }).description('Update a Group by groupId. Only the owner or a user with edit-discussion permission can update another user’s Group.');
 
-export const GroupRemove = Schema.object({
+export const GroupRemoveSchema = Schema.object({
     groupId: Schema.number().step(1).min(1).required().description('Group id.'),
 }).description('Delete a Group by groupId. Existing sessions and workspace teams are detached, as in the Group management UI.');
 export async function listGroups(ctx: ToolContext, args: ToolArgs) {
@@ -142,10 +142,10 @@ class AgentGroupDeleteExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 export function apply(ctx: Context) {
-    ctx.Tool('agent', 'agent_group_list', AgentGroupListExecutor, GroupList, PERM.AGENT_PERM_GROUP_LIST);
-    ctx.Tool('agent', 'agent_group_search', AgentGroupSearchExecutor, GroupSearch, PERM.AGENT_PERM_GROUP_SEARCH);
-    ctx.Tool('agent', 'agent_group_get', AgentGroupGetExecutor, GroupGet, PERM.AGENT_PERM_GROUP_GET);
-    ctx.Tool('agent', 'agent_group_create', AgentGroupCreateExecutor, GroupCreate, PERM.AGENT_PERM_GROUP_CREATE);
-    ctx.Tool('agent', 'agent_group_update', AgentGroupUpdateExecutor, GroupUpdate, PERM.AGENT_PERM_GROUP_UPDATE);
-    ctx.Tool('agent', 'agent_group_delete', AgentGroupDeleteExecutor, GroupRemove, PERM.AGENT_PERM_GROUP_DELETE);
+    ctx.Tool('agent', 'agent_group_list', AgentGroupListExecutor, GroupListSchema, PERM.AGENT_PERM_GROUP_LIST);
+    ctx.Tool('agent', 'agent_group_search', AgentGroupSearchExecutor, GroupSearchSchema, PERM.AGENT_PERM_GROUP_SEARCH);
+    ctx.Tool('agent', 'agent_group_get', AgentGroupGetExecutor, GroupGetSchema, PERM.AGENT_PERM_GROUP_GET);
+    ctx.Tool('agent', 'agent_group_create', AgentGroupCreateExecutor, GroupCreateSchema, PERM.AGENT_PERM_GROUP_CREATE);
+    ctx.Tool('agent', 'agent_group_update', AgentGroupUpdateExecutor, GroupUpdateSchema, PERM.AGENT_PERM_GROUP_UPDATE);
+    ctx.Tool('agent', 'agent_group_delete', AgentGroupDeleteExecutor, GroupRemoveSchema, PERM.AGENT_PERM_GROUP_DELETE);
 }

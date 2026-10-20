@@ -20,15 +20,15 @@ import type {} from '../service/registry';
 
 export const inject = ['server'];
 
-export const List = Schema.object({
+export const ListSchema = Schema.object({
     nodeId: Schema.string().required().description('Node id to list file-cards from.'),
 }).description('List file-cards under a node. File-cards are cards with cardType="file" that represent uploaded files. Returns card id, title, fileName, fileType, fileSize, the URL that opens the Base at each card and the URL its file is served at.');
 
-export const Get = Schema.object({
+export const GetSchema = Schema.object({
     cardId: Schema.string().required().description('File-card docId (hex).'),
 }).description('Get file-card metadata by cardId. Returns title, fileName, fileType, fileSize, nodeId, the card text as `content`, the URL that opens the Base at this card, and the URL its file is served at. The file body itself is read by `base_node_fileCard_content_get`.');
 
-export const ContentGet = Schema.object({
+export const ContentGetSchema = Schema.object({
     cardId: Schema.string().required().description('File-card docId (hex).'),
     firstPage: Schema.number().step(1).min(1).max(MAX_FILE_CONTENT_PAGES).description('First page to read (PDF only; default the first page).'),
     lastPage: Schema.number().step(1).min(1).max(MAX_FILE_CONTENT_PAGES).description('Last page to read (PDF only; default the last page).'),
@@ -39,18 +39,18 @@ export const ContentGet = Schema.object({
     + '`totalPages` and `extractor`. `text` stops at `maxChars` characters and `truncated` reports that, pages are separated by form feeds, and '
     + '`firstPage` / `lastPage` read one range of a long document.');
 
-export const Remove = Schema.object({
+export const RemoveSchema = Schema.object({
     cardId: Schema.string().required().description('File-card docId (hex).'),
 }).description('Delete a file-card and its underlying file. Both the card record and the physical file in storage are removed.');
 
-export const Create = Schema.object({
+export const CreateSchema = Schema.object({
     nodeId: Schema.string().required().description('Existing node id to attach the file-card to.'),
     fileName: Schema.string().required().description('Filename (e.g. report.pdf, photo.png). Used to infer file type from extension.'),
     fileUrl: Schema.string().required().description('Public URL to download the file from.'),
     title: Schema.string().description('Optional card title (defaults to fileName).'),
 }).description('Upload a file from a URL and create a file-card under a node. Downloads the file from the given URL, stores it on the node, and creates a file-card (cardType="file") referencing it. Returns the new card id with the URL that opens the Base at it and the URL its file is served at.');
 
-export const CreateMany = Schema.object({
+export const CreateManySchema = Schema.object({
     files: Schema.array(Schema.object({
         nodeId: Schema.string().required().description('Existing node to attach the file-card to (required).'),
         fileName: Schema.string().required().description('Filename (required); it also sets the stored path, so one file per node.'),
@@ -62,19 +62,19 @@ export const CreateMany = Schema.object({
     + 'before the first download, so a refused call stores nothing. The downloads run a few at a time, and every entry is reported on its own: a '
     + `download or a card the server refuses is named in \`refusedFiles\` and \`ok\` is false, while the files that arrived stay. One call stores at most ${MAX_FILE_CREATES_PER_CALL} files, and every stored file carries the URL that opens the Base at its card and the URL its file is served at.`);
 
-export const ListMany = Schema.object({
+export const ListManySchema = Schema.object({
     nodeIds: Schema.array(Schema.string()).min(1).max(MAX_NODES_PER_CALL).required().description('Nodes whose files are wanted.'),
 }).description('List the files of several nodes in a single call, each node reported as `base_node_fileCard_list` reports it. The Base document is read '
     + 'once and the cards of every named node come from one further read, so the call costs two reads however many nodes it names. A read changes '
     + `nothing, so a node this Base does not hold is listed in \`missingNodeIds\` and \`ok\` is false. One call lists at most ${MAX_NODES_PER_CALL} nodes.`);
 
-export const GetMany = Schema.object({
+export const GetManySchema = Schema.object({
     cardIds: Schema.array(Schema.string()).min(1).max(MAX_CARDS_PER_CALL).required().description('File-cards to read.'),
 }).description('Read several file-cards in a single call, each reported as `base_node_fileCard_get` reports one: its name, type, size, node, content, '
     + 'the URL that opens the Base at its card and the URL its file is served at. The cards come from one read, so the call costs one read however many it names. A read changes nothing, so a '
     + `card this Base does not hold, or one that is not a file-card, is listed in \`missing\` with its reason and \`ok\` is false. One call reads at most ${MAX_CARDS_PER_CALL} cards.`);
 
-export const RemoveMany = Schema.object({
+export const RemoveManySchema = Schema.object({
     cardIds: Schema.array(Schema.string()).min(1).max(MAX_CARDS_PER_CALL).required().description('File-cards to remove.'),
 }).description('Delete several file-cards of one Base in a single call, with the file each one holds. Each card is removed as '
     + '`base_node_fileCard_delete` removes one: the stored body first, then the card. The cards are read once, and a card this Base does not hold, or '
@@ -400,13 +400,13 @@ class BaseNodeFileCardDeleteManyExecutor extends Executor<ToolContext, ToolArgs>
 
 export function apply(ctx: Context) {
     const opts = { source: 'base' as const, bindBase: 'session' as const };
-    ctx.Tool('base', 'base_node_fileCard_list', BaseNodeFileCardListExecutor, List, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_get', BaseNodeFileCardGetExecutor, Get, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_content_get', BaseNodeFileCardContentGetExecutor, ContentGet, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_delete', BaseNodeFileCardDeleteExecutor, Remove, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_create', BaseNodeFileCardCreateExecutor, Create, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_create_many', BaseNodeFileCardCreateManyExecutor, CreateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_list_many', BaseNodeFileCardListManyExecutor, ListMany, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_get_many', BaseNodeFileCardGetManyExecutor, GetMany, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_fileCard_delete_many', BaseNodeFileCardDeleteManyExecutor, RemoveMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_list', BaseNodeFileCardListExecutor, ListSchema, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_get', BaseNodeFileCardGetExecutor, GetSchema, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_content_get', BaseNodeFileCardContentGetExecutor, ContentGetSchema, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_delete', BaseNodeFileCardDeleteExecutor, RemoveSchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_create', BaseNodeFileCardCreateExecutor, CreateSchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_create_many', BaseNodeFileCardCreateManyExecutor, CreateManySchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_list_many', BaseNodeFileCardListManyExecutor, ListManySchema, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_get_many', BaseNodeFileCardGetManyExecutor, GetManySchema, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_fileCard_delete_many', BaseNodeFileCardDeleteManyExecutor, RemoveManySchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }

@@ -12,32 +12,32 @@ function handlers(): typeof import('ejun/src/handler/base') {
     return require('ejun/src/handler/base');
 }
 
-export const Status = Schema.object({
+export const StatusSchema = Schema.object({
     githubToken: Schema.string().description('GitHub PAT override for remote fetch (optional).'),
 }).description('Get git sync status for this base: local/remote ref, ahead/behind, uncommitted changes, and file change lists. '
     + 'Requires a local git repo (created on first commit/push).');
 
-export const Commit = Schema.object({
+export const CommitSchema = Schema.object({
     commitMessage: Schema.string().description('Commit message body (optional).'),
 }).description('Export the current base to the local git working tree and commit (does not push). '
     + 'Use after editing nodes/cards/problems when you want a local snapshot.');
 
-export const Push = Schema.object({
+export const PushSchema = Schema.object({
     commitMessage: Schema.string().description('Commit message (optional).'),
     githubToken: Schema.string().description('GitHub PAT override (optional).'),
 }).description('Commit local changes and push to the configured GitHub remote (`git_config_get`). '
     + 'Requires githubRepo on the base and a GitHub token (user profile or system setting).');
 
-export const Pull = Schema.object({
+export const PullSchema = Schema.object({
     githubToken: Schema.string().description('GitHub PAT override (optional).'),
 }).description('Pull from GitHub and import the remote content into this base. '
     + 'Destructive: replaces nodes/cards from the git tree. Requires githubRepo and token.');
 
-export const ConfigGet = Schema.object({}).description(
+export const ConfigGetSchema = Schema.object({}).description(
     'Read the GitHub repository URL/path configured for this base (used by git_push / git_pull).',
 );
 
-export const ConfigSet = Schema.object({
+export const ConfigSetSchema = Schema.object({
     githubRepo: Schema.string().required().description('e.g. org/repo, https://github.com/org/repo, or empty string to clear.'),
 }).description('Set or clear the GitHub repository for this base. Pass `githubRepo` as owner/repo, full https URL, or null/empty to clear.');
 
@@ -105,10 +105,10 @@ class BaseGitConfigSetExecutor extends Executor<ToolContext, ToolArgs> {
 
 export function apply(ctx: Context) {
     const opts = { source: 'base' as const, bindBase: 'session' as const };
-    ctx.Tool('base', 'base_git_status', BaseGitStatusExecutor, Status, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_git_commit', BaseGitCommitExecutor, Commit, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_git_push', BaseGitPushExecutor, Push, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_git_pull', BaseGitPullExecutor, Pull, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_git_config_get', BaseGitConfigGetExecutor, ConfigGet, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_git_config_set', BaseGitConfigSetExecutor, ConfigSet, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_status', BaseGitStatusExecutor, StatusSchema, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_commit', BaseGitCommitExecutor, CommitSchema, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_push', BaseGitPushExecutor, PushSchema, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_pull', BaseGitPullExecutor, PullSchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_config_get', BaseGitConfigGetExecutor, ConfigGetSchema, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_git_config_set', BaseGitConfigSetExecutor, ConfigSetSchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }

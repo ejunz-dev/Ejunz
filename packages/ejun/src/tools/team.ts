@@ -14,22 +14,22 @@ import { createAgent, getAgents, removeAgents, updateAgents } from './agent';
 
 export const inject = ['server'];
 
-export const TeamList = Schema.object({
+export const TeamListSchema = Schema.object({
     groupId: Schema.number().step(1).min(1).required().description('Group id.'),
 }).description('List the current user’s workspace teams for a Group, including each team’s Addon and context configuration and its root team.');
 
-export const TeamGet = Schema.object({
+export const TeamGetSchema = Schema.object({
     groupId: Schema.number().step(1).min(1).required().description('Group id.'),
     teamId: Schema.string().required().description('Team id.'),
 }).description('Read one workspace team belonging to an Agent, including its Addon and context configuration, direct child teams, and attached session agents.');
 
-export const TeamCreate = Schema.object({
+export const TeamCreateSchema = Schema.object({
     groupId: Schema.number().step(1).min(1).required().description('Group id.'),
     text: Schema.string().required().description('Team title.'),
     parentTeamId: Schema.string().description('Existing parent team id (optional; defaults to the Group root).'),
 }).description('Create a workspace team for a Group. Omit parentTeamId to place it under the Group root.');
 
-export const TeamUpdate = Schema.object({
+export const TeamUpdateSchema = Schema.object({
     groupId: Schema.number().step(1).min(1).required().description('Group id.'),
     teamId: Schema.string().required().description('Team id.'),
     text: Schema.string().description('New team title (optional).'),
@@ -38,27 +38,27 @@ export const TeamUpdate = Schema.object({
     context: Schema.string().description('Replace the free-form context injected into agents on this team. Pass an empty string to clear it.'),
 }).description('Rename or move an Group workspace team with text and/or parentTeamId, or configure its Addons and context. Team-local Addon configuration does not change Group-wide Addon switches. Context is injected into agents on this team. The root team may be configured but cannot be renamed or moved.');
 
-export const TeamRemove = Schema.object({
+export const TeamRemoveSchema = Schema.object({
     groupId: Schema.number().step(1).min(1).required().description('Group id.'),
     teamId: Schema.string().required().description('Team id.'),
 }).description('Delete a workspace team belonging to an Agent. Its child teams and session agents move to its parent. The root team cannot be deleted.');
 
-export const AgentRoleList = Schema.object({ groupId: Schema.number().step(1).min(1).required() }).description('List roles configured on the Group root Team, including available Agent permissions.');
-export const AgentRoleGet = Schema.object({ groupId: Schema.number().step(1).min(1).required(), roleId: Schema.string().required() }).description('Read one Agent role and its permissions.');
-export const AgentRoleCreate = Schema.object({
+export const AgentRoleListSchema = Schema.object({ groupId: Schema.number().step(1).min(1).required() }).description('List roles configured on the Group root Team, including available Agent permissions.');
+export const AgentRoleGetSchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), roleId: Schema.string().required() }).description('Read one Agent role and its permissions.');
+export const AgentRoleCreateSchema = Schema.object({
     groupId: Schema.number().step(1).min(1).required(),
     roleId: Schema.string().required().description('Unique lowercase role id (1–32 characters; letters, digits, dots, underscores, and hyphens).'),
     name: Schema.string().required().description('Role name, 1–64 characters.'),
     permissions: Schema.array(Schema.string()).description('Permission IDs from agent_permission_list; defaults to no permissions.'),
 }).description('Create a custom role on the Group root Team. Built-in role ids are reserved.');
-export const AgentRoleUpdate = Schema.object({
+export const AgentRoleUpdateSchema = Schema.object({
     groupId: Schema.number().step(1).min(1).required(),
     roleId: Schema.string().required(),
     name: Schema.string().description('New role name (custom roles only).'),
     permissions: Schema.array(Schema.string()).description('Replace the role permission list. Root permissions are fixed.'),
 }).description('Rename a custom role and/or replace its permission list. Built-in roles cannot be renamed; Root permissions cannot be changed.');
-export const AgentRoleRemove = Schema.object({ groupId: Schema.number().step(1).min(1).required(), roleId: Schema.string().required() }).description('Delete a custom role. Built-in roles cannot be deleted. Agents assigned to a deleted role fall back to Default.');
-const TeamAgentCreateFields = Schema.object({
+export const AgentRoleRemoveSchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), roleId: Schema.string().required() }).description('Delete a custom role. Built-in roles cannot be deleted. Agents assigned to a deleted role fall back to Default.');
+const TeamAgentCreateFieldsSchema = Schema.object({
     teamId: Schema.string().description('Existing Agent team id. Omit to use the Group root team.'),
     teamRef: Schema.string().description('ref of a team created in this same request.'),
     title: Schema.string().required().description('Agent record title.'),
@@ -70,7 +70,7 @@ const TeamAgentCreateFields = Schema.object({
     roleId: Schema.string().description('Optional Group role id; requires Agent configuration permission. Omit to use Default.'),
 });
 
-export const TeamCreateMany = Schema.object({
+export const TeamCreateManySchema = Schema.object({
     groupId: Schema.number().step(1).min(1).required().description('Group id.'),
     parentTeamId: Schema.string().description('Default parent team for entries without teamId/parentTeamId; defaults to the Group root.'),
     teams: Schema.array(Schema.object({
@@ -79,16 +79,16 @@ export const TeamCreateMany = Schema.object({
         parentTeamId: Schema.string().description('Existing parent team id.'),
         parentRef: Schema.string().description('ref of an earlier team in this request.'),
     })).max(MAX_TEAMS_PER_CALL).description('Teams to create, in order.'),
-    agents: Schema.array(TeamAgentCreateFields).max(MAX_AGENTS_PER_CALL).description('Agents to create after teams; teamRef may refer to a team created above.'),
+    agents: Schema.array(TeamAgentCreateFieldsSchema).max(MAX_AGENTS_PER_CALL).description('Agents to create after teams; teamRef may refer to a team created above.'),
 }).description('Create teams and agents for one Group in a single tool call. Teams are created first, so agents may refer to them by teamRef. Team and agent results report successes and refusals separately; this batch is not transactional.');
 
-export const TeamGetMany = Schema.object({
+export const TeamGetManySchema = Schema.object({
     groupId: Schema.number().step(1).min(1).required().description('Group id.'),
     teamIds: Schema.array(Schema.string()).max(MAX_TEAMS_PER_CALL).description('Team ids to read.'),
     agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).description('Persisted Agent ids to read.'),
 }).description('Read multiple teams and agents for one Group in one tool call. At least one of teamIds or agentIds is required; each array can contain up to 500 ids.');
 
-export const TeamUpdateMany = Schema.object({
+export const TeamUpdateManySchema = Schema.object({
     groupId: Schema.number().step(1).min(1).required().description('Group id.'),
     teams: Schema.array(Schema.object({
         teamId: Schema.string().required().description('Team id.'),
@@ -105,7 +105,7 @@ export const TeamUpdateMany = Schema.object({
     })).max(MAX_AGENTS_PER_CALL).description('Agent title, team, and role changes.'),
 }).description('Update multiple teams and agents for one Group. Team and agent results report successes and refusals separately; this batch is not transactional.');
 
-export const TeamDeleteMany = Schema.object({
+export const TeamDeleteManySchema = Schema.object({
     groupId: Schema.number().step(1).min(1).required().description('Group id.'),
     teamIds: Schema.array(Schema.string()).max(MAX_TEAMS_PER_CALL).description('Teams to delete; agents and child teams move to the deleted team’s parent.'),
     agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).description('Persisted Agent ids to delete.'),
@@ -525,18 +525,18 @@ class AgentTeamDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 export function apply(ctx: Context) {
-    ctx.Tool('agent', 'agent_team_list', AgentTeamListExecutor, TeamList, PERM.AGENT_PERM_TEAM_LIST);
-    ctx.Tool('agent', 'agent_team_get', AgentTeamGetExecutor, TeamGet, PERM.AGENT_PERM_TEAM_GET);
-    ctx.Tool('agent', 'agent_team_create', AgentTeamCreateExecutor, TeamCreate, PERM.AGENT_PERM_TEAM_CREATE);
-    ctx.Tool('agent', 'agent_team_update', AgentTeamUpdateExecutor, TeamUpdate, PERM.AGENT_PERM_TEAM_UPDATE);
-    ctx.Tool('agent', 'agent_team_delete', AgentTeamDeleteExecutor, TeamRemove, PERM.AGENT_PERM_TEAM_DELETE);
-    ctx.Tool('agent', 'agent_role_list', AgentRoleListExecutor, AgentRoleList, PERM.AGENT_PERM_ROLE_LIST);
-    ctx.Tool('agent', 'agent_role_get', AgentRoleGetExecutor, AgentRoleGet, PERM.AGENT_PERM_ROLE_GET);
-    ctx.Tool('agent', 'agent_role_create', AgentRoleCreateExecutor, AgentRoleCreate, PERM.AGENT_PERM_ROLE_CREATE);
-    ctx.Tool('agent', 'agent_role_update', AgentRoleUpdateExecutor, AgentRoleUpdate, PERM.AGENT_PERM_ROLE_UPDATE);
-    ctx.Tool('agent', 'agent_role_delete', AgentRoleDeleteExecutor, AgentRoleRemove, PERM.AGENT_PERM_ROLE_DELETE);
-    ctx.Tool('agent', 'agent_team_create_many', AgentTeamCreateManyExecutor, TeamCreateMany, PERM.AGENT_PERM_TEAM_CREATE_MANY);
-    ctx.Tool('agent', 'agent_team_get_many', AgentTeamGetManyExecutor, TeamGetMany, PERM.AGENT_PERM_TEAM_GET_MANY);
-    ctx.Tool('agent', 'agent_team_update_many', AgentTeamUpdateManyExecutor, TeamUpdateMany, PERM.AGENT_PERM_TEAM_UPDATE_MANY);
-    ctx.Tool('agent', 'agent_team_delete_many', AgentTeamDeleteManyExecutor, TeamDeleteMany, PERM.AGENT_PERM_TEAM_DELETE_MANY);
+    ctx.Tool('agent', 'agent_team_list', AgentTeamListExecutor, TeamListSchema, PERM.AGENT_PERM_TEAM_LIST);
+    ctx.Tool('agent', 'agent_team_get', AgentTeamGetExecutor, TeamGetSchema, PERM.AGENT_PERM_TEAM_GET);
+    ctx.Tool('agent', 'agent_team_create', AgentTeamCreateExecutor, TeamCreateSchema, PERM.AGENT_PERM_TEAM_CREATE);
+    ctx.Tool('agent', 'agent_team_update', AgentTeamUpdateExecutor, TeamUpdateSchema, PERM.AGENT_PERM_TEAM_UPDATE);
+    ctx.Tool('agent', 'agent_team_delete', AgentTeamDeleteExecutor, TeamRemoveSchema, PERM.AGENT_PERM_TEAM_DELETE);
+    ctx.Tool('agent', 'agent_role_list', AgentRoleListExecutor, AgentRoleListSchema, PERM.AGENT_PERM_ROLE_LIST);
+    ctx.Tool('agent', 'agent_role_get', AgentRoleGetExecutor, AgentRoleGetSchema, PERM.AGENT_PERM_ROLE_GET);
+    ctx.Tool('agent', 'agent_role_create', AgentRoleCreateExecutor, AgentRoleCreateSchema, PERM.AGENT_PERM_ROLE_CREATE);
+    ctx.Tool('agent', 'agent_role_update', AgentRoleUpdateExecutor, AgentRoleUpdateSchema, PERM.AGENT_PERM_ROLE_UPDATE);
+    ctx.Tool('agent', 'agent_role_delete', AgentRoleDeleteExecutor, AgentRoleRemoveSchema, PERM.AGENT_PERM_ROLE_DELETE);
+    ctx.Tool('agent', 'agent_team_create_many', AgentTeamCreateManyExecutor, TeamCreateManySchema, PERM.AGENT_PERM_TEAM_CREATE_MANY);
+    ctx.Tool('agent', 'agent_team_get_many', AgentTeamGetManyExecutor, TeamGetManySchema, PERM.AGENT_PERM_TEAM_GET_MANY);
+    ctx.Tool('agent', 'agent_team_update_many', AgentTeamUpdateManyExecutor, TeamUpdateManySchema, PERM.AGENT_PERM_TEAM_UPDATE_MANY);
+    ctx.Tool('agent', 'agent_team_delete_many', AgentTeamDeleteManyExecutor, TeamDeleteManySchema, PERM.AGENT_PERM_TEAM_DELETE_MANY);
 }

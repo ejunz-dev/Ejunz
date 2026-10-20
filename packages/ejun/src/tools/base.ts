@@ -10,27 +10,27 @@ import type {} from '../service/registry';
 
 export const inject = ['server'];
 
-export const Create = Schema.object({
+export const CreateSchema = Schema.object({
     title: Schema.string().required().description('Base title (required).'),
     content: Schema.string().description('Base description or markdown content (optional).'),
     slug: Schema.string().description('Optional unique lowercase URL slug.'),
     tag: Schema.array(Schema.string()).description('Optional Base tags.'),
 }).description('Create a new Ejunz Base in the current domain. The new Base is returned by id with the URL its detail page is served at, and is not automatically selected for this session.');
 
-export const List = Schema.object({
+export const ListSchema = Schema.object({
     limit: Schema.number().min(1).max(50).description('Maximum result count, up to 50.'),
 }).description('List all Ejunz Bases in the current domain, each with its node, card, and problem count and a link to open it.');
 
-export const Search = Schema.object({
+export const SearchSchema = Schema.object({
     query: Schema.string().required().description('Search text.'),
     limit: Schema.number().min(1).max(50).description('Maximum result count, up to 50.'),
 }).description('Search Ejunz Bases in the current domain by title, content, slug, or tags. Each result carries the URL its detail page is served at.');
 
-export const Get = Schema.object({
+export const GetSchema = Schema.object({
     baseId: Schema.number().step(1).min(1).required().description('Existing Base id.'),
 }).description('Read an Ejunz Base by baseId, including metadata, content, nodes, edges, a tree-shaped outline of node/card ids and titles, and the URL its detail page is served at.');
 
-export const Update = Schema.object({
+export const UpdateSchema = Schema.object({
     baseId: Schema.number().step(1).min(1).required().description('Existing Base id.'),
     title: Schema.string().description('New Base title.'),
     content: Schema.string().description('New Base description or markdown content.'),
@@ -38,7 +38,7 @@ export const Update = Schema.object({
     tag: Schema.array(Schema.string()).description('Replacement Base tags.'),
 }).description('Update an Ejunz Base by baseId: title, content, slug, or tags. Returns the updated Base and the URL its detail page is served at.');
 
-export const Remove = Schema.object({
+export const RemoveSchema = Schema.object({
     baseId: Schema.number().step(1).min(1).required().description('Existing Base id.'),
 }).description('Delete an Ejunz Base by baseId, including its cards, problems, stored files, and vector index.');
 
@@ -243,10 +243,10 @@ class BaseDeleteExecutor extends Executor<ToolContext, ToolArgs> {
 export function apply(ctx: Context) {
     const none = { source: 'base' as const, bindBase: 'none' as const };
     const explicit = { source: 'base' as const, bindBase: 'explicit' as const };
-    ctx.Tool('base', 'base_create', BaseCreateExecutor, Create, { ...none, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_list', BaseListExecutor, List, none, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_search', BaseSearchExecutor, Search, none, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_get', BaseGetExecutor, Get, explicit, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_update', BaseUpdateExecutor, Update, { ...explicit, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_delete', BaseDeleteExecutor, Remove, { ...explicit, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_create', BaseCreateExecutor, CreateSchema, { ...none, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_list', BaseListExecutor, ListSchema, none, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_search', BaseSearchExecutor, SearchSchema, none, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_get', BaseGetExecutor, GetSchema, explicit, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_update', BaseUpdateExecutor, UpdateSchema, { ...explicit, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_delete', BaseDeleteExecutor, RemoveSchema, { ...explicit, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }

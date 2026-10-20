@@ -11,28 +11,28 @@ import type {} from '../service/registry';
 
 export const inject = ['server'];
 
-export const Create = Schema.object({
+export const CreateSchema = Schema.object({
     text: Schema.string().required().description('Node title/text.'),
     parentId: Schema.string().description('Existing parent node id (optional; omit to place under the base root node).'),
 }).description('Create a new node (section/topic). '
     + 'Pass parentId to nest it under an existing node; omit parentId to create it under the bound base root node. '
     + 'Returns the new node id and the URL that opens the Base at that node.');
 
-export const Update = Schema.object({
+export const UpdateSchema = Schema.object({
     nodeId: Schema.string().required().description('Existing node id.'),
     text: Schema.string().required().description('New node title/text.'),
     parentId: Schema.string().description('Existing parent node id (optional; omit to keep the current parent).'),
 }).description('Rename and/or move a node. Pass parentId to move it under an existing node; omit parentId to keep its current parent. Returns the URL that opens the Base at the node.');
 
-export const Get = Schema.object({
+export const GetSchema = Schema.object({
     nodeId: Schema.string().required().description('Existing node id.'),
 }).description('Read a node and its direct child nodes plus cards attached to it. Returns ids and titles for child nodes, and ids, titles, and content for cards without recursively expanding nested nodes. Also returns the URL that opens the Base at this node.');
 
-export const Remove = Schema.object({
+export const RemoveSchema = Schema.object({
     nodeId: Schema.string().required().description('Existing node id.'),
 }).description('Delete a node by id (and its cards). Use an existing nodeId.');
 
-export const CreateMany = Schema.object({
+export const CreateManySchema = Schema.object({
     parentId: Schema.string().description('Node that every entry without a parent attaches to (optional; defaults to the Base\'s root node). The node must already exist.'),
     nodes: Schema.array(Schema.object({
         text: Schema.string().required().description('Node text (required).'),
@@ -48,14 +48,14 @@ export const CreateMany = Schema.object({
     + `Use it instead of calling \`base_node_create\` once per node. One call creates at most ${MAX_NODES_PER_CALL} nodes. `
     + 'Every entry carries the URL that opens the Base at that node.');
 
-export const GetMany = Schema.object({
+export const GetManySchema = Schema.object({
     nodeIds: Schema.array(Schema.string()).min(1).max(MAX_NODES_PER_CALL).required().description('Node ids to read, in order.'),
 }).description('Read several nodes of one Base in a single call, each reported exactly as `base_node_get` reports one: its title, its child nodes '
     + 'and its cards. The Base document is read once and the cards of every named node come from one further read, so the call costs two reads '
     + 'however many nodes it names, instead of two reads per node. A read changes nothing, so a node this Base does not hold is listed in '
     + `\`missingNodeIds\` and \`ok\` is false. Use it instead of calling \`base_node_get\` once per node. One call reads at most ${MAX_NODES_PER_CALL} nodes.`);
 
-export const UpdateMany = Schema.object({
+export const UpdateManySchema = Schema.object({
     entries: Schema.array(Schema.object({
         nodeId: Schema.string().required().description('Node to change (required).'),
         text: Schema.string().description('New node text (optional).'),
@@ -67,7 +67,7 @@ export const UpdateMany = Schema.object({
     + 'node or parent, a move under itself or under one of its descendants) refuses the whole call and writes nothing. Renaming the root node '
     + `renames the Base, as \`base_node_update\` does. Use it instead of calling \`base_node_update\` once per node. One call updates at most ${MAX_NODES_PER_CALL} nodes, and every entry carries the URL that opens the Base at that node.`);
 
-export const RemoveMany = Schema.object({
+export const RemoveManySchema = Schema.object({
     nodeIds: Schema.array(Schema.string()).min(1).max(MAX_NODES_PER_CALL).required().description('Nodes to remove; a node already removed as a descendant of another is ignored.'),
 }).description('Delete several nodes of one Base in a single call: `nodeIds` names the nodes, and each one takes its descendants with it exactly '
     + 'as `base_node_delete` does. The whole graph change is one read and one write of the Base document, so n subtrees cost one of each instead '
@@ -397,12 +397,12 @@ class BaseNodeDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
 
 export function apply(ctx: Context) {
     const opts = { source: 'base' as const, bindBase: 'session' as const };
-    ctx.Tool('base', 'base_node_create', BaseNodeCreateExecutor, Create, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_update', BaseNodeUpdateExecutor, Update, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_get', BaseNodeGetExecutor, Get, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_delete', BaseNodeDeleteExecutor, Remove, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_create_many', BaseNodeCreateManyExecutor, CreateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_get_many', BaseNodeGetManyExecutor, GetMany, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_update_many', BaseNodeUpdateManyExecutor, UpdateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_node_delete_many', BaseNodeDeleteManyExecutor, RemoveMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_create', BaseNodeCreateExecutor, CreateSchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_update', BaseNodeUpdateExecutor, UpdateSchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_get', BaseNodeGetExecutor, GetSchema, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_delete', BaseNodeDeleteExecutor, RemoveSchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_create_many', BaseNodeCreateManyExecutor, CreateManySchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_get_many', BaseNodeGetManyExecutor, GetManySchema, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_update_many', BaseNodeUpdateManyExecutor, UpdateManySchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_node_delete_many', BaseNodeDeleteManyExecutor, RemoveManySchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }

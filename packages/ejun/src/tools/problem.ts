@@ -14,17 +14,17 @@ import type {} from '../service/registry';
 
 export const inject = ['server'];
 
-export const List = Schema.object({
+export const ListSchema = Schema.object({
     cardId: Schema.string().required().description('Card docId (hex).'),
 }).description('Problem = a practice exercise attached to a card (quiz, flip card, matching table, etc.). '
     + 'Lists every problem on one card: pid, type, title, a short content preview and the URL that opens the Base at each problem. Use cardId.');
 
-export const Get = Schema.object({
+export const GetSchema = Schema.object({
     cardId: Schema.string().required().description('Card docId (hex).'),
     pid: Schema.string().required().description('Problem id from problem_list.'),
 }).description('Read one practice problem in full by cardId + pid. Use pid from problem_list. Returns the URL that opens the Base at that problem.');
 
-export const Create = Schema.object({
+export const CreateSchema = Schema.object({
     cardId: Schema.string().required().description('Card docId (hex).'),
     problem: Schema.any().required().description('Problem payload. `type` defaults to single choice when omitted.'),
 }).description('Add a practice problem to a card. Pass `problem` as a JSON object. '
@@ -36,19 +36,19 @@ export const Create = Schema.object({
     + 'super_flip: headers[] + columns[][] (allows 1×1). chain: rows[] of {rowType:"flip"|"text", content:string}. ai_eval: stem + points[]. '
     + 'Returns the new pid and the URL that opens the Base at the new problem.');
 
-export const Update = Schema.object({
+export const UpdateSchema = Schema.object({
     cardId: Schema.string().required().description('Card docId (hex).'),
     pid: Schema.string().required().description('Problem id from problem_list.'),
     problem: Schema.any().required().description('Fields to update.'),
 }).description('Update an existing problem by pid. Pass `problem` with fields to change (merged with the stored row, then normalized). '
     + 'Include `type` only when changing the problem kind. Returns the URL that opens the Base at that problem.');
 
-export const Remove = Schema.object({
+export const RemoveSchema = Schema.object({
     cardId: Schema.string().required().description('Card docId (hex).'),
     pid: Schema.string().required().description('Problem id from problem_list.'),
 }).description('Delete a practice problem from a card by pid. Use pid from problem_list.');
 
-export const CreateMany = Schema.object({
+export const CreateManySchema = Schema.object({
     entries: Schema.array(Schema.object({
         cardId: Schema.string().required().description('Existing card of this Base (required).'),
         problems: Schema.array(Schema.any()).min(1).required().description('Problems to append to that card, each the payload `base_problem_create` takes.'),
@@ -60,7 +60,7 @@ export const CreateMany = Schema.object({
     + `and \`ok\` is false. Use it instead of calling \`base_problem_create\` once per problem. One call adds at most ${MAX_PROBLEMS_PER_CALL} problems, `
     + 'and every added problem carries the URL that opens the Base at it.');
 
-export const GetMany = Schema.object({
+export const GetManySchema = Schema.object({
     entries: Schema.array(Schema.object({
         cardId: Schema.string().required().description('Card holding the problem (required).'),
         pid: Schema.string().required().description('Problem id (required).'),
@@ -70,7 +70,7 @@ export const GetMany = Schema.object({
     + 'so a card or a problem this Base does not hold is listed in `missing` with its reason and `ok` is false. Each found problem carries the URL '
     + 'that opens the Base at it. Use it instead of calling `base_problem_get` once per problem.');
 
-export const UpdateMany = Schema.object({
+export const UpdateManySchema = Schema.object({
     entries: Schema.array(Schema.object({
         cardId: Schema.string().required().description('Card holding the problem (required).'),
         pid: Schema.string().required().description('Problem id (required).'),
@@ -83,7 +83,7 @@ export const UpdateMany = Schema.object({
     + `\`refusedEntries\`. Use it instead of calling \`base_problem_update\` once per problem. One call updates at most ${MAX_PROBLEMS_PER_CALL} problems, `
     + 'and every updated problem carries the URL that opens the Base at it.');
 
-export const RemoveMany = Schema.object({
+export const RemoveManySchema = Schema.object({
     entries: Schema.array(Schema.object({
         cardId: Schema.string().required().description('Card to change (required).'),
         pids: Schema.array(Schema.string()).min(1).required().description('Problem ids to remove from that card (required).'),
@@ -422,13 +422,13 @@ class BaseProblemDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
 
 export function apply(ctx: Context) {
     const opts = { source: 'base' as const, bindBase: 'session' as const };
-    ctx.Tool('base', 'base_problem_list', BaseProblemListExecutor, List, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_problem_get', BaseProblemGetExecutor, Get, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_problem_create', BaseProblemCreateExecutor, Create, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_problem_update', BaseProblemUpdateExecutor, Update, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_problem_delete', BaseProblemDeleteExecutor, Remove, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_problem_create_many', BaseProblemCreateManyExecutor, CreateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_problem_get_many', BaseProblemGetManyExecutor, GetMany, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_problem_update_many', BaseProblemUpdateManyExecutor, UpdateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_problem_delete_many', BaseProblemDeleteManyExecutor, RemoveMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_list', BaseProblemListExecutor, ListSchema, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_get', BaseProblemGetExecutor, GetSchema, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_create', BaseProblemCreateExecutor, CreateSchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_update', BaseProblemUpdateExecutor, UpdateSchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_delete', BaseProblemDeleteExecutor, RemoveSchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_create_many', BaseProblemCreateManyExecutor, CreateManySchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_get_many', BaseProblemGetManyExecutor, GetManySchema, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_update_many', BaseProblemUpdateManyExecutor, UpdateManySchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_problem_delete_many', BaseProblemDeleteManyExecutor, RemoveManySchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }

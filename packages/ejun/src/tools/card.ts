@@ -12,27 +12,27 @@ import type {} from '../service/registry';
 
 export const inject = ['server'];
 
-export const Create = Schema.object({
+export const CreateSchema = Schema.object({
     nodeId: Schema.string().required().description('Owning existing node id.'),
     title: Schema.string().required().description('Card title.'),
     content: Schema.string().description('Markdown body (optional).'),
 }).description('Create a new card (content block) under a node. Use an existing nodeId. Returns the card id and the URL that opens the Base at this card.');
 
-export const Update = Schema.object({
+export const UpdateSchema = Schema.object({
     cardId: Schema.string().required().description('Card docId (hex).'),
     title: Schema.string().description('New title (optional).'),
     content: Schema.string().description('New markdown body (optional).'),
 }).description('Update a card\'s title and/or markdown content by cardId. Use cardId. Returns the URL that opens the Base at this card.');
 
-export const Get = Schema.object({
+export const GetSchema = Schema.object({
     cardId: Schema.string().required().description('Card docId (hex).'),
 }).description('Read a card by cardId and return its title and markdown content. Also returns the URL that opens the Base at this card.');
 
-export const Remove = Schema.object({
+export const RemoveSchema = Schema.object({
     cardId: Schema.string().required().description('Card docId (hex).'),
 }).description('Delete a card by cardId. Use cardId.');
 
-export const CreateMany = Schema.object({
+export const CreateManySchema = Schema.object({
     cards: Schema.array(Schema.object({
         nodeId: Schema.string().required().description('Existing node to attach the card to (required).'),
         title: Schema.string().required().description('Card title (required).'),
@@ -47,13 +47,13 @@ export const CreateMany = Schema.object({
     + `instead of calling \`base_card_create\` once per card. One call creates at most ${MAX_CARDS_PER_CALL} cards. `
     + 'Every created card carries the URL that opens the Base at it.');
 
-export const GetMany = Schema.object({
+export const GetManySchema = Schema.object({
     cardIds: Schema.array(Schema.string()).min(1).max(MAX_CARDS_PER_CALL).required().description('Card docIds to read, in order.'),
 }).description('Read several cards of one Base in a single call, each reported exactly as `base_card_get` reports one. The cards come from one '
     + 'read of the card collection, so the call costs one read however many cards it names, instead of one read per card. A read changes '
     + `nothing, so a card this Base does not hold is listed in \`missingCardIds\` and \`ok\` is false. Use it instead of calling \`base_card_get\` once per card. One call reads at most ${MAX_CARDS_PER_CALL} cards.`);
 
-export const UpdateMany = Schema.object({
+export const UpdateManySchema = Schema.object({
     entries: Schema.array(Schema.object({
         cardId: Schema.string().required().description('Card to change (required).'),
         title: Schema.string().description('New card title (optional).'),
@@ -64,7 +64,7 @@ export const UpdateMany = Schema.object({
     + 'the cards are read once and an id that names no card of this Base refuses the whole call, so a refused call writes nothing. A failure the '
     + `database itself reports is named in \`refusedCards\` and \`ok\` is false. Use it instead of calling \`base_card_update\` once per card. One call updates at most ${MAX_CARDS_PER_CALL} cards, and every updated card carries the URL that opens the Base at it.`);
 
-export const RemoveMany = Schema.object({
+export const RemoveManySchema = Schema.object({
     cardIds: Schema.array(Schema.string()).min(1).max(MAX_CARDS_PER_CALL).required().description('Cards to remove.'),
 }).description('Delete several cards of one Base in a single call. A card is its own document, so every named card goes with one delete of the '
     + 'card collection and one delete of its status rows, instead of two statements per card. The cards are read once first, and an id that '
@@ -345,12 +345,12 @@ class BaseCardDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
 
 export function apply(ctx: Context) {
     const opts = { source: 'base' as const, bindBase: 'session' as const };
-    ctx.Tool('base', 'base_card_create', BaseCardCreateExecutor, Create, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_card_update', BaseCardUpdateExecutor, Update, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_card_get', BaseCardGetExecutor, Get, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_card_delete', BaseCardDeleteExecutor, Remove, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_card_create_many', BaseCardCreateManyExecutor, CreateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_card_get_many', BaseCardGetManyExecutor, GetMany, opts, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_card_update_many', BaseCardUpdateManyExecutor, UpdateMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_card_delete_many', BaseCardDeleteManyExecutor, RemoveMany, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_card_create', BaseCardCreateExecutor, CreateSchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_card_update', BaseCardUpdateExecutor, UpdateSchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_card_get', BaseCardGetExecutor, GetSchema, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_card_delete', BaseCardDeleteExecutor, RemoveSchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_card_create_many', BaseCardCreateManyExecutor, CreateManySchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_card_get_many', BaseCardGetManyExecutor, GetManySchema, opts, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_card_update_many', BaseCardUpdateManyExecutor, UpdateManySchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_card_delete_many', BaseCardDeleteManyExecutor, RemoveManySchema, { ...opts, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }

@@ -17,32 +17,32 @@ const conversationRead = {
     maxMessages: Schema.number().step(1).min(1).max(500).description('Maximum turns to read (default 50).'),
     maxChars: Schema.number().step(1).min(1).max(MAX_FILE_CONTENT_CHARS_LIMIT).description(`Cap on returned text (default ${MAX_FILE_CONTENT_CHARS}).`),
 };
-export const AgentList = Schema.object({ groupId: Schema.number().step(1).min(1).required(), teamId: Schema.string().description('Optional team filter.') }).description('List persisted Agent records, including agentId, teamId, title, and settings.');
-export const AgentGet = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required().description('Persisted Agent id.') }).description('Read one persisted Agent record by agentId.');
-export const AgentCreate = Schema.object({ groupId: Schema.number().step(1).min(1).required(), teamId: Schema.string(), title: Schema.string().required(), provider: Schema.string(), model: Schema.string(), baseDocId: Schema.number().step(1).min(1), runtimeId: Schema.string(), agentPreset: Schema.string(), roleId: Schema.string().description('Optional Group role id; requires Agent configuration permission. Omit or pass an empty string to use Default.'), context: Schema.string() }).description('Create a persistent Agent record with teamId, title, settings, and optional role and context; does not create a session.');
-export const AgentUpdate = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required(), title: Schema.string(), teamId: Schema.string(), provider: Schema.string(), model: Schema.string(), baseDocId: Schema.number().step(1).min(1), runtimeId: Schema.string(), agentPreset: Schema.string(), roleId: Schema.string().description('Set a Group role id (requires Agent configuration permission); pass an empty string to return to Default.'), context: Schema.string() }).description('Update an Agent record, its settings, role assignment, or persistent context by agentId.');
-export const AgentRemove = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required() }).description('Delete an Agent record by agentId.');
-const AgentCreateFields = Schema.object({ teamId: Schema.string(), title: Schema.string().required(), provider: Schema.string(), model: Schema.string(), baseDocId: Schema.number().step(1).min(1), runtimeId: Schema.string(), agentPreset: Schema.string(), roleId: Schema.string(), context: Schema.string() });
-export const AgentCreateMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agents: Schema.array(AgentCreateFields).min(1).max(MAX_AGENTS_PER_CALL).required() }).description('Create persisted Agent records.');
-export const AgentGetMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required() }).description('Read Agent records by agentIds.');
-export const AgentUpdateMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), entries: Schema.array(Schema.object({ agentId: Schema.string().required(), title: Schema.string(), teamId: Schema.string(), roleId: Schema.string(), context: Schema.string() })).min(1).max(MAX_AGENTS_PER_CALL).required() }).description('Update Agent records by agentId.');
-export const AgentRemoveMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required() }).description('Delete Agent records by agentIds.');
-export const AgentSessionList = Schema.object({ groupId: Schema.number().step(1).min(1).required(), teamId: Schema.string(), agentId: Schema.string() }).description('List runtime sessions by sessionId, optionally filtered by owning Agent or team.');
-export const AgentSessionGet = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionId: Schema.string().required(), ...conversationRead }).description('Read a runtime session conversation by sessionId.');
-export const AgentSessionCreate = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required(), title: Schema.string(), message: Schema.string().required().description('Required non-empty initial prompt sent to the Agent after session creation.') }).description('Create a runtime session for an existing Agent record and immediately send its required initial prompt.');
-const AgentSessionCreateFields = Schema.object({
+export const AgentListSchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), teamId: Schema.string().description('Optional team filter.') }).description('List persisted Agent records, including agentId, teamId, title, and settings.');
+export const AgentGetSchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required().description('Persisted Agent id.') }).description('Read one persisted Agent record by agentId.');
+export const AgentCreateSchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), teamId: Schema.string(), title: Schema.string().required(), provider: Schema.string(), model: Schema.string(), baseDocId: Schema.number().step(1).min(1), runtimeId: Schema.string(), agentPreset: Schema.string(), roleId: Schema.string().description('Optional Group role id; requires Agent configuration permission. Omit or pass an empty string to use Default.'), context: Schema.string() }).description('Create a persistent Agent record with teamId, title, settings, and optional role and context; does not create a session.');
+export const AgentUpdateSchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required(), title: Schema.string(), teamId: Schema.string(), provider: Schema.string(), model: Schema.string(), baseDocId: Schema.number().step(1).min(1), runtimeId: Schema.string(), agentPreset: Schema.string(), roleId: Schema.string().description('Set a Group role id (requires Agent configuration permission); pass an empty string to return to Default.'), context: Schema.string() }).description('Update an Agent record, its settings, role assignment, or persistent context by agentId.');
+export const AgentRemoveSchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required() }).description('Delete an Agent record by agentId.');
+const AgentCreateFieldsSchema = Schema.object({ teamId: Schema.string(), title: Schema.string().required(), provider: Schema.string(), model: Schema.string(), baseDocId: Schema.number().step(1).min(1), runtimeId: Schema.string(), agentPreset: Schema.string(), roleId: Schema.string(), context: Schema.string() });
+export const AgentCreateManySchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agents: Schema.array(AgentCreateFieldsSchema).min(1).max(MAX_AGENTS_PER_CALL).required() }).description('Create persisted Agent records.');
+export const AgentGetManySchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required() }).description('Read Agent records by agentIds.');
+export const AgentUpdateManySchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), entries: Schema.array(Schema.object({ agentId: Schema.string().required(), title: Schema.string(), teamId: Schema.string(), roleId: Schema.string(), context: Schema.string() })).min(1).max(MAX_AGENTS_PER_CALL).required() }).description('Update Agent records by agentId.');
+export const AgentRemoveManySchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required() }).description('Delete Agent records by agentIds.');
+export const AgentSessionListSchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), teamId: Schema.string(), agentId: Schema.string() }).description('List runtime sessions by sessionId, optionally filtered by owning Agent or team.');
+export const AgentSessionGetSchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionId: Schema.string().required(), ...conversationRead }).description('Read a runtime session conversation by sessionId.');
+export const AgentSessionCreateSchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), agentId: Schema.string().required(), title: Schema.string(), message: Schema.string().required().description('Required non-empty initial prompt sent to the Agent after session creation.') }).description('Create a runtime session for an existing Agent record and immediately send its required initial prompt.');
+const AgentSessionCreateFieldsSchema = Schema.object({
     agentId: Schema.string().required().description('Existing Agent id.'),
     title: Schema.string().description('Optional session title.'),
     message: Schema.string().required().description('Required non-empty initial prompt sent to the Agent.'),
 });
-export const AgentSessionCreateMany = Schema.object({
+export const AgentSessionCreateManySchema = Schema.object({
     groupId: Schema.number().step(1).min(1).required().description('Group id.'),
-    sessions: Schema.array(AgentSessionCreateFields).min(1).required(),
+    sessions: Schema.array(AgentSessionCreateFieldsSchema).min(1).required(),
 }).description('Create runtime sessions concurrently for existing Agents. Every session requires an initial prompt. Results report successes and failures separately; this batch is not transactional.');
-export const AgentSessionUpdate = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionId: Schema.string().required(), title: Schema.string().required() }).description('Rename a runtime session by sessionId.');
-export const AgentSessionDelete = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionId: Schema.string().required() }).description('Delete a runtime session by sessionId.');
-export const AgentSessionGetMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required(), ...conversationRead }).description('Read runtime sessions by sessionIds.');
-export const AgentSessionDeleteMany = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required() }).description('Delete runtime sessions by sessionIds.');
+export const AgentSessionUpdateSchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionId: Schema.string().required(), title: Schema.string().required() }).description('Rename a runtime session by sessionId.');
+export const AgentSessionDeleteSchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionId: Schema.string().required() }).description('Delete a runtime session by sessionId.');
+export const AgentSessionGetManySchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required(), ...conversationRead }).description('Read runtime sessions by sessionIds.');
+export const AgentSessionDeleteManySchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), sessionIds: Schema.array(Schema.string()).max(MAX_AGENTS_PER_CALL).required() }).description('Delete runtime sessions by sessionIds.');
 export async function listAgents(ctx: ToolContext, args: ToolArgs) { const { groupId } = await requireGroup(ctx,args); const agents = await AgentModel.listAgents(ctx.domainId,ctx.owner,groupId,asText(args.teamId)||undefined); return { ok:true,groupId,count:agents.length,agents:agents.map(agentRecordView) }; }
 export async function getAgent(ctx: ToolContext,args:ToolArgs) { const {groupId}=await requireGroup(ctx,args); const agentId=asText(args.agentId); const a=agentId&&await AgentModel.getAgent(ctx.domainId,ctx.owner,agentId,groupId); if(!a) throw new Error(`Agent not found: ${agentId}`); return {ok:true,groupId,agent:agentRecordView(a)}; }
 export async function createAgent(ctx: ToolContext, args: ToolArgs) {
@@ -398,21 +398,21 @@ class AgentSessionDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 export function apply(ctx: Context) {
-    ctx.Tool('agent', 'agent_agent_list', AgentAgentListExecutor, AgentList, PERM.AGENT_PERM_AGENT_LIST);
-    ctx.Tool('agent', 'agent_agent_get', AgentAgentGetExecutor, AgentGet, PERM.AGENT_PERM_AGENT_GET);
-    ctx.Tool('agent', 'agent_agent_create', AgentAgentCreateExecutor, AgentCreate, PERM.AGENT_PERM_AGENT_CREATE);
-    ctx.Tool('agent', 'agent_agent_update', AgentAgentUpdateExecutor, AgentUpdate, PERM.AGENT_PERM_AGENT_UPDATE);
-    ctx.Tool('agent', 'agent_agent_delete', AgentAgentDeleteExecutor, AgentRemove, PERM.AGENT_PERM_AGENT_DELETE);
-    ctx.Tool('agent', 'agent_agent_create_many', AgentAgentCreateManyExecutor, AgentCreateMany, PERM.AGENT_PERM_AGENT_CREATE_MANY);
-    ctx.Tool('agent', 'agent_agent_get_many', AgentAgentGetManyExecutor, AgentGetMany, PERM.AGENT_PERM_AGENT_GET_MANY);
-    ctx.Tool('agent', 'agent_agent_update_many', AgentAgentUpdateManyExecutor, AgentUpdateMany, PERM.AGENT_PERM_AGENT_UPDATE_MANY);
-    ctx.Tool('agent', 'agent_agent_delete_many', AgentAgentDeleteManyExecutor, AgentRemoveMany, PERM.AGENT_PERM_AGENT_DELETE_MANY);
-    ctx.Tool('agent', 'agent_session_list', AgentSessionListExecutor, AgentSessionList, PERM.AGENT_PERM_SESSION_LIST);
-    ctx.Tool('agent', 'agent_session_get', AgentSessionGetExecutor, AgentSessionGet, PERM.AGENT_PERM_SESSION_GET);
-    ctx.Tool('agent', 'agent_session_create', AgentSessionCreateExecutor, AgentSessionCreate, PERM.AGENT_PERM_SESSION_CREATE);
-    ctx.Tool('agent', 'agent_session_create_many', AgentSessionCreateManyExecutor, AgentSessionCreateMany, PERM.AGENT_PERM_SESSION_CREATE_MANY);
-    ctx.Tool('agent', 'agent_session_update', AgentSessionUpdateExecutor, AgentSessionUpdate, PERM.AGENT_PERM_SESSION_UPDATE);
-    ctx.Tool('agent', 'agent_session_delete', AgentSessionDeleteExecutor, AgentSessionDelete, PERM.AGENT_PERM_SESSION_DELETE);
-    ctx.Tool('agent', 'agent_session_get_many', AgentSessionGetManyExecutor, AgentSessionGetMany, PERM.AGENT_PERM_SESSION_GET_MANY);
-    ctx.Tool('agent', 'agent_session_delete_many', AgentSessionDeleteManyExecutor, AgentSessionDeleteMany, PERM.AGENT_PERM_SESSION_DELETE_MANY);
+    ctx.Tool('agent', 'agent_agent_list', AgentAgentListExecutor, AgentListSchema, PERM.AGENT_PERM_AGENT_LIST);
+    ctx.Tool('agent', 'agent_agent_get', AgentAgentGetExecutor, AgentGetSchema, PERM.AGENT_PERM_AGENT_GET);
+    ctx.Tool('agent', 'agent_agent_create', AgentAgentCreateExecutor, AgentCreateSchema, PERM.AGENT_PERM_AGENT_CREATE);
+    ctx.Tool('agent', 'agent_agent_update', AgentAgentUpdateExecutor, AgentUpdateSchema, PERM.AGENT_PERM_AGENT_UPDATE);
+    ctx.Tool('agent', 'agent_agent_delete', AgentAgentDeleteExecutor, AgentRemoveSchema, PERM.AGENT_PERM_AGENT_DELETE);
+    ctx.Tool('agent', 'agent_agent_create_many', AgentAgentCreateManyExecutor, AgentCreateManySchema, PERM.AGENT_PERM_AGENT_CREATE_MANY);
+    ctx.Tool('agent', 'agent_agent_get_many', AgentAgentGetManyExecutor, AgentGetManySchema, PERM.AGENT_PERM_AGENT_GET_MANY);
+    ctx.Tool('agent', 'agent_agent_update_many', AgentAgentUpdateManyExecutor, AgentUpdateManySchema, PERM.AGENT_PERM_AGENT_UPDATE_MANY);
+    ctx.Tool('agent', 'agent_agent_delete_many', AgentAgentDeleteManyExecutor, AgentRemoveManySchema, PERM.AGENT_PERM_AGENT_DELETE_MANY);
+    ctx.Tool('agent', 'agent_session_list', AgentSessionListExecutor, AgentSessionListSchema, PERM.AGENT_PERM_SESSION_LIST);
+    ctx.Tool('agent', 'agent_session_get', AgentSessionGetExecutor, AgentSessionGetSchema, PERM.AGENT_PERM_SESSION_GET);
+    ctx.Tool('agent', 'agent_session_create', AgentSessionCreateExecutor, AgentSessionCreateSchema, PERM.AGENT_PERM_SESSION_CREATE);
+    ctx.Tool('agent', 'agent_session_create_many', AgentSessionCreateManyExecutor, AgentSessionCreateManySchema, PERM.AGENT_PERM_SESSION_CREATE_MANY);
+    ctx.Tool('agent', 'agent_session_update', AgentSessionUpdateExecutor, AgentSessionUpdateSchema, PERM.AGENT_PERM_SESSION_UPDATE);
+    ctx.Tool('agent', 'agent_session_delete', AgentSessionDeleteExecutor, AgentSessionDeleteSchema, PERM.AGENT_PERM_SESSION_DELETE);
+    ctx.Tool('agent', 'agent_session_get_many', AgentSessionGetManyExecutor, AgentSessionGetManySchema, PERM.AGENT_PERM_SESSION_GET_MANY);
+    ctx.Tool('agent', 'agent_session_delete_many', AgentSessionDeleteManyExecutor, AgentSessionDeleteManySchema, PERM.AGENT_PERM_SESSION_DELETE_MANY);
 }

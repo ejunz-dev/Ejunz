@@ -10,9 +10,9 @@ import { registerAgentAddon } from '../service/addons';
 
 export const inject = ['server'];
 
-export const ContextConfig = Schema.object({}).description('Get the current Ejunz Base domain context and scope.');
+export const ContextConfigSchema = Schema.object({}).description('Get the current Ejunz Base domain context and scope.');
 
-export const SelectConfig = Schema.object({
+export const SelectConfigSchema = Schema.object({
     baseId: Schema.number().step(1).min(1).required().description('Existing Base id.'),
 }).description('Switch the current Agent session to an Ejunz Base by baseId.');
 
@@ -80,6 +80,6 @@ export function apply(ctx: Context) {
     });
     ctx.effect(() => unregister);
     const session = { source: 'session' as const, bindBase: 'none' as const };
-    ctx.Tool('base', 'base_context', BaseContextExecutor, ContextConfig, { ...session, instructions }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('base', 'base_select', BaseSelectExecutor, SelectConfig, { ...session, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_context', BaseContextExecutor, ContextConfigSchema, { ...session, instructions }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('base', 'base_select', BaseSelectExecutor, SelectConfigSchema, { ...session, mutating: true }, PRIV.USER_PRIV_USER_PROFILE);
 }

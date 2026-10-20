@@ -10,14 +10,14 @@ import { requireAgentConfigurationPermission, requireGroup, sessionScope } from 
 
 export const inject = ['server'];
 
-export const AgentPermissionList = Schema.object({}).description('List permissions contributed by registered Addons for Agent roles. Core Agent tool permissions are assigned through domain roles.');
-export const AgentPermissionGet = Schema.object({ permissionId: Schema.string().required() }).description('Read one Addon permission available to Agent roles.');
+export const AgentPermissionListSchema = Schema.object({}).description('List permissions contributed by registered Addons for Agent roles. Core Agent tool permissions are assigned through domain roles.');
+export const AgentPermissionGetSchema = Schema.object({ permissionId: Schema.string().required() }).description('Read one Addon permission available to Agent roles.');
 
-export const AgentAddonList = Schema.object({ groupId: Schema.number().step(1).min(1).required() }).description('List registered Addons and their installed and Group-enabled status. Read Team-specific selections from the Team config.');
-export const AgentAddonGet = Schema.object({ groupId: Schema.number().step(1).min(1).required(), addonId: Schema.string().required() }).description('Read one registered Addon and its tools and permissions.');
-export const AgentAddonInstall = Schema.object({ addonId: Schema.string().required() }).description('Install a registered Addon for the current domain. Requires Agent configuration permission.');
-export const AgentAddonUninstall = Schema.object({ addonId: Schema.string().required() }).description('Uninstall a registered Addon from the current domain. This disables it for all Groups and removes its role permissions. Requires Agent configuration permission.');
-export const AgentAddonUpdate = Schema.object({
+export const AgentAddonListSchema = Schema.object({ groupId: Schema.number().step(1).min(1).required() }).description('List registered Addons and their installed and Group-enabled status. Read Team-specific selections from the Team config.');
+export const AgentAddonGetSchema = Schema.object({ groupId: Schema.number().step(1).min(1).required(), addonId: Schema.string().required() }).description('Read one registered Addon and its tools and permissions.');
+export const AgentAddonInstallSchema = Schema.object({ addonId: Schema.string().required() }).description('Install a registered Addon for the current domain. Requires Agent configuration permission.');
+export const AgentAddonUninstallSchema = Schema.object({ addonId: Schema.string().required() }).description('Uninstall a registered Addon from the current domain. This disables it for all Groups and removes its role permissions. Requires Agent configuration permission.');
+export const AgentAddonUpdateSchema = Schema.object({
     groupId: Schema.number().step(1).min(1).required(),
     addonId: Schema.string().required(),
     enabled: Schema.boolean().required(),
@@ -139,11 +139,11 @@ export function apply(ctx: Context) {
         defaultEnabled: true,
     });
     ctx.effect(() => unregister);
-    ctx.Tool('agent', 'agent_permission_list', AgentPermissionListExecutor, AgentPermissionList, PERM.AGENT_PERM_PERMISSION_LIST);
-    ctx.Tool('agent', 'agent_permission_get', AgentPermissionGetExecutor, AgentPermissionGet, PERM.AGENT_PERM_PERMISSION_GET);
-    ctx.Tool('agent', 'agent_addon_list', AgentAddonListExecutor, AgentAddonList, PERM.AGENT_PERM_ADDON_LIST);
-    ctx.Tool('agent', 'agent_addon_get', AgentAddonGetExecutor, AgentAddonGet, PERM.AGENT_PERM_ADDON_GET);
-    ctx.Tool('agent', 'agent_addon_install', AgentAddonInstallExecutor, AgentAddonInstall, PERM.AGENT_PERM_ADDON_INSTALL);
-    ctx.Tool('agent', 'agent_addon_uninstall', AgentAddonUninstallExecutor, AgentAddonUninstall, PERM.AGENT_PERM_ADDON_UNINSTALL);
-    ctx.Tool('agent', 'agent_addon_update', AgentAddonUpdateExecutor, AgentAddonUpdate, PERM.AGENT_PERM_ADDON_UPDATE);
+    ctx.Tool('agent', 'agent_permission_list', AgentPermissionListExecutor, AgentPermissionListSchema, PERM.AGENT_PERM_PERMISSION_LIST);
+    ctx.Tool('agent', 'agent_permission_get', AgentPermissionGetExecutor, AgentPermissionGetSchema, PERM.AGENT_PERM_PERMISSION_GET);
+    ctx.Tool('agent', 'agent_addon_list', AgentAddonListExecutor, AgentAddonListSchema, PERM.AGENT_PERM_ADDON_LIST);
+    ctx.Tool('agent', 'agent_addon_get', AgentAddonGetExecutor, AgentAddonGetSchema, PERM.AGENT_PERM_ADDON_GET);
+    ctx.Tool('agent', 'agent_addon_install', AgentAddonInstallExecutor, AgentAddonInstallSchema, PERM.AGENT_PERM_ADDON_INSTALL);
+    ctx.Tool('agent', 'agent_addon_uninstall', AgentAddonUninstallExecutor, AgentAddonUninstallSchema, PERM.AGENT_PERM_ADDON_UNINSTALL);
+    ctx.Tool('agent', 'agent_addon_update', AgentAddonUpdateExecutor, AgentAddonUpdateSchema, PERM.AGENT_PERM_ADDON_UPDATE);
 }
