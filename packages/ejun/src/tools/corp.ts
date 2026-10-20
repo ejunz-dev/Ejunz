@@ -1,11 +1,11 @@
-import Schema from 'schemastery';
 import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PERM } from 'ejun/src/model/builtin';
-import { agentRuntimeHandlerContext } from '../service/runtime';
+import Schema from 'schemastery';
 import { asText } from '../lib/tool-shared';
-import { agentPermissionCatalog, registerAgentAddon } from '../service/addons';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
+import { agentPermissionCatalog, registerAgentAddon } from '../service/addons';
+import { agentRuntimeHandlerContext } from '../service/runtime';
 import { requireAgentConfigurationPermission, requireGroup, sessionScope } from './common/agent';
 
 export const inject = ['server'];
@@ -67,7 +67,9 @@ class AgentAddonListExecutor extends Executor<ToolContext, ToolArgs> {
             sessionScope(this.ctx, groupId),
         );
         const value = (await addonRpcValue(result, 'Failed to list Agent Addons')) as { addons?: unknown[] };
-        return { ok: true, groupId, addons: value.addons ?? [], permissions: agentPermissionCatalog() };
+        return {
+            ok: true, groupId, addons: value.addons ?? [], permissions: agentPermissionCatalog(),
+        };
     }
 }
 

@@ -1,11 +1,12 @@
-import Schema from 'schemastery';
 import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
-import { PRIV } from 'ejun/src/model/builtin';
 import type { CardDoc } from 'ejun/src/interface';
-import * as document from 'ejun/src/model/document';
 import { BaseModel, CardModel } from 'ejun/src/model/base';
+import { PRIV } from 'ejun/src/model/builtin';
+import * as document from 'ejun/src/model/document';
 import storage from 'ejun/src/model/storage';
+import Schema from 'schemastery';
+import { readFileContent } from '../lib/tool-file-reader';
 import {
     MAX_CARDS_PER_CALL,
     MAX_FILE_CONTENT_CHARS,
@@ -17,8 +18,8 @@ import {
 } from '../lib/tool-limits';
 import {
     asText,
-    cardUrl,
     cardsById,
+    cardUrl,
     fileCardDetail,
     fileCardSummary,
     fileDownloadUrl,
@@ -27,7 +28,6 @@ import {
     idList,
     requireCard,
 } from '../lib/tool-shared';
-import { readFileContent } from '../lib/tool-file-reader';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import type {} from '../service/registry';
 
@@ -55,11 +55,11 @@ export const ContentGetSchema = Schema.object({
         .max(MAX_FILE_CONTENT_CHARS_LIMIT)
         .description(`Cap on the returned text (default ${MAX_FILE_CONTENT_CHARS}).`),
 }).description(
-    'Read the content of one file-card as text. The stored file is read from the path `base_node_fileCard_create` wrote it to, and the ' +
-        "card's `fileType` picks the reader: `pdf` is the type implemented today and every other type is refused by name. A PDF is parsed inside " +
-        'this process, with no external command. Returns the fields of `base_node_fileCard_get` plus `text`, `textLength`, `truncated`, `pageCount`, ' +
-        '`totalPages` and `extractor`. `text` stops at `maxChars` characters and `truncated` reports that, pages are separated by form feeds, and ' +
-        '`firstPage` / `lastPage` read one range of a long document.',
+    'Read the content of one file-card as text. The stored file is read from the path `base_node_fileCard_create` wrote it to, and the '
+        + "card's `fileType` picks the reader: `pdf` is the type implemented today and every other type is refused by name. A PDF is parsed inside "
+        + 'this process, with no external command. Returns the fields of `base_node_fileCard_get` plus `text`, `textLength`, `truncated`, `pageCount`, '
+        + '`totalPages` and `extractor`. `text` stops at `maxChars` characters and `truncated` reports that, pages are separated by form feeds, and '
+        + '`firstPage` / `lastPage` read one range of a long document.',
 );
 
 export const RemoveSchema = Schema.object({
@@ -89,34 +89,34 @@ export const CreateManySchema = Schema.object({
         .required()
         .description('Files to download and store, in order.'),
 }).description(
-    'Store several files on nodes of one Base in a single call, each becoming a file-card, as `base_node_fileCard_create` makes one. ' +
-        '`files` is an array of `{ nodeId, fileName, fileUrl, title? }`. The Base is read once to check every node and the whole list is validated ' +
-        'before the first download, so a refused call stores nothing. The downloads run a few at a time, and every entry is reported on its own: a ' +
-        `download or a card the server refuses is named in \`refusedFiles\` and \`ok\` is false, while the files that arrived stay. One call stores at most ${MAX_FILE_CREATES_PER_CALL} files, and every stored file carries the URL that opens the Base at its card and the URL its file is served at.`,
+    'Store several files on nodes of one Base in a single call, each becoming a file-card, as `base_node_fileCard_create` makes one. '
+        + '`files` is an array of `{ nodeId, fileName, fileUrl, title? }`. The Base is read once to check every node and the whole list is validated '
+        + 'before the first download, so a refused call stores nothing. The downloads run a few at a time, and every entry is reported on its own: a '
+        + `download or a card the server refuses is named in \`refusedFiles\` and \`ok\` is false, while the files that arrived stay. One call stores at most ${MAX_FILE_CREATES_PER_CALL} files, and every stored file carries the URL that opens the Base at its card and the URL its file is served at.`,
 );
 
 export const ListManySchema = Schema.object({
     nodeIds: Schema.array(Schema.string()).min(1).max(MAX_NODES_PER_CALL).required().description('Nodes whose files are wanted.'),
 }).description(
-    'List the files of several nodes in a single call, each node reported as `base_node_fileCard_list` reports it. The Base document is read ' +
-        'once and the cards of every named node come from one further read, so the call costs two reads however many nodes it names. A read changes ' +
-        `nothing, so a node this Base does not hold is listed in \`missingNodeIds\` and \`ok\` is false. One call lists at most ${MAX_NODES_PER_CALL} nodes.`,
+    'List the files of several nodes in a single call, each node reported as `base_node_fileCard_list` reports it. The Base document is read '
+        + 'once and the cards of every named node come from one further read, so the call costs two reads however many nodes it names. A read changes '
+        + `nothing, so a node this Base does not hold is listed in \`missingNodeIds\` and \`ok\` is false. One call lists at most ${MAX_NODES_PER_CALL} nodes.`,
 );
 
 export const GetManySchema = Schema.object({
     cardIds: Schema.array(Schema.string()).min(1).max(MAX_CARDS_PER_CALL).required().description('File-cards to read.'),
 }).description(
-    'Read several file-cards in a single call, each reported as `base_node_fileCard_get` reports one: its name, type, size, node, content, ' +
-        'the URL that opens the Base at its card and the URL its file is served at. The cards come from one read, so the call costs one read however many it names. A read changes nothing, so a ' +
-        `card this Base does not hold, or one that is not a file-card, is listed in \`missing\` with its reason and \`ok\` is false. One call reads at most ${MAX_CARDS_PER_CALL} cards.`,
+    'Read several file-cards in a single call, each reported as `base_node_fileCard_get` reports one: its name, type, size, node, content, '
+        + 'the URL that opens the Base at its card and the URL its file is served at. The cards come from one read, so the call costs one read however many it names. A read changes nothing, so a '
+        + `card this Base does not hold, or one that is not a file-card, is listed in \`missing\` with its reason and \`ok\` is false. One call reads at most ${MAX_CARDS_PER_CALL} cards.`,
 );
 
 export const RemoveManySchema = Schema.object({
     cardIds: Schema.array(Schema.string()).min(1).max(MAX_CARDS_PER_CALL).required().description('File-cards to remove.'),
 }).description(
-    'Delete several file-cards of one Base in a single call, with the file each one holds. Each card is removed as ' +
-        '`base_node_fileCard_delete` removes one: the stored body first, then the card. The cards are read once, and a card this Base does not hold, or ' +
-        `one that is not a file-card, refuses the whole call before anything is removed. Use it instead of calling \`base_node_fileCard_delete\` once per card. One call removes at most ${MAX_CARDS_PER_CALL} cards.`,
+    'Delete several file-cards of one Base in a single call, with the file each one holds. Each card is removed as '
+        + '`base_node_fileCard_delete` removes one: the stored body first, then the card. The cards are read once, and a card this Base does not hold, or '
+        + `one that is not a file-card, refuses the whole call before anything is removed. Use it instead of calling \`base_node_fileCard_delete\` once per card. One call removes at most ${MAX_CARDS_PER_CALL} cards.`,
 );
 
 function optionalCount(raw: unknown, label: string, limit: number): number | undefined {
@@ -266,7 +266,9 @@ class BaseNodeFileCardCreateManyExecutor extends Executor<ToolContext, ToolArgs>
             const stored = `${nodeId}/${fileName}`;
             if (seen.has(stored)) throw new Error(`files[${index}] stores ${fileName} on ${nodeId} twice; one file per node holds one path`);
             seen.add(stored);
-            planned.push({ index, nodeId, fileName, fileUrl, title: asText(fields.title) || fileName });
+            planned.push({
+                index, nodeId, fileName, fileUrl, title: asText(fields.title) || fileName,
+            });
         }
         type StoredFile = {
             ok: true;
@@ -326,7 +328,9 @@ class BaseNodeFileCardCreateManyExecutor extends Executor<ToolContext, ToolArgs>
                     throw error;
                 }
             } catch (error) {
-                return { ok: false, index: file.index, nodeId: file.nodeId, fileName: file.fileName, error: (error as Error).message };
+                return {
+                    ok: false, index: file.index, nodeId: file.nodeId, fileName: file.fileName, error: (error as Error).message,
+                };
             }
         };
         let next = 0;
@@ -334,6 +338,7 @@ class BaseNodeFileCardCreateManyExecutor extends Executor<ToolContext, ToolArgs>
             while (next < planned.length) {
                 const file = planned[next];
                 next += 1;
+                // eslint-disable-next-line no-await-in-loop -- Preserve ordered batch results and partial-failure behavior.
                 results[file.index] = await storeOne(file);
             }
         };
@@ -422,12 +427,14 @@ class BaseNodeFileCardDeleteManyExecutor extends Executor<ToolContext, ToolArgs>
             const fileName = card.fileName;
             if (fileName) {
                 try {
+                    // eslint-disable-next-line no-await-in-loop -- Preserve ordered batch results and partial-failure behavior.
                     await storage.del([fileStoragePath(this.ctx, card.nodeId, fileName)], this.ctx.owner);
                     deletedFiles += 1;
                 } catch {
                     /* ignore missing storage */
                 }
             }
+            // eslint-disable-next-line no-await-in-loop -- Preserve ordered batch results and partial-failure behavior.
             await CardModel.delete(this.ctx.domainId, card.docId);
             removed.push(cardId);
         }

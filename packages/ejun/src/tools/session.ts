@@ -1,12 +1,12 @@
-import Schema from 'schemastery';
 import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
+import { BaseModel } from 'ejun/src/model/base';
 import { PRIV } from 'ejun/src/model/builtin';
 import * as document from 'ejun/src/model/document';
-import { BaseModel } from 'ejun/src/model/base';
+import Schema from 'schemastery';
 import type { ToolArgs, ToolBaseSelectPayload, ToolContext } from '../lib/tool-types';
-import type { ToolInstructionsContext } from '../service/registry';
 import { registerAgentAddon } from '../service/addons';
+import type { ToolInstructionsContext } from '../service/registry';
 
 export const inject = ['server'];
 

@@ -1480,6 +1480,7 @@ async function baseSessionScope(sessionId: string, optional = false) {
  */
 function toolRegistry(): {
     list(source?: string, domainId?: string, access?: { priv?: number; perm?: bigint; scope?: bigint }, mountedAddons?: ReadonlySet<string>): { name: string; description: string; inputSchema: Record<string, unknown>; addonId: string; source: string; mutating: boolean }[];
+    listForCatalog(domainId?: string): { name: string; description: string; inputSchema: Record<string, unknown>; addonId: string; source: string; mutating: boolean }[];
     get(name: string): { addonId: string } | undefined;
     instructions(context: { domainId: string; baseDocId: number; sessionId?: string }, source?: string, mountedAddons?: ReadonlySet<string>): Promise<string[]>;
 } {
@@ -1862,7 +1863,7 @@ async function agentAddonsList(envelope: RpcEnvelope, scope: AgentScope): Promis
     const settings = await agentDataAdapter.getDomainSettings(scope.domainId);
     const installed = installedAgentAddonIds(settings);
     const toolsByAddon = new Map<string, { name: string; description: string }[]>();
-    for (const { addonId, name, description } of toolRegistry().list(undefined, scope.domainId)) {
+    for (const { addonId, name, description } of toolRegistry().listForCatalog(scope.domainId)) {
         const tools = toolsByAddon.get(addonId) ?? [];
         tools.push({ name, description });
         toolsByAddon.set(addonId, tools);
@@ -1880,7 +1881,7 @@ async function agentAddonsMarketList(envelope: RpcEnvelope, scope: AgentScope): 
     const settings = await agentDataAdapter.getDomainSettings(scope.domainId);
     const installed = installedAgentAddonIds(settings);
     const toolsByAddon = new Map<string, { name: string; description: string }[]>();
-    for (const { addonId, name, description } of toolRegistry().list(undefined, scope.domainId)) {
+    for (const { addonId, name, description } of toolRegistry().listForCatalog(scope.domainId)) {
         const tools = toolsByAddon.get(addonId) ?? [];
         tools.push({ name, description });
         toolsByAddon.set(addonId, tools);

@@ -1,9 +1,9 @@
-import Schema from 'schemastery';
 import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
+import { BaseModel, CardModel, loadCardStatsByBaseDocId } from 'ejun/src/model/base';
 import { PRIV } from 'ejun/src/model/builtin';
 import * as document from 'ejun/src/model/document';
-import { BaseModel, CardModel, loadCardStatsByBaseDocId } from 'ejun/src/model/base';
+import Schema from 'schemastery';
 import { baseUrl } from '../lib/tool-shared';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import type {} from '../service/registry';
@@ -86,9 +86,9 @@ class BaseCreateExecutor extends Executor<ToolContext, ToolArgs> {
         const slug = typeof this.args.slug === 'string' ? this.args.slug.trim() : undefined;
         const tag = Array.isArray(this.args.tag)
             ? this.args.tag
-                  .filter((value: unknown): value is string => typeof value === 'string')
-                  .map((value) => value.trim())
-                  .filter(Boolean)
+                .filter((value: unknown): value is string => typeof value === 'string')
+                .map((value) => value.trim())
+                .filter(Boolean)
             : undefined;
         const created = await BaseModel.create(
             this.ctx.domainId,
@@ -106,7 +106,9 @@ class BaseCreateExecutor extends Executor<ToolContext, ToolArgs> {
             slug === undefined ? undefined : { slug },
         );
         const base = await BaseModel.get(this.ctx.domainId, created.docId, document.TYPE_BASE);
-        return { ok: true, baseId: created.docId, base, url: baseUrl(this.ctx, created.docId) };
+        return {
+            ok: true, baseId: created.docId, base, url: baseUrl(this.ctx, created.docId),
+        };
     }
 }
 
@@ -209,7 +211,9 @@ class BaseGetExecutor extends Executor<ToolContext, ToolArgs> {
                 const child = renderNode(childId);
                 if (child) children.push(child);
             }
-            return { type: 'node', id: node.id, title: node.text || '', children };
+            return {
+                type: 'node', id: node.id, title: node.text || '', children,
+            };
         };
         const outline: OutlineEntry[] = [];
         for (const node of nodes) {
@@ -222,7 +226,9 @@ class BaseGetExecutor extends Executor<ToolContext, ToolArgs> {
             const entry = renderNode(node.id);
             if (entry) outline.push(entry);
         }
-        return { ok: true, base, outline, url: baseUrl(this.ctx, this.ctx.baseDocId) };
+        return {
+            ok: true, base, outline, url: baseUrl(this.ctx, this.ctx.baseDocId),
+        };
     }
 }
 
@@ -236,11 +242,12 @@ class BaseUpdateExecutor extends Executor<ToolContext, ToolArgs> {
         }
         if (typeof this.args.content === 'string') updates.content = this.args.content;
         if (typeof this.args.slug === 'string') updates.slug = this.args.slug.trim();
-        if (Array.isArray(this.args.tag))
+        if (Array.isArray(this.args.tag)) {
             updates.tag = this.args.tag
                 .filter((value: unknown): value is string => typeof value === 'string')
                 .map((value) => value.trim())
                 .filter(Boolean);
+        }
         if (Object.keys(updates).length === 0) throw new Error('Nothing to update');
         await BaseModel.update(this.ctx.domainId, this.ctx.baseDocId, updates as Parameters<typeof BaseModel.update>[2], document.TYPE_BASE);
         return {

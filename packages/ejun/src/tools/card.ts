@@ -1,12 +1,14 @@
-import Schema from 'schemastery';
 import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
-import { PRIV } from 'ejun/src/model/builtin';
 import type { CardDoc, Problem } from 'ejun/src/interface';
 import { BaseModel, CardModel } from 'ejun/src/model/base';
+import { PRIV } from 'ejun/src/model/builtin';
 import { migrateRawProblem } from 'ejun/src/model/problem';
+import Schema from 'schemastery';
 import { MAX_CARDS_PER_CALL } from '../lib/tool-limits';
-import { asText, buildProblemRaw, cardUrl, cardsById, idList, newProblemPid, parseProblemPayload, requireCard, toObjectId } from '../lib/tool-shared';
+import {
+    asText, buildProblemRaw, cardsById, cardUrl, idList, newProblemPid, parseProblemPayload, requireCard, toObjectId,
+} from '../lib/tool-shared';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import type {} from '../service/registry';
 
@@ -51,20 +53,20 @@ export const CreateManySchema = Schema.object({
         .required()
         .description('Cards to create, in order.'),
 }).description(
-    'Create several cards at once. `cards` is an array of `{ nodeId, title, content?, tags?, problems? }`, where `problems` holds the ' +
-        'payloads `base_problem_create` takes, stored with the card as it is created. The Base is read once and every card is checked before the ' +
-        'first insert, so a refused call inserts nothing. Each card is its own document and therefore one insert that carries its own problems, so ' +
-        'no card is ever half-created; a failure the database itself reports part way through is named in `refusedCards` and `ok` is false. Use it ' +
-        `instead of calling \`base_card_create\` once per card. One call creates at most ${MAX_CARDS_PER_CALL} cards. ` +
-        'Every created card carries the URL that opens the Base at it.',
+    'Create several cards at once. `cards` is an array of `{ nodeId, title, content?, tags?, problems? }`, where `problems` holds the '
+        + 'payloads `base_problem_create` takes, stored with the card as it is created. The Base is read once and every card is checked before the '
+        + 'first insert, so a refused call inserts nothing. Each card is its own document and therefore one insert that carries its own problems, so '
+        + 'no card is ever half-created; a failure the database itself reports part way through is named in `refusedCards` and `ok` is false. Use it '
+        + `instead of calling \`base_card_create\` once per card. One call creates at most ${MAX_CARDS_PER_CALL} cards. `
+        + 'Every created card carries the URL that opens the Base at it.',
 );
 
 export const GetManySchema = Schema.object({
     cardIds: Schema.array(Schema.string()).min(1).max(MAX_CARDS_PER_CALL).required().description('Card docIds to read, in order.'),
 }).description(
-    'Read several cards of one Base in a single call, each reported exactly as `base_card_get` reports one. The cards come from one ' +
-        'read of the card collection, so the call costs one read however many cards it names, instead of one read per card. A read changes ' +
-        `nothing, so a card this Base does not hold is listed in \`missingCardIds\` and \`ok\` is false. Use it instead of calling \`base_card_get\` once per card. One call reads at most ${MAX_CARDS_PER_CALL} cards.`,
+    'Read several cards of one Base in a single call, each reported exactly as `base_card_get` reports one. The cards come from one '
+        + 'read of the card collection, so the call costs one read however many cards it names, instead of one read per card. A read changes '
+        + `nothing, so a card this Base does not hold is listed in \`missingCardIds\` and \`ok\` is false. Use it instead of calling \`base_card_get\` once per card. One call reads at most ${MAX_CARDS_PER_CALL} cards.`,
 );
 
 export const UpdateManySchema = Schema.object({
@@ -80,19 +82,19 @@ export const UpdateManySchema = Schema.object({
         .required()
         .description('One entry per card.'),
 }).description(
-    'Update several cards of one Base in a single call: `entries` is an array of `{ cardId, title?, content? }`, and an entry must name ' +
-        'at least one field. A card is its own document, so each card that changes is one write, and the call saves the reading and the checks: ' +
-        'the cards are read once and an id that names no card of this Base refuses the whole call, so a refused call writes nothing. A failure the ' +
-        `database itself reports is named in \`refusedCards\` and \`ok\` is false. Use it instead of calling \`base_card_update\` once per card. One call updates at most ${MAX_CARDS_PER_CALL} cards, and every updated card carries the URL that opens the Base at it.`,
+    'Update several cards of one Base in a single call: `entries` is an array of `{ cardId, title?, content? }`, and an entry must name '
+        + 'at least one field. A card is its own document, so each card that changes is one write, and the call saves the reading and the checks: '
+        + 'the cards are read once and an id that names no card of this Base refuses the whole call, so a refused call writes nothing. A failure the '
+        + `database itself reports is named in \`refusedCards\` and \`ok\` is false. Use it instead of calling \`base_card_update\` once per card. One call updates at most ${MAX_CARDS_PER_CALL} cards, and every updated card carries the URL that opens the Base at it.`,
 );
 
 export const RemoveManySchema = Schema.object({
     cardIds: Schema.array(Schema.string()).min(1).max(MAX_CARDS_PER_CALL).required().description('Cards to remove.'),
 }).description(
-    'Delete several cards of one Base in a single call. A card is its own document, so every named card goes with one delete of the ' +
-        'card collection and one delete of its status rows, instead of two statements per card. The cards are read once first, and an id that ' +
-        'names no card of this Base refuses the whole call, so a refused call deletes nothing. It removes what `base_card_delete` removes and ' +
-        `nothing else. Use it instead of calling \`base_card_delete\` once per card. One call removes at most ${MAX_CARDS_PER_CALL} cards.`,
+    'Delete several cards of one Base in a single call. A card is its own document, so every named card goes with one delete of the '
+        + 'card collection and one delete of its status rows, instead of two statements per card. The cards are read once first, and an id that '
+        + 'names no card of this Base refuses the whole call, so a refused call deletes nothing. It removes what `base_card_delete` removes and '
+        + `nothing else. Use it instead of calling \`base_card_delete\` once per card. One call removes at most ${MAX_CARDS_PER_CALL} cards.`,
 );
 
 function tagsOf(raw: unknown, label: string): string[] | undefined {
@@ -135,7 +137,9 @@ class BaseCardCreateExecutor extends Executor<ToolContext, ToolArgs> {
             undefined,
             undefined,
         );
-        return { ok: true, cardId: String(docId), nodeId, url: cardUrl(this.ctx, this.ctx.baseDocId, String(docId)) };
+        return {
+            ok: true, cardId: String(docId), nodeId, url: cardUrl(this.ctx, this.ctx.baseDocId, String(docId)),
+        };
     }
 }
 
@@ -183,8 +187,7 @@ class BaseCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
         if (!base) throw new Error(`Base not found: ${this.ctx.baseDocId}`);
         const nodeIds = new Set((base.nodes || []).map((node) => node.id));
         const planned = raw.map((entry, index) => {
-            if (!entry || typeof entry !== 'object' || Array.isArray(entry))
-                throw new Error(`cards[${index}] must be an object with nodeId and title`);
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`cards[${index}] must be an object with nodeId and title`);
             const fields = entry as Record<string, unknown>;
             const label = `cards[${index}]`;
             const nodeId = asText(fields.nodeId);
@@ -204,6 +207,7 @@ class BaseCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
         });
         const positions = new Map<string, number>();
         for (const nodeId of new Set(planned.map((card) => card.nodeId))) {
+            // eslint-disable-next-line no-await-in-loop -- Preserve ordered batch results and partial-failure behavior.
             const existing = await CardModel.getByNodeId(this.ctx.domainId, this.ctx.baseDocId, nodeId);
             positions.set(nodeId, existing.reduce((max, card) => Math.max(max, card.order ?? -1), -1) + 1);
         }
@@ -213,6 +217,7 @@ class BaseCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
             const order = positions.get(card.nodeId) as number;
             positions.set(card.nodeId, order + 1);
             try {
+                // eslint-disable-next-line no-await-in-loop -- Preserve ordered batch results and partial-failure behavior.
                 const cardId = await CardModel.create(
                     this.ctx.domainId,
                     this.ctx.baseDocId,
@@ -239,7 +244,9 @@ class BaseCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
                     url: cardUrl(this.ctx, this.ctx.baseDocId, String(cardId)),
                 });
             } catch (error) {
-                refused.push({ index: card.index, nodeId: card.nodeId, title: card.title, error: (error as Error).message });
+                refused.push({
+                    index: card.index, nodeId: card.nodeId, title: card.title, error: (error as Error).message,
+                });
             }
         }
         return {
@@ -309,7 +316,9 @@ class BaseCardUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
                 changed.push(field);
             }
             if (!changed.length) throw new Error(`entries[${index}] names nothing to change; give title, content, or both`);
-            planned.push({ index, cardId, fields: changed, update });
+            planned.push({
+                index, cardId, fields: changed, update,
+            });
         }
         const byId = await cardsById(
             this.ctx,
@@ -323,6 +332,7 @@ class BaseCardUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
         for (const entry of planned) {
             const card = byId.get(entry.cardId) as CardDoc;
             try {
+                // eslint-disable-next-line no-await-in-loop -- Preserve ordered batch results and partial-failure behavior.
                 await CardModel.update(this.ctx.domainId, card.docId, entry.update);
                 updated.push({
                     index: entry.index,

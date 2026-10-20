@@ -1,11 +1,13 @@
-import Schema from 'schemastery';
 import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
-import { PRIV } from 'ejun/src/model/builtin';
 import type { BaseEdge, BaseNode } from 'ejun/src/interface';
 import { BaseModel, CardModel } from 'ejun/src/model/base';
+import { PRIV } from 'ejun/src/model/builtin';
+import Schema from 'schemastery';
 import { MAX_NODES_PER_CALL } from '../lib/tool-limits';
-import { asText, buildParentMap, findRootNodeId, idList, nodeUrl, pathLabelFor } from '../lib/tool-shared';
+import {
+    asText, buildParentMap, findRootNodeId, idList, nodeUrl, pathLabelFor,
+} from '../lib/tool-shared';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import type {} from '../service/registry';
 
@@ -15,9 +17,9 @@ export const CreateSchema = Schema.object({
     text: Schema.string().required().description('Node title/text.'),
     parentId: Schema.string().description('Existing parent node id (optional; omit to place under the base root node).'),
 }).description(
-    'Create a new node (section/topic). ' +
-        'Pass parentId to nest it under an existing node; omit parentId to create it under the bound base root node. ' +
-        'Returns the new node id and the URL that opens the Base at that node.',
+    'Create a new node (section/topic). '
+        + 'Pass parentId to nest it under an existing node; omit parentId to create it under the bound base root node. '
+        + 'Returns the new node id and the URL that opens the Base at that node.',
 );
 
 export const UpdateSchema = Schema.object({
@@ -55,22 +57,22 @@ export const CreateManySchema = Schema.object({
         .required()
         .description('Nodes to create, in order: a parent must come before the entries that name it.'),
 }).description(
-    'Create several nodes at once, in one read and one write of the Base. `nodes` is an array of ' +
-        '`{ text, ref?, parentId?, parentRef? }`. A `ref` names an entry so a later entry can use it as its `parentRef`, which builds a whole ' +
-        "tree in one call; an entry with neither parent attaches to the call's `parentId`, or to the Base's root node. The Base is read once, " +
-        'every node and edge is built in memory, and one update writes them all, so the call is atomic: either every node arrives or nothing ' +
-        'changes. Refused for a missing text, a duplicate or dangling reference, or too many entries, and it writes nothing in that case. ' +
-        `Use it instead of calling \`base_node_create\` once per node. One call creates at most ${MAX_NODES_PER_CALL} nodes. ` +
-        'Every entry carries the URL that opens the Base at that node.',
+    'Create several nodes at once, in one read and one write of the Base. `nodes` is an array of '
+        + '`{ text, ref?, parentId?, parentRef? }`. A `ref` names an entry so a later entry can use it as its `parentRef`, which builds a whole '
+        + "tree in one call; an entry with neither parent attaches to the call's `parentId`, or to the Base's root node. The Base is read once, "
+        + 'every node and edge is built in memory, and one update writes them all, so the call is atomic: either every node arrives or nothing '
+        + 'changes. Refused for a missing text, a duplicate or dangling reference, or too many entries, and it writes nothing in that case. '
+        + `Use it instead of calling \`base_node_create\` once per node. One call creates at most ${MAX_NODES_PER_CALL} nodes. `
+        + 'Every entry carries the URL that opens the Base at that node.',
 );
 
 export const GetManySchema = Schema.object({
     nodeIds: Schema.array(Schema.string()).min(1).max(MAX_NODES_PER_CALL).required().description('Node ids to read, in order.'),
 }).description(
-    'Read several nodes of one Base in a single call, each reported exactly as `base_node_get` reports one: its title, its child nodes ' +
-        'and its cards. The Base document is read once and the cards of every named node come from one further read, so the call costs two reads ' +
-        'however many nodes it names, instead of two reads per node. A read changes nothing, so a node this Base does not hold is listed in ' +
-        `\`missingNodeIds\` and \`ok\` is false. Use it instead of calling \`base_node_get\` once per node. One call reads at most ${MAX_NODES_PER_CALL} nodes.`,
+    'Read several nodes of one Base in a single call, each reported exactly as `base_node_get` reports one: its title, its child nodes '
+        + 'and its cards. The Base document is read once and the cards of every named node come from one further read, so the call costs two reads '
+        + 'however many nodes it names, instead of two reads per node. A read changes nothing, so a node this Base does not hold is listed in '
+        + `\`missingNodeIds\` and \`ok\` is false. Use it instead of calling \`base_node_get\` once per node. One call reads at most ${MAX_NODES_PER_CALL} nodes.`,
 );
 
 export const UpdateManySchema = Schema.object({
@@ -86,11 +88,11 @@ export const UpdateManySchema = Schema.object({
         .required()
         .description('One entry per node, in the order the updates apply.'),
 }).description(
-    'Update several nodes of one Base in a single call: `entries` is an array of `{ nodeId, text?, parentId? }`, and an entry changes ' +
-        'what it names. Node text and place in the tree live in the Base document, so one read and one write apply every entry, instead of one of ' +
-        'each per node, and the call is atomic: either every entry lands or the document is unchanged. An entry the move rules refuse (an absent ' +
-        'node or parent, a move under itself or under one of its descendants) refuses the whole call and writes nothing. Renaming the root node ' +
-        `renames the Base, as \`base_node_update\` does. Use it instead of calling \`base_node_update\` once per node. One call updates at most ${MAX_NODES_PER_CALL} nodes, and every entry carries the URL that opens the Base at that node.`,
+    'Update several nodes of one Base in a single call: `entries` is an array of `{ nodeId, text?, parentId? }`, and an entry changes '
+        + 'what it names. Node text and place in the tree live in the Base document, so one read and one write apply every entry, instead of one of '
+        + 'each per node, and the call is atomic: either every entry lands or the document is unchanged. An entry the move rules refuse (an absent '
+        + 'node or parent, a move under itself or under one of its descendants) refuses the whole call and writes nothing. Renaming the root node '
+        + `renames the Base, as \`base_node_update\` does. Use it instead of calling \`base_node_update\` once per node. One call updates at most ${MAX_NODES_PER_CALL} nodes, and every entry carries the URL that opens the Base at that node.`,
 );
 
 export const RemoveManySchema = Schema.object({
@@ -100,11 +102,11 @@ export const RemoveManySchema = Schema.object({
         .required()
         .description('Nodes to remove; a node already removed as a descendant of another is ignored.'),
 }).description(
-    'Delete several nodes of one Base in a single call: `nodeIds` names the nodes, and each one takes its descendants with it exactly ' +
-        'as `base_node_delete` does. The whole graph change is one read and one write of the Base document, so n subtrees cost one of each instead ' +
-        'of one per node, and the node and edge removal is atomic. The cards on the removed nodes, and the files stored on those nodes and cards, ' +
-        'follow their nodes one operation each. The root node cannot be removed: naming it refuses the whole call and writes nothing. An id this ' +
-        `Base does not hold is listed in \`missingNodeIds\` and \`ok\` is false. Use it instead of calling \`base_node_delete\` once per node. One call removes at most ${MAX_NODES_PER_CALL} nodes.`,
+    'Delete several nodes of one Base in a single call: `nodeIds` names the nodes, and each one takes its descendants with it exactly '
+        + 'as `base_node_delete` does. The whole graph change is one read and one write of the Base document, so n subtrees cost one of each instead '
+        + 'of one per node, and the node and edge removal is atomic. The cards on the removed nodes, and the files stored on those nodes and cards, '
+        + 'follow their nodes one operation each. The root node cannot be removed: naming it refuses the whole call and writes nothing. An id this '
+        + `Base does not hold is listed in \`missingNodeIds\` and \`ok\` is false. Use it instead of calling \`base_node_delete\` once per node. One call removes at most ${MAX_NODES_PER_CALL} nodes.`,
 );
 
 function newNodeId() {
@@ -234,8 +236,7 @@ class BaseNodeCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
             let parentId: string;
             if (parentRef) {
                 const referenced = byRef.get(parentRef);
-                if (!referenced)
-                    throw new Error(`nodes[${index}].parentRef ${parentRef} does not name an earlier entry; list a parent before its children`);
+                if (!referenced) throw new Error(`nodes[${index}].parentRef ${parentRef} does not name an earlier entry; list a parent before its children`);
                 parentId = referenced.nodeId;
             } else if (ownParent) {
                 if (!nodeById.has(ownParent)) throw new Error(`nodes[${index}].parentId ${ownParent} is not a node of this Base`);
@@ -249,12 +250,16 @@ class BaseNodeCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
             const nodeId = newNodeId();
             const level = (parent.level ?? -1) + 1;
             const now = new Date();
-            const node: BaseNode = { id: nodeId, text, parentId, level, createdAt: now, updateAt: now };
+            const node: BaseNode = {
+                id: nodeId, text, parentId, level, createdAt: now, updateAt: now,
+            };
             nodes.push(node);
             parent.children = [...(parent.children || []), nodeId];
             edges.push({ id: newEdgeId(), source: parentId, target: nodeId });
             nodeById.set(nodeId, node);
-            const created = { index, ref, text, parentId, level, nodeId };
+            const created = {
+                index, ref, text, parentId, level, nodeId,
+            };
             planned.push(created);
             if (ref) {
                 byRef.set(ref, created);
@@ -365,7 +370,9 @@ class BaseNodeUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
                 changed.push('parentId');
             }
             if (!changed.length) throw new Error(`entries[${index}] names nothing to change; give text, parentId, or both`);
-            planned.push({ index, nodeId, update, fields: changed });
+            planned.push({
+                index, nodeId, update, fields: changed,
+            });
         }
         await BaseModel.applyNodeUpdates(
             this.ctx.domainId,

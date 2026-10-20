@@ -330,7 +330,7 @@ export default class ToolService extends Service {
         return { source, tool };
     }
 
-    private visible(source?: string, domainId?: string, access?: ToolAccess, mountedAddons?: ReadonlySet<string>): { source: StoredSource; tool: StoredTool }[] {
+    private visible(source?: string, domainId?: string, access?: ToolAccess, mountedAddons?: ReadonlySet<string>, includeRestricted = false): { source: StoredSource; tool: StoredTool }[] {
         const entries = source === undefined
             ? [...this.sources.values()]
             : this.sources.has(source) ? [this.sources.get(source)!] : [];
@@ -340,7 +340,7 @@ export default class ToolService extends Service {
                 if (!toolEnabled(tool)) continue;
                 if (!inDomain(toolDomains(entry, tool), domainId)) continue;
                 if (mountedAddons !== undefined && !mountedAddons.has(tool.addonId)) continue;
-                if (access ? !canAccess(tool, access) : agentPermissionsForTool(tool).length > 0) continue;
+                if (!includeRestricted && (access ? !canAccess(tool, access) : agentPermissionsForTool(tool).length > 0)) continue;
                 rows.push({ source: entry, tool });
             }
         }
@@ -354,6 +354,18 @@ export default class ToolService extends Service {
 
     list(source?: string, domainId?: string, access?: ToolAccess, mountedAddons?: ReadonlySet<string>): RegisteredTool[] {
         return this.visible(source, domainId, access, mountedAddons).map(({ source: entry, tool }) => ({
+            addonId: tool.addonId,
+            name: tool.name,
+            description: tool.description,
+            inputSchema: tool.inputSchema,
+            source: entry.source,
+            mutating: tool.mutating === true,
+            ...(agentPermissionsForTool(tool).length ? { agentPermissions: [...agentPermissionsForTool(tool)] } : {}),
+        }));
+    }
+
+    listForCatalog(domainId?: string): RegisteredTool[] {
+        return this.visible(undefined, domainId, undefined, undefined, true).map(({ source: entry, tool }) => ({
             addonId: tool.addonId,
             name: tool.name,
             description: tool.description,

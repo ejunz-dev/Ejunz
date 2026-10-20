@@ -1,9 +1,9 @@
-import Schema from 'schemastery';
 import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
-import { PRIV } from 'ejun/src/model/builtin';
 import type { CardDoc, Problem } from 'ejun/src/interface';
+import { PRIV } from 'ejun/src/model/builtin';
 import { migrateRawProblem } from 'ejun/src/model/problem';
+import Schema from 'schemastery';
 import { MAX_PROBLEMS_PER_CALL } from '../lib/tool-limits';
 import {
     asText,
@@ -25,8 +25,8 @@ export const inject = ['server'];
 export const ListSchema = Schema.object({
     cardId: Schema.string().required().description('Card docId (hex).'),
 }).description(
-    'Problem = a practice exercise attached to a card (quiz, flip card, matching table, etc.). ' +
-        'Lists every problem on one card: pid, type, title, a short content preview and the URL that opens the Base at each problem. Use cardId.',
+    'Problem = a practice exercise attached to a card (quiz, flip card, matching table, etc.). '
+        + 'Lists every problem on one card: pid, type, title, a short content preview and the URL that opens the Base at each problem. Use cardId.',
 );
 
 export const GetSchema = Schema.object({
@@ -38,14 +38,14 @@ export const CreateSchema = Schema.object({
     cardId: Schema.string().required().description('Card docId (hex).'),
     problem: Schema.any().required().description('Problem payload. `type` defaults to single choice when omitted.'),
 }).description(
-    'Add a practice problem to a card. Pass `problem` as a JSON object. ' +
-        'Common fields: title (short sidebar label), stem, analysis, tags. ' +
-        'type: single (default) | multi | true_false | flip | fill_blank | matching | super_flip | chain | ai_eval. ' +
-        'single/multi: options[] + answer (index or index array). true_false: stem + answer 0|1. ' +
-        'flip: faceA, faceB, optional hint. fill_blank: stem with ___ + answers[]. ' +
-        'matching: columns[][] (≥2 cols, ≥2 rows) or legacy left/right. ' +
-        'super_flip: headers[] + columns[][] (allows 1×1). chain: rows[] of {rowType:"flip"|"text", content:string}. ai_eval: stem + points[]. ' +
-        'Returns the new pid and the URL that opens the Base at the new problem.',
+    'Add a practice problem to a card. Pass `problem` as a JSON object. '
+        + 'Common fields: title (short sidebar label), stem, analysis, tags. '
+        + 'type: single (default) | multi | true_false | flip | fill_blank | matching | super_flip | chain | ai_eval. '
+        + 'single/multi: options[] + answer (index or index array). true_false: stem + answer 0|1. '
+        + 'flip: faceA, faceB, optional hint. fill_blank: stem with ___ + answers[]. '
+        + 'matching: columns[][] (≥2 cols, ≥2 rows) or legacy left/right. '
+        + 'super_flip: headers[] + columns[][] (allows 1×1). chain: rows[] of {rowType:"flip"|"text", content:string}. ai_eval: stem + points[]. '
+        + 'Returns the new pid and the URL that opens the Base at the new problem.',
 );
 
 export const UpdateSchema = Schema.object({
@@ -53,8 +53,8 @@ export const UpdateSchema = Schema.object({
     pid: Schema.string().required().description('Problem id from problem_list.'),
     problem: Schema.any().required().description('Fields to update.'),
 }).description(
-    'Update an existing problem by pid. Pass `problem` with fields to change (merged with the stored row, then normalized). ' +
-        'Include `type` only when changing the problem kind. Returns the URL that opens the Base at that problem.',
+    'Update an existing problem by pid. Pass `problem` with fields to change (merged with the stored row, then normalized). '
+        + 'Include `type` only when changing the problem kind. Returns the URL that opens the Base at that problem.',
 );
 
 export const RemoveSchema = Schema.object({
@@ -76,12 +76,12 @@ export const CreateManySchema = Schema.object({
         .required()
         .description('One entry per card, each naming every problem that card receives.'),
 }).description(
-    'Add problems to cards, several at once. `entries` is an array of `{ cardId, problems }`, where `problems` holds the payloads ' +
-        '`base_problem_create` takes. All the problems of one card land in one write of that card, so many problems cost one read and one write ' +
-        'instead of one of each per problem, and a card never holds a partial set of what an entry sent it. Every problem is validated and every ' +
-        'card is read before the first write, so a refused call changes nothing; a card the database itself refuses is named in `refusedEntries` ' +
-        `and \`ok\` is false. Use it instead of calling \`base_problem_create\` once per problem. One call adds at most ${MAX_PROBLEMS_PER_CALL} problems, ` +
-        'and every added problem carries the URL that opens the Base at it.',
+    'Add problems to cards, several at once. `entries` is an array of `{ cardId, problems }`, where `problems` holds the payloads '
+        + '`base_problem_create` takes. All the problems of one card land in one write of that card, so many problems cost one read and one write '
+        + 'instead of one of each per problem, and a card never holds a partial set of what an entry sent it. Every problem is validated and every '
+        + 'card is read before the first write, so a refused call changes nothing; a card the database itself refuses is named in `refusedEntries` '
+        + `and \`ok\` is false. Use it instead of calling \`base_problem_create\` once per problem. One call adds at most ${MAX_PROBLEMS_PER_CALL} problems, `
+        + 'and every added problem carries the URL that opens the Base at it.',
 );
 
 export const GetManySchema = Schema.object({
@@ -96,10 +96,10 @@ export const GetManySchema = Schema.object({
         .required()
         .description('One entry per problem to read.'),
 }).description(
-    'Read several practice problems in a single call, each reported exactly as `base_problem_get` reports one. The cards holding them ' +
-        'come from one read, so the call costs one read however many problems it names, instead of one read per problem. A read changes nothing, ' +
-        'so a card or a problem this Base does not hold is listed in `missing` with its reason and `ok` is false. Each found problem carries the URL ' +
-        'that opens the Base at it. Use it instead of calling `base_problem_get` once per problem.',
+    'Read several practice problems in a single call, each reported exactly as `base_problem_get` reports one. The cards holding them '
+        + 'come from one read, so the call costs one read however many problems it names, instead of one read per problem. A read changes nothing, '
+        + 'so a card or a problem this Base does not hold is listed in `missing` with its reason and `ok` is false. Each found problem carries the URL '
+        + 'that opens the Base at it. Use it instead of calling `base_problem_get` once per problem.',
 );
 
 export const UpdateManySchema = Schema.object({
@@ -115,12 +115,12 @@ export const UpdateManySchema = Schema.object({
         .required()
         .description('One entry per problem.'),
 }).description(
-    'Update several practice problems in a single call: `entries` is an array of `{ cardId, pid, problem }`, where `problem` holds the ' +
-        'fields to change, as `base_problem_update` takes them. A card holds its problems, so every problem that changes on one card is written ' +
-        'once: n problems over k cards cost one read and k writes instead of one of each per problem. Every payload is read and every named ' +
-        'problem is checked before the first write, so a refused call changes nothing; a card the database itself refuses is named in ' +
-        `\`refusedEntries\`. Use it instead of calling \`base_problem_update\` once per problem. One call updates at most ${MAX_PROBLEMS_PER_CALL} problems, ` +
-        'and every updated problem carries the URL that opens the Base at it.',
+    'Update several practice problems in a single call: `entries` is an array of `{ cardId, pid, problem }`, where `problem` holds the '
+        + 'fields to change, as `base_problem_update` takes them. A card holds its problems, so every problem that changes on one card is written '
+        + 'once: n problems over k cards cost one read and k writes instead of one of each per problem. Every payload is read and every named '
+        + 'problem is checked before the first write, so a refused call changes nothing; a card the database itself refuses is named in '
+        + `\`refusedEntries\`. Use it instead of calling \`base_problem_update\` once per problem. One call updates at most ${MAX_PROBLEMS_PER_CALL} problems, `
+        + 'and every updated problem carries the URL that opens the Base at it.',
 );
 
 export const RemoveManySchema = Schema.object({
@@ -134,10 +134,10 @@ export const RemoveManySchema = Schema.object({
         .required()
         .description('One entry per card, naming every problem that card loses.'),
 }).description(
-    'Delete several practice problems in a single call: `entries` is an array of `{ cardId, pids }`. A card holds its problems, so every ' +
-        'problem removed from one card is written once: n problems over k cards cost one read and k writes instead of one of each per problem. ' +
-        'Every card is read and every named problem is found before the first write, so a refused call changes nothing; a card the database itself ' +
-        `refuses is named in \`refusedEntries\`. Use it instead of calling \`base_problem_delete\` once per problem. One call removes at most ${MAX_PROBLEMS_PER_CALL} problems.`,
+    'Delete several practice problems in a single call: `entries` is an array of `{ cardId, pids }`. A card holds its problems, so every '
+        + 'problem removed from one card is written once: n problems over k cards cost one read and k writes instead of one of each per problem. '
+        + 'Every card is read and every named problem is found before the first write, so a refused call changes nothing; a card the database itself '
+        + `refuses is named in \`refusedEntries\`. Use it instead of calling \`base_problem_delete\` once per problem. One call removes at most ${MAX_PROBLEMS_PER_CALL} problems.`,
 );
 
 function problemsOf(raw: unknown, label: string): Problem[] {
@@ -200,7 +200,9 @@ class BaseProblemUpdateExecutor extends Executor<ToolContext, ToolArgs> {
         const problem = migrateRawProblem(buildProblemRaw({ ...(problems[index] as unknown as Record<string, unknown>), ...payload }, pid));
         problems[index] = problem;
         await saveCardProblems(this.ctx.domainId, card, problems);
-        return { ok: true, cardId: String(card.docId), pid, problem, url: problemUrl(this.ctx, this.ctx.baseDocId, String(card.docId), pid) };
+        return {
+            ok: true, cardId: String(card.docId), pid, problem, url: problemUrl(this.ctx, this.ctx.baseDocId, String(card.docId), pid),
+        };
     }
 }
 
@@ -226,8 +228,7 @@ class BaseProblemCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
         const raw = this.args.entries;
         if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, problems }');
         const planned = raw.map((entry, index) => {
-            if (!entry || typeof entry !== 'object' || Array.isArray(entry))
-                throw new Error(`entries[${index}] must be an object with cardId and problems`);
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`entries[${index}] must be an object with cardId and problems`);
             const fields = entry as Record<string, unknown>;
             const cardId = asText(fields.cardId);
             if (!cardId) throw new Error(`entries[${index}].cardId is required`);
@@ -239,17 +240,18 @@ class BaseProblemCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
         }
         const seen = new Set<string>();
         for (const entry of planned) {
-            if (seen.has(entry.cardId))
-                throw new Error(`entries[${entry.index}].cardId ${entry.cardId} appears twice; send one entry holding all of that card's problems`);
+            if (seen.has(entry.cardId)) throw new Error(`entries[${entry.index}].cardId ${entry.cardId} appears twice; send one entry holding all of that card's problems`);
             seen.add(entry.cardId);
         }
         const cards: CardDoc[] = [];
+        // eslint-disable-next-line no-await-in-loop -- Preserve ordered batch results and partial-failure behavior.
         for (const entry of planned) cards.push(await requireCard(this.ctx, entry.cardId));
         const added: { index: number; cardId: string; added: string[]; total: number; urls: string[] }[] = [];
         const refused: { index: number; cardId: string; error: string }[] = [];
         for (const [position, entry] of planned.entries()) {
             const card = cards[position];
             try {
+                // eslint-disable-next-line no-await-in-loop -- Preserve ordered batch results and partial-failure behavior.
                 await saveCardProblems(this.ctx.domainId, card, [...(card.problems || []), ...entry.problems]);
                 added.push({
                     index: entry.index,
@@ -281,8 +283,7 @@ class BaseProblemGetManyExecutor extends Executor<ToolContext, ToolArgs> {
             throw new Error(`entries holds ${raw.length} entries and one call reads ${MAX_PROBLEMS_PER_CALL}; split the work across calls`);
         }
         const planned = raw.map((entry, index) => {
-            if (!entry || typeof entry !== 'object' || Array.isArray(entry))
-                throw new Error(`entries[${index}] must be an object with cardId and pid`);
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`entries[${index}] must be an object with cardId and pid`);
             const fields = entry as Record<string, unknown>;
             const cardId = asText(fields.cardId);
             if (!cardId) throw new Error(`entries[${index}].cardId is required`);
@@ -296,13 +297,17 @@ class BaseProblemGetManyExecutor extends Executor<ToolContext, ToolArgs> {
         for (const entry of planned) {
             const card = byId.get(entry.cardId);
             if (!card) {
-                missing.push({ index: entry.index, cardId: entry.cardId, pid: entry.pid, error: 'Card not found' });
+                missing.push({
+                    index: entry.index, cardId: entry.cardId, pid: entry.pid, error: 'Card not found',
+                });
                 continue;
             }
             const problems = card.problems || [];
             const position = findProblemIndex(problems, entry.pid);
             if (position < 0) {
-                missing.push({ index: entry.index, cardId: entry.cardId, pid: entry.pid, error: `Problem not found: ${entry.pid}` });
+                missing.push({
+                    index: entry.index, cardId: entry.cardId, pid: entry.pid, error: `Problem not found: ${entry.pid}`,
+                });
                 continue;
             }
             found.push({
@@ -334,8 +339,7 @@ class BaseProblemUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
         const planned: { index: number; cardId: string; pid: string; payload: Record<string, unknown> }[] = [];
         const seen = new Set<string>();
         for (const [index, entry] of raw.entries()) {
-            if (!entry || typeof entry !== 'object' || Array.isArray(entry))
-                throw new Error(`entries[${index}] must be an object with cardId, pid and problem`);
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`entries[${index}] must be an object with cardId, pid and problem`);
             const fields = entry as Record<string, unknown>;
             const cardId = asText(fields.cardId);
             if (!cardId) throw new Error(`entries[${index}].cardId is required`);
@@ -344,7 +348,9 @@ class BaseProblemUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
             const key = `${cardId}:${pid}`;
             if (seen.has(key)) throw new Error(`entries[${index}] names ${pid} of card ${cardId} twice; send one entry per problem`);
             seen.add(key);
-            planned.push({ index, cardId, pid, payload: parseProblemPayload(fields.problem) });
+            planned.push({
+                index, cardId, pid, payload: parseProblemPayload(fields.problem),
+            });
         }
         const byId = await cardsById(this.ctx, [...new Set(planned.map((entry) => entry.cardId))]);
         for (const entry of planned) {
@@ -370,12 +376,20 @@ class BaseProblemUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
                 problems[position] = migrateRawProblem(buildProblemRaw(merged, entry.pid)) as unknown as Problem;
             }
             try {
+                // eslint-disable-next-line no-await-in-loop -- Preserve ordered batch results and partial-failure behavior.
                 await saveCardProblems(this.ctx.domainId, card, problems);
                 writes += 1;
-                for (const entry of entries)
-                    updated.push({ index: entry.index, cardId, pid: entry.pid, url: problemUrl(this.ctx, this.ctx.baseDocId, cardId, entry.pid) });
+                for (const entry of entries) {
+                    updated.push({
+                        index: entry.index, cardId, pid: entry.pid, url: problemUrl(this.ctx, this.ctx.baseDocId, cardId, entry.pid),
+                    });
+                }
             } catch (error) {
-                for (const entry of entries) refused.push({ index: entry.index, cardId, pid: entry.pid, error: (error as Error).message });
+                for (const entry of entries) {
+                    refused.push({
+                        index: entry.index, cardId, pid: entry.pid, error: (error as Error).message,
+                    });
+                }
             }
         }
         return {
@@ -395,8 +409,7 @@ class BaseProblemDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
         const raw = this.args.entries;
         if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, pids }');
         const planned = raw.map((entry, index) => {
-            if (!entry || typeof entry !== 'object' || Array.isArray(entry))
-                throw new Error(`entries[${index}] must be an object with cardId and pids`);
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`entries[${index}] must be an object with cardId and pids`);
             const fields = entry as Record<string, unknown>;
             const cardId = asText(fields.cardId);
             if (!cardId) throw new Error(`entries[${index}].cardId is required`);
@@ -406,8 +419,7 @@ class BaseProblemDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
         });
         const seen = new Set<string>();
         for (const entry of planned) {
-            if (seen.has(entry.cardId))
-                throw new Error(`entries[${entry.index}].cardId ${entry.cardId} appears twice; send one entry holding all of that card's problems`);
+            if (seen.has(entry.cardId)) throw new Error(`entries[${entry.index}].cardId ${entry.cardId} appears twice; send one entry holding all of that card's problems`);
             seen.add(entry.cardId);
         }
         const total = planned.reduce((sum, entry) => sum + entry.pids.length, 0);
@@ -432,6 +444,7 @@ class BaseProblemDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
             const card = byId.get(entry.cardId) as CardDoc;
             const problems: Problem[] = (card.problems || []).filter((problem) => !entry.pids.includes(String(problem.pid)));
             try {
+                // eslint-disable-next-line no-await-in-loop -- Preserve ordered batch results and partial-failure behavior.
                 await saveCardProblems(this.ctx.domainId, card, problems);
                 writes += 1;
                 removed.push({ index: entry.index, cardId: entry.cardId, removed: entry.pids });

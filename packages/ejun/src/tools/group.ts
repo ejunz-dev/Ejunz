@@ -1,10 +1,12 @@
-import Schema from 'schemastery';
 import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
-import { PERM } from 'ejun/src/model/builtin';
 import GroupDefinitionModel, { AgentSessionModel } from 'ejun/src/model/agent';
+import { PERM } from 'ejun/src/model/builtin';
+import Schema from 'schemastery';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
-import { buildOutline, ensureGroupRoot, groupView, groupWorkspace, requireGroup, resultLimit } from './common/agent';
+import {
+    buildOutline, ensureGroupRoot, groupView, groupWorkspace, requireGroup, resultLimit,
+} from './common/agent';
 
 export const inject = ['server'];
 
@@ -63,7 +65,9 @@ class AgentGroupSearchExecutor extends Executor<ToolContext, ToolArgs> {
         const matches = groups.filter((group) =>
             [group.title, group.content].some((value) => typeof value === 'string' && value.toLowerCase().includes(query)),
         );
-        return { ok: true, query, count: Math.min(matches.length, limit), groups: matches.slice(0, limit).map(groupView) };
+        return {
+            ok: true, query, count: Math.min(matches.length, limit), groups: matches.slice(0, limit).map(groupView),
+        };
     }
 }
 

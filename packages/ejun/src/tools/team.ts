@@ -1,14 +1,17 @@
-import Schema from 'schemastery';
 import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
-import { PERM } from 'ejun/src/model/builtin';
-import { AgentSessionModel, normalizeAgentAcl } from 'ejun/src/model/agent';
 import type { AgentTeamConfig } from 'ejun/src/model/agent';
+import { AgentSessionModel, normalizeAgentAcl } from 'ejun/src/model/agent';
+import { PERM } from 'ejun/src/model/builtin';
+import Schema from 'schemastery';
 import { MAX_AGENTS_PER_CALL, MAX_TEAMS_PER_CALL } from '../lib/tool-limits';
 import { asText, idList } from '../lib/tool-shared';
-import { agentRuntimeHandlerContext } from '../service/runtime';
-import { agentPermissionCatalog, listAgentAddons as listRegisteredAgentAddons } from '../service/addons';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
+import { agentPermissionCatalog, listAgentAddons as listRegisteredAgentAddons } from '../service/addons';
+import { agentRuntimeHandlerContext } from '../service/runtime';
+import {
+    AgentAgentCreateExecutor, AgentAgentDeleteManyExecutor, AgentAgentGetManyExecutor, AgentAgentUpdateManyExecutor,
+} from './agent';
 import {
     ensureGroupRoot,
     groupRootAcl,
@@ -24,7 +27,6 @@ import {
     teamView,
     validateRolePermissions,
 } from './common/agent';
-import { AgentAgentCreateExecutor, AgentAgentDeleteManyExecutor, AgentAgentGetManyExecutor, AgentAgentUpdateManyExecutor } from './agent';
 
 export const inject = ['server'];
 
@@ -168,7 +170,9 @@ class AgentTeamListExecutor extends Executor<ToolContext, ToolArgs> {
         const { groupId, group } = await requireGroup(this.ctx, this.args);
         await ensureGroupRoot(this.ctx, groupId, group.title);
         const teams = await AgentSessionModel.listTeams(this.ctx.domainId, this.ctx.owner, groupId);
-        return { ok: true, groupId, count: teams.length, teams: teams.map(teamView) };
+        return {
+            ok: true, groupId, count: teams.length, teams: teams.map(teamView),
+        };
     }
 }
 
@@ -213,8 +217,7 @@ class AgentTeamUpdateExecutor extends Executor<ToolContext, ToolArgs> {
         const hasAddonIds = Object.prototype.hasOwnProperty.call(this.args, 'addonIds');
         const hasContext = Object.prototype.hasOwnProperty.call(this.args, 'context');
         if (!hasText && !hasParent && !hasAddonIds && !hasContext) throw new Error('Nothing to update');
-        if ((hasAddonIds || hasContext) && (hasText || hasParent))
-            throw new Error('Update team configuration separately from team text or placement');
+        if ((hasAddonIds || hasContext) && (hasText || hasParent)) throw new Error('Update team configuration separately from team text or placement');
 
         let team = await AgentSessionModel.getTeam(this.ctx.domainId, this.ctx.owner, teamId, groupId);
         if (!team) throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
@@ -239,8 +242,7 @@ class AgentTeamUpdateExecutor extends Executor<ToolContext, ToolArgs> {
                     { rpcId: 'agent-team-addons', method: 'agent.addons.list' },
                     sessionScope(this.ctx, groupId),
                 );
-                const available =
-                    (result.result?.value as { addons?: { addonId: string; installed: boolean; enabled: boolean }[] } | undefined)?.addons ?? [];
+                const available = (result.result?.value as { addons?: { addonId: string; installed: boolean; enabled: boolean }[] } | undefined)?.addons ?? [];
                 for (const addonId of addonIds) {
                     if (!available.some((addon) => addon.addonId === addonId && addon.installed && addon.enabled)) {
                         throw new Error(`Add-on ${addonId} is not installed and enabled for this Group`);
@@ -270,11 +272,15 @@ class AgentTeamUpdateExecutor extends Executor<ToolContext, ToolArgs> {
                 }
             }
             if (hasContext) {
-                await this.ctx.broadcastAgentEvent('agent/team-context', { domainId: this.ctx.domainId, userId: this.ctx.owner, groupId, teamId });
+                await this.ctx.broadcastAgentEvent('agent/team-context', {
+                    domainId: this.ctx.domainId, userId: this.ctx.owner, groupId, teamId,
+                });
             }
             configUpdate = { syncScheduled: true };
         }
-        return { ok: true, groupId, team: resultTeam, ...configUpdate };
+        return {
+            ok: true, groupId, team: resultTeam, ...configUpdate,
+        };
     }
 }
 
@@ -296,7 +302,9 @@ class AgentTeamDeleteExecutor extends Executor<ToolContext, ToolArgs> {
         );
         if (!response.result?.ok) throw new Error(response.error?.message || 'Failed to delete Agent team');
         const value = response.result.value as Record<string, unknown> | undefined;
-        return { ok: true, groupId, teamId, ...value };
+        return {
+            ok: true, groupId, teamId, ...value,
+        };
     }
 }
 
@@ -304,7 +312,9 @@ class AgentRoleListExecutor extends Executor<ToolContext, ToolArgs> {
     async execute() {
         const { groupId, group } = await requireGroup(this.ctx, this.args);
         const { acl } = await groupRootAcl(this.ctx, groupId, group.title);
-        return { ok: true, groupId, roles: acl.roles, permissions: agentPermissionCatalog() };
+        return {
+            ok: true, groupId, roles: acl.roles, permissions: agentPermissionCatalog(),
+        };
     }
 }
 
@@ -325,8 +335,7 @@ class AgentRoleCreateExecutor extends Executor<ToolContext, ToolArgs> {
         const { groupId, group } = await requireGroup(this.ctx, this.args, 'edit');
         const roleId = asText(this.args.roleId);
         const name = asText(this.args.name);
-        if (!/^[a-z][a-z0-9._-]{0,31}$/.test(roleId))
-            throw new Error('roleId must be 1–32 lowercase letters, digits, dots, underscores, or hyphens and start with a letter');
+        if (!/^[a-z][a-z0-9._-]{0,31}$/.test(roleId)) throw new Error('roleId must be 1–32 lowercase letters, digits, dots, underscores, or hyphens and start with a letter');
         if (['root', 'default', 'guest'].includes(roleId)) throw new Error(`Built-in role id is reserved: ${roleId}`);
         if (!name || name.length > 64) throw new Error('name must be between 1 and 64 characters');
         const { root, acl } = await groupRootAcl(this.ctx, groupId, group.title);
@@ -371,7 +380,9 @@ class AgentRoleDeleteExecutor extends Executor<ToolContext, ToolArgs> {
         if (!acl.roles.some((role) => role.roleId === roleId)) throw new Error(`Agent role not found: ${roleId}`);
         acl.roles = acl.roles.filter((role) => role.roleId !== roleId);
         await saveGroupRootAcl(this.ctx, groupId, root, normalizeAgentAcl(acl));
-        return { ok: true, groupId, roleId, deleted: true };
+        return {
+            ok: true, groupId, roleId, deleted: true,
+        };
     }
 }
 
@@ -380,10 +391,8 @@ class AgentTeamCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
         const { groupId } = await requireGroup(this.ctx, this.args, 'edit');
         const rawTeams = optionalEntries(this.args.teams, 'teams');
         const rawAgents = optionalEntries(this.args.agents, 'agents');
-        if (rawTeams.length > MAX_TEAMS_PER_CALL)
-            throw new Error(`teams holds ${rawTeams.length} entries; one call creates at most ${MAX_TEAMS_PER_CALL}`);
-        if (rawAgents.length > MAX_AGENTS_PER_CALL)
-            throw new Error(`agents holds ${rawAgents.length} entries; one call creates at most ${MAX_AGENTS_PER_CALL}`);
+        if (rawTeams.length > MAX_TEAMS_PER_CALL) throw new Error(`teams holds ${rawTeams.length} entries; one call creates at most ${MAX_TEAMS_PER_CALL}`);
+        if (rawAgents.length > MAX_AGENTS_PER_CALL) throw new Error(`agents holds ${rawAgents.length} entries; one call creates at most ${MAX_AGENTS_PER_CALL}`);
         if (!rawTeams.length && !rawAgents.length) throw new Error('Give teams, agents, or both');
 
         let teamResult: { teams: any[]; refusedTeams: any[] } | undefined;
@@ -472,15 +481,17 @@ class AgentTeamGetManyExecutor extends Executor<ToolContext, ToolArgs> {
         const [teamResult, agentResult] = await Promise.all([
             teamIds.length
                 ? (async () => {
-                      const workspace = await groupWorkspace(this.ctx, groupId);
-                      const byId = new Map(workspace.teams.map((team) => [team.teamId, team]));
-                      const teams = teamIds.flatMap((teamId, index) => {
-                          const team = byId.get(teamId);
-                          return team ? [{ index, ...teamDetail(team, workspace.teams, workspace.sessions) }] : [];
-                      });
-                      const missingTeamIds = teamIds.filter((teamId) => !byId.has(teamId));
-                      return { ok: !missingTeamIds.length, groupId, teams, missingTeamIds };
-                  })()
+                    const workspace = await groupWorkspace(this.ctx, groupId);
+                    const byId = new Map(workspace.teams.map((team) => [team.teamId, team]));
+                    const teams = teamIds.flatMap((teamId, index) => {
+                        const team = byId.get(teamId);
+                        return team ? [{ index, ...teamDetail(team, workspace.teams, workspace.sessions) }] : [];
+                    });
+                    const missingTeamIds = teamIds.filter((teamId) => !byId.has(teamId));
+                    return {
+                        ok: !missingTeamIds.length, groupId, teams, missingTeamIds,
+                    };
+                })()
                 : Promise.resolve(undefined),
             agentIds.length ? (new AgentAgentGetManyExecutor(this.ctx, { groupId, agentIds }).run() as Promise<any>) : Promise.resolve(undefined),
         ]);
@@ -498,10 +509,8 @@ class AgentTeamUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
         const { groupId } = await requireGroup(this.ctx, this.args, 'edit');
         const rawTeams = optionalEntries(this.args.teams, 'teams');
         const rawAgents = optionalEntries(this.args.agents, 'agents');
-        if (rawTeams.length > MAX_TEAMS_PER_CALL)
-            throw new Error(`teams holds ${rawTeams.length} entries; one call updates at most ${MAX_TEAMS_PER_CALL}`);
-        if (rawAgents.length > MAX_AGENTS_PER_CALL)
-            throw new Error(`agents holds ${rawAgents.length} entries; one call updates at most ${MAX_AGENTS_PER_CALL}`);
+        if (rawTeams.length > MAX_TEAMS_PER_CALL) throw new Error(`teams holds ${rawTeams.length} entries; one call updates at most ${MAX_TEAMS_PER_CALL}`);
+        if (rawAgents.length > MAX_AGENTS_PER_CALL) throw new Error(`agents holds ${rawAgents.length} entries; one call updates at most ${MAX_AGENTS_PER_CALL}`);
         if (!rawTeams.length && !rawAgents.length) throw new Error('Give teams, agents, or both');
 
         const updatedTeams: { index: number; team: unknown }[] = [];

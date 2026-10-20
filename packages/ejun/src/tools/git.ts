@@ -1,7 +1,7 @@
-import Schema from 'schemastery';
 import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PRIV } from 'ejun/src/model/builtin';
+import Schema from 'schemastery';
 import { toGitInput } from '../lib/tool-shared';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import type {} from '../service/registry';
@@ -15,30 +15,30 @@ function handlers(): typeof import('ejun/src/handler/base') {
 export const StatusSchema = Schema.object({
     githubToken: Schema.string().description('GitHub PAT override for remote fetch (optional).'),
 }).description(
-    'Get git sync status for this base: local/remote ref, ahead/behind, uncommitted changes, and file change lists. ' +
-        'Requires a local git repo (created on first commit/push).',
+    'Get git sync status for this base: local/remote ref, ahead/behind, uncommitted changes, and file change lists. '
+        + 'Requires a local git repo (created on first commit/push).',
 );
 
 export const CommitSchema = Schema.object({
     commitMessage: Schema.string().description('Commit message body (optional).'),
 }).description(
-    'Export the current base to the local git working tree and commit (does not push). ' +
-        'Use after editing nodes/cards/problems when you want a local snapshot.',
+    'Export the current base to the local git working tree and commit (does not push). '
+        + 'Use after editing nodes/cards/problems when you want a local snapshot.',
 );
 
 export const PushSchema = Schema.object({
     commitMessage: Schema.string().description('Commit message (optional).'),
     githubToken: Schema.string().description('GitHub PAT override (optional).'),
 }).description(
-    'Commit local changes and push to the configured GitHub remote (`git_config_get`). ' +
-        'Requires githubRepo on the base and a GitHub token (user profile or system setting).',
+    'Commit local changes and push to the configured GitHub remote (`git_config_get`). '
+        + 'Requires githubRepo on the base and a GitHub token (user profile or system setting).',
 );
 
 export const PullSchema = Schema.object({
     githubToken: Schema.string().description('GitHub PAT override (optional).'),
 }).description(
-    'Pull from GitHub and import the remote content into this base. ' +
-        'Destructive: replaces nodes/cards from the git tree. Requires githubRepo and token.',
+    'Pull from GitHub and import the remote content into this base. '
+        + 'Destructive: replaces nodes/cards from the git tree. Requires githubRepo and token.',
 );
 
 export const ConfigGetSchema = Schema.object({}).description(
