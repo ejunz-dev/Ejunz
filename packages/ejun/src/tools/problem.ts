@@ -123,9 +123,9 @@ function problemsOf(raw: unknown, label: string): Problem[] {
 
 
 class BaseProblemListExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const card = await requireCard(ctx, args.cardId);
             const problems = card.problems || [];
             return { cardId: String(card.docId), count: problems.length, problems: problems.map((problem) => summarizeProblem(ctx, card, problem)) };
@@ -133,9 +133,9 @@ class BaseProblemListExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseProblemGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const card = await requireCard(ctx, args.cardId);
             const pid = String(args.pid || '').trim();
             if (!pid) throw new Error('pid is required');
@@ -147,9 +147,9 @@ class BaseProblemGetExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseProblemCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const card = await requireCard(ctx, args.cardId);
             const payload = parseProblemPayload(args.problem);
             const pid = newProblemPid();
@@ -160,9 +160,9 @@ class BaseProblemCreateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseProblemUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const card = await requireCard(ctx, args.cardId);
             const pid = String(args.pid || '').trim();
             if (!pid) throw new Error('pid is required');
@@ -178,9 +178,9 @@ class BaseProblemUpdateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseProblemDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const card = await requireCard(ctx, args.cardId);
             const pid = String(args.pid || '').trim();
             if (!pid) throw new Error('pid is required');
@@ -193,9 +193,9 @@ class BaseProblemDeleteExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseProblemCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const raw = args.entries;
             if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, problems }');
             const planned = raw.map((entry, index) => {
@@ -245,9 +245,9 @@ class BaseProblemCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseProblemGetManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const raw = args.entries;
             if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, pid }');
             if (raw.length > MAX_PROBLEMS_PER_CALL) {
@@ -297,9 +297,9 @@ class BaseProblemGetManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseProblemUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const raw = args.entries;
             if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, pid, problem }');
             if (raw.length > MAX_PROBLEMS_PER_CALL) {
@@ -363,9 +363,9 @@ class BaseProblemUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseProblemDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const raw = args.entries;
             if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, pids }');
             const planned = raw.map((entry, index) => {

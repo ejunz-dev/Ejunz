@@ -273,7 +273,7 @@ export abstract class Executor<C = unknown, A = unknown, R = unknown> {
 
     async prepare(): Promise<void> { }
 
-    abstract execute(): R | Promise<R>;
+    abstract execute(context: C, args: A): R | Promise<R>;
 
     async after(_result: R): Promise<void> { }
 
@@ -289,7 +289,7 @@ export abstract class Executor<C = unknown, A = unknown, R = unknown> {
         try {
             await this.init();
             await this.prepare();
-            const result = await this.execute();
+            const result = await this.execute(this.context, this.args);
             await this.after(result);
             return result;
         } catch (error) {

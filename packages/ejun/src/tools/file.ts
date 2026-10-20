@@ -108,9 +108,9 @@ function optionalCount(raw: unknown, label: string, limit: number): number | und
 
 
 class BaseNodeFileCardListExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const nodeId = String(args.nodeId || '');
             if (!nodeId) throw new Error('nodeId is required');
             const base = await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
@@ -122,9 +122,9 @@ class BaseNodeFileCardListExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeFileCardGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const card = await requireCard(ctx, args.cardId);
             if ((card as CardDoc).cardType !== 'file') throw new Error(`Not a file-card: ${args.cardId}`);
             return fileCardDetail(ctx, card);
@@ -132,9 +132,9 @@ class BaseNodeFileCardGetExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeFileCardContentGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const card = await requireCard(ctx, args.cardId) as CardDoc;
             if (card.cardType !== 'file') throw new Error(`Not a file-card: ${args.cardId}`);
             const fileName = card.fileName || '';
@@ -162,9 +162,9 @@ class BaseNodeFileCardContentGetExecutor extends Executor<ToolContext, ToolArgs>
 }
 
 class BaseNodeFileCardDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const card = await requireCard(ctx, args.cardId);
             if ((card as CardDoc).cardType !== 'file') throw new Error(`Not a file-card: ${args.cardId}`);
             const fileName = (card as CardDoc).fileName;
@@ -178,9 +178,9 @@ class BaseNodeFileCardDeleteExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeFileCardCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const nodeId = String(args.nodeId || '');
             const fileName = String(args.fileName || '').trim();
             const fileUrl = String(args.fileUrl || '').trim();
@@ -213,9 +213,9 @@ class BaseNodeFileCardCreateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeFileCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const raw = args.files;
             if (!Array.isArray(raw) || !raw.length) throw new Error('files must be a non-empty array of { nodeId, fileName, fileUrl }');
             if (raw.length > MAX_FILE_CREATES_PER_CALL) {
@@ -304,9 +304,9 @@ class BaseNodeFileCardCreateManyExecutor extends Executor<ToolContext, ToolArgs>
 }
 
 class BaseNodeFileCardListManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const nodeIds = idList(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
             const base = await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
             if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
@@ -331,9 +331,9 @@ class BaseNodeFileCardListManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeFileCardGetManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
             const byId = await cardsById(ctx, cardIds);
             const files: unknown[] = [];
@@ -362,9 +362,9 @@ class BaseNodeFileCardGetManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeFileCardDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
             const byId = await cardsById(ctx, cardIds);
             for (const cardId of cardIds) {

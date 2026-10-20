@@ -129,9 +129,9 @@ export const TeamDeleteManySchema = Schema.object({
 
 
 class AgentTeamListExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId, group } = await requireGroup(ctx, args);
             await ensureGroupRoot(ctx, groupId, group.title);
             const teams = await AgentSessionModel.listTeams(ctx.domainId, ctx.owner, groupId);
@@ -140,9 +140,9 @@ class AgentTeamListExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentTeamGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId, group } = await requireGroup(ctx, args);
             await ensureGroupRoot(ctx, groupId, group.title);
             const teamId = String(args.teamId || '').trim();
@@ -155,9 +155,9 @@ class AgentTeamGetExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentTeamCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId, group } = await requireGroup(ctx, args, 'edit');
             await ensureGroupRoot(ctx, groupId, group.title);
             const text = String(args.text || '').trim();
@@ -169,9 +169,9 @@ class AgentTeamCreateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentTeamUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId, group } = await requireGroup(ctx, args, 'edit');
             await ensureGroupRoot(ctx, groupId, group.title);
             const teamId = String(args.teamId || '').trim();
@@ -247,9 +247,9 @@ class AgentTeamUpdateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentTeamDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId, group } = await requireGroup(ctx, args, 'edit');
             await ensureGroupRoot(ctx, groupId, group.title);
             const teamId = String(args.teamId || '').trim();
@@ -268,9 +268,9 @@ class AgentTeamDeleteExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentRoleListExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId, group } = await requireGroup(ctx, args);
             const { acl } = await groupRootAcl(ctx, groupId, group.title);
             return { ok: true, groupId, roles: acl.roles, permissions: agentPermissionCatalog() };
@@ -278,9 +278,9 @@ class AgentRoleListExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentRoleGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId, group } = await requireGroup(ctx, args);
             const roleId = asText(args.roleId);
             const { acl } = await groupRootAcl(ctx, groupId, group.title);
@@ -291,9 +291,9 @@ class AgentRoleGetExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentRoleCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             await requireAgentConfigurationPermission(ctx);
             const { groupId, group } = await requireGroup(ctx, args, 'edit');
             const roleId = asText(args.roleId);
@@ -310,9 +310,9 @@ class AgentRoleCreateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentRoleUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             await requireAgentConfigurationPermission(ctx);
             const { groupId, group } = await requireGroup(ctx, args, 'edit');
             const roleId = asText(args.roleId);
@@ -336,9 +336,9 @@ class AgentRoleUpdateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentRoleDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             await requireAgentConfigurationPermission(ctx);
             const { groupId, group } = await requireGroup(ctx, args, 'edit');
             const roleId = asText(args.roleId);
@@ -352,9 +352,9 @@ class AgentRoleDeleteExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentTeamCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId } = await requireGroup(ctx, args, 'edit');
             const rawTeams = optionalEntries(args.teams, 'teams');
             const rawAgents = optionalEntries(args.agents, 'agents');
@@ -440,9 +440,9 @@ class AgentTeamCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentTeamGetManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId } = await requireGroup(ctx, args);
             const teamIds = optionalIds(args.teamIds, 'teamIds', MAX_TEAMS_PER_CALL);
             const agentIds = optionalIds(args.agentIds, 'agentIds', MAX_AGENTS_PER_CALL);
@@ -470,9 +470,9 @@ class AgentTeamGetManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentTeamUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId } = await requireGroup(ctx, args, 'edit');
             const rawTeams = optionalEntries(args.teams, 'teams');
             const rawAgents = optionalEntries(args.agents, 'agents');
@@ -511,9 +511,9 @@ class AgentTeamUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentTeamDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId } = await requireGroup(ctx, args, 'delete');
             const teamIds = optionalIds(args.teamIds, 'teamIds', MAX_TEAMS_PER_CALL);
             const agentIds = optionalIds(args.agentIds, 'agentIds', MAX_AGENTS_PER_CALL);

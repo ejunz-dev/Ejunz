@@ -54,49 +54,49 @@ export const ConfigSetSchema = Schema.object({
 
 
 class BaseGitStatusExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             return handlers().baseGitStatus(toGitInput(ctx, args));
     }
 }
 
 class BaseGitCommitExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             return handlers().baseGitCommit(toGitInput(ctx, args));
     }
 }
 
 class BaseGitPushExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             return handlers().baseGitPush(toGitInput(ctx, args));
     }
 }
 
 class BaseGitPullExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             return handlers().baseGitPull(toGitInput(ctx, args));
     }
 }
 
 class BaseGitConfigGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const _args = this.args;
+    async execute(ctx: ToolContext, _args: ToolArgs) {
+
+
             return handlers().baseGitConfigGet({ domainId: ctx.domainId, baseDocId: ctx.baseDocId });
     }
 }
 
 class BaseGitConfigSetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const raw = args.githubRepo;
             const githubRepo = raw == null ? null : String(raw).trim();
             return handlers().baseGitConfigSet({ ...toGitInput(ctx, args), githubRepo: githubRepo || null });

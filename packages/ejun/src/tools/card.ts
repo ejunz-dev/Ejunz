@@ -107,9 +107,9 @@ function problemsOf(raw: unknown, label: string): Problem[] {
 
 
 class BaseCardCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const nodeId = String(args.nodeId || '');
             const title = String(args.title || '').trim();
             if (!nodeId) throw new Error('nodeId is required');
@@ -123,9 +123,9 @@ class BaseCardCreateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseCardUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const card = await requireCard(ctx, args.cardId);
             const updates: Record<string, any> = {};
             if (typeof args.title === 'string') updates.title = args.title;
@@ -137,9 +137,9 @@ class BaseCardUpdateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseCardGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const card = await requireCard(ctx, args.cardId);
             return {
                 ok: true,
@@ -152,9 +152,9 @@ class BaseCardGetExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseCardDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const card = await requireCard(ctx, args.cardId);
             await CardModel.delete(ctx.domainId, card.docId);
             return { ok: true, cardId: String(card.docId) };
@@ -162,9 +162,9 @@ class BaseCardDeleteExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const raw = args.cards;
             if (!Array.isArray(raw) || !raw.length) throw new Error('cards must be a non-empty array of { nodeId, title, ... }');
             if (raw.length > MAX_CARDS_PER_CALL) {
@@ -233,9 +233,9 @@ class BaseCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseCardGetManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
             const byId = await cardsById(ctx, cardIds);
             const found: unknown[] = [];
@@ -266,9 +266,9 @@ class BaseCardGetManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseCardUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const raw = args.entries;
             if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, title?, content? }');
             if (raw.length > MAX_CARDS_PER_CALL) {
@@ -322,9 +322,9 @@ class BaseCardUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseCardDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
             const objectIds = cardIds.map((cardId) => toObjectId(cardId));
             const byId = await cardsById(ctx, cardIds);

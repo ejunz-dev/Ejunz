@@ -100,9 +100,9 @@ function newEdgeId() {
 
 
 class BaseNodeCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const text = String(args.text || '').trim();
             if (!text) throw new Error('text is required');
             const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
@@ -115,9 +115,9 @@ class BaseNodeCreateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const nodeId = String(args.nodeId || '');
             const text = String(args.text || '');
             if (!nodeId) throw new Error('nodeId is required');
@@ -138,9 +138,9 @@ class BaseNodeUpdateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const nodeId = String(args.nodeId || '').trim();
             if (!nodeId) throw new Error('nodeId is required');
             const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
@@ -181,9 +181,9 @@ class BaseNodeGetExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const nodeId = String(args.nodeId || '');
             if (!nodeId) throw new Error('nodeId is required');
             await BaseModel.deleteNode(ctx.domainId, ctx.baseDocId, nodeId);
@@ -192,9 +192,9 @@ class BaseNodeDeleteExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const raw = args.nodes;
             if (!Array.isArray(raw) || !raw.length) throw new Error('nodes must be a non-empty array of { text, ref?, parentId?, parentRef? }');
             if (raw.length > MAX_NODES_PER_CALL) {
@@ -271,9 +271,9 @@ class BaseNodeCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeGetManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const nodeIds = idList(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
             const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
             if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
@@ -329,9 +329,9 @@ class BaseNodeGetManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const raw = args.entries;
             if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { nodeId, text?, parentId? }');
             if (raw.length > MAX_NODES_PER_CALL) {
@@ -380,9 +380,9 @@ class BaseNodeUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const nodeIds = idList(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
             const result = await BaseModel.deleteNodes(ctx.domainId, ctx.baseDocId, nodeIds);
             return {

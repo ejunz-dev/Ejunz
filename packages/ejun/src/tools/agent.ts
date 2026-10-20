@@ -72,25 +72,25 @@ export const AgentSessionDeleteManySchema = Schema.object({ groupId: Schema.numb
 
 
 class AgentAgentListExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
          const { groupId } = await requireGroup(ctx,args); const agents = await AgentModel.listAgents(ctx.domainId,ctx.owner,groupId,asText(args.teamId)||undefined); return { ok:true,groupId,count:agents.length,agents:agents.map(agentRecordView) };
     }
 }
 
 class AgentAgentGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
          const {groupId}=await requireGroup(ctx,args); const agentId=asText(args.agentId); const a=agentId&&await AgentModel.getAgent(ctx.domainId,ctx.owner,agentId,groupId); if(!a) throw new Error(`Agent not found: ${agentId}`); return {ok:true,groupId,agent:agentRecordView(a)};
     }
 }
 
 export class AgentAgentCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId, group } = await requireGroup(ctx, args, 'edit');
             const root = await ensureGroupRoot(ctx, groupId, group.title);
             const title = asText(args.title);
@@ -109,9 +109,9 @@ export class AgentAgentCreateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 export class AgentAgentUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId, group } = await requireGroup(ctx, args, 'edit');
             const agentId = asText(args.agentId);
             const old = agentId && await AgentModel.getAgent(ctx.domainId, ctx.owner, agentId, groupId);
@@ -145,17 +145,17 @@ export class AgentAgentUpdateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentAgentDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
          const {groupId}=await requireGroup(ctx,args,'delete'); const agentId=asText(args.agentId);if(!agentId)throw new Error('agentId is required');await AgentModel.deleteAgent(ctx.domainId,ctx.owner,agentId,groupId);return {ok:true,groupId,agentId,deleted:true};
     }
 }
 
 class AgentAgentCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
          const {groupId}=await requireGroup(ctx,args,'edit'); const entries=objectEntries(args.agents,'agents'); const agents=[] as any[]; const refusedAgents=[] as any[];
          for(const [index,e] of entries.entries()) try { const r=await new AgentAgentCreateExecutor(ctx, { ...e, groupId }).run() as any; agents.push({index,agent:r.agent}); } catch(err){refusedAgents.push({index,error:(err as Error).message});}
          return {ok:!refusedAgents.length,groupId,agents,refusedAgents};
@@ -163,17 +163,17 @@ class AgentAgentCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 export class AgentAgentGetManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
          const {groupId}=await requireGroup(ctx,args); const ids=idList(args.agentIds,'agentIds',MAX_AGENTS_PER_CALL); const docs=await AgentModel.listAgents(ctx.domainId,ctx.owner,groupId); const map=new Map(docs.map(x=>[x.agentId,x])); const agents=ids.flatMap((id,index)=>{const a=map.get(id);return a?[{index,...agentRecordView(a)}]:[]}); const missingAgentIds=ids.filter(id=>!map.has(id)); return {ok:!missingAgentIds.length,groupId,agents,missingAgentIds};
     }
 }
 
 export class AgentAgentUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
          const {groupId}=await requireGroup(ctx,args,'edit'); const entries=objectEntries(args.entries,'entries'); const agents=[] as any[]; const refusedAgents=[] as any[];
          for(const [index,e] of entries.entries()) try {const r=await new AgentAgentUpdateExecutor(ctx, { ...e, groupId }).run() as any;agents.push({index,agent:r.agent});}catch(err){refusedAgents.push({index,agentId:asText(e.agentId),error:(err as Error).message});}
          return {ok:!refusedAgents.length,groupId,agents,refusedAgents};
@@ -181,17 +181,17 @@ export class AgentAgentUpdateManyExecutor extends Executor<ToolContext, ToolArgs
 }
 
 export class AgentAgentDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
          const {groupId}=await requireGroup(ctx,args,'delete'); const agentIds=idList(args.agentIds,'agentIds',MAX_AGENTS_PER_CALL); for(const id of agentIds) await AgentModel.deleteAgent(ctx.domainId,ctx.owner,id,groupId); return {ok:true,groupId,removedAgentIds:agentIds};
     }
 }
 
 class AgentSessionListExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId } = await requireGroup(ctx, args);
             const teamId = typeof args.teamId === 'string' && args.teamId.trim() ? args.teamId.trim() : undefined;
             if (teamId && !await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId)) {
@@ -204,9 +204,9 @@ class AgentSessionListExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentSessionGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId } = await requireGroup(ctx, args);
             const sessionId = String(args.sessionId || '').trim();
             if (!sessionId) throw new Error('sessionId is required');
@@ -216,9 +216,9 @@ class AgentSessionGetExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentSessionCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId } = await requireGroup(ctx, args, 'edit');
             const agentId = asText(args.agentId);
             if (!agentId || !await AgentModel.getAgent(ctx.domainId, ctx.owner, agentId, groupId)) {
@@ -245,9 +245,9 @@ class AgentSessionCreateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentSessionCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId } = await requireGroup(ctx, args, 'edit');
             const entries = objectEntries(args.sessions, 'sessions');
             type SessionCreateResult =
@@ -269,25 +269,25 @@ class AgentSessionCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentSessionUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
          const {groupId}=await requireGroup(ctx,args,'edit');const sessionId=asText(args.sessionId),title=asText(args.title);if(!sessionId||!title)throw new Error('sessionId and title are required');await renameSessionAgent(ctx,groupId,sessionId,title);return {ok:true,groupId,sessionId,title};
     }
 }
 
 class AgentSessionDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
         const {groupId}=await requireGroup(ctx,args,'delete');const sessionId=asText(args.sessionId);if(!sessionId)throw new Error('sessionId is required');await AgentSessionModel.deleteSession(ctx.domainId,ctx.owner,sessionId,groupId);return {ok:true,groupId,sessionId,deleted:true};
     }
 }
 
 class AgentSessionGetManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId } = await requireGroup(ctx, args);
             const sessionIds = idList(args.sessionIds, 'sessionIds', MAX_AGENTS_PER_CALL);
             const sessions = await AgentSessionModel.listSessions(ctx.domainId, ctx.owner, groupId);
@@ -315,9 +315,9 @@ class AgentSessionGetManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentSessionDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
         const {groupId}=await requireGroup(ctx,args,'delete');const sessionIds=idList(args.sessionIds,'sessionIds',MAX_AGENTS_PER_CALL);await AgentSessionModel.deleteSessions(ctx.domainId,ctx.owner,sessionIds,groupId);return {ok:true,groupId,removedSessionIds:sessionIds,removedCount:sessionIds.length};
     }
 }

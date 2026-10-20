@@ -82,9 +82,9 @@ function outlineParentMap(base: { nodes?: { id: string; parentId?: string; child
 
 
 class BaseCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const title = String(args.title || '').trim();
             if (!title) throw new Error('title is required');
             const content = typeof args.content === 'string' ? args.content : '';
@@ -99,9 +99,9 @@ class BaseCreateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseListExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const limit = Math.max(1, Math.min(50, Number(args.limit) || 15));
             const bases = await BaseModel.getAll(ctx.domainId, undefined, document.TYPE_BASE);
             const page = bases.slice(0, limit);
@@ -131,9 +131,9 @@ class BaseListExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseSearchExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const query = String(args.query || '').trim().toLowerCase();
             if (!query) throw new Error('query is required');
             const limit = Math.max(1, Math.min(50, Number(args.limit) || 15));
@@ -158,9 +158,9 @@ class BaseSearchExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const _args = this.args;
+    async execute(ctx: ToolContext, _args: ToolArgs) {
+
+
             const base = await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
             if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
             const nodes = base.nodes || [];
@@ -208,9 +208,9 @@ class BaseGetExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const updates: Record<string, unknown> = {};
             if (Object.prototype.hasOwnProperty.call(args, 'title')) {
                 const title = String(args.title || '').trim();
@@ -232,9 +232,9 @@ class BaseUpdateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const _args = this.args;
+    async execute(ctx: ToolContext, _args: ToolArgs) {
+
+
             await BaseModel.delete(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
             return { ok: true, baseId: ctx.baseDocId };
     }

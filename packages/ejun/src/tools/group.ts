@@ -48,9 +48,9 @@ export const GroupRemoveSchema = Schema.object({
 
 
 class AgentGroupListExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const limit = resultLimit(args.limit);
             const groups = (await GroupDefinitionModel.getMulti(ctx.domainId).toArray()).slice(0, limit);
             const listed = await Promise.all(groups.map(async (group) => {
@@ -62,9 +62,9 @@ class AgentGroupListExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentGroupSearchExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const query = String(args.query || '').trim().toLowerCase();
             if (!query) throw new Error('query is required');
             const limit = resultLimit(args.limit);
@@ -75,9 +75,9 @@ class AgentGroupSearchExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentGroupGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId, group } = await requireGroup(ctx, args);
             await ensureGroupRoot(ctx, groupId, group.title);
             const workspace = await groupWorkspace(ctx, groupId);
@@ -92,9 +92,9 @@ class AgentGroupGetExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentGroupCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const title = String(args.title || '').trim();
             const content = typeof args.content === 'string' ? args.content : '';
             if (!title || title.length > 256) throw new Error('title is required and must be at most 256 characters');
@@ -108,9 +108,9 @@ class AgentGroupCreateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentGroupUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId } = await requireGroup(ctx, args, 'edit');
             const updates: Record<string, string> = {};
             if (Object.prototype.hasOwnProperty.call(args, 'title')) {
@@ -131,9 +131,9 @@ class AgentGroupUpdateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentGroupDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() {
-        const ctx = this.context;
-        const args = this.args;
+    async execute(ctx: ToolContext, args: ToolArgs) {
+
+
             const { groupId } = await requireGroup(ctx, args, 'delete');
             await AgentSessionModel.detachGroup(ctx.domainId, groupId);
             await GroupDefinitionModel.del(ctx.domainId, groupId);
