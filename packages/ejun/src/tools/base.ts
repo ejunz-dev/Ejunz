@@ -82,30 +82,30 @@ function outlineParentMap(base: { nodes?: { id: string; parentId?: string; child
 
 
 class BaseCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const title = String(args.title || '').trim();
+            const title = String(this.args.title || '').trim();
             if (!title) throw new Error('title is required');
-            const content = typeof args.content === 'string' ? args.content : '';
-            const slug = typeof args.slug === 'string' ? args.slug.trim() : undefined;
-            const tag = Array.isArray(args.tag)
-                ? args.tag.filter((value: unknown): value is string => typeof value === 'string').map((value) => value.trim()).filter(Boolean)
+            const content = typeof this.args.content === 'string' ? this.args.content : '';
+            const slug = typeof this.args.slug === 'string' ? this.args.slug.trim() : undefined;
+            const tag = Array.isArray(this.args.tag)
+                ? this.args.tag.filter((value: unknown): value is string => typeof value === 'string').map((value) => value.trim()).filter(Boolean)
                 : undefined;
-            const created = await BaseModel.create(ctx.domainId, ctx.owner, title, content, undefined, undefined, undefined, undefined, true, tag, document.TYPE_BASE, undefined, slug === undefined ? undefined : { slug });
-            const base = await BaseModel.get(ctx.domainId, created.docId, document.TYPE_BASE);
-            return { ok: true, baseId: created.docId, base, url: baseUrl(ctx, created.docId) };
+            const created = await BaseModel.create(this.ctx.domainId, this.ctx.owner, title, content, undefined, undefined, undefined, undefined, true, tag, document.TYPE_BASE, undefined, slug === undefined ? undefined : { slug });
+            const base = await BaseModel.get(this.ctx.domainId, created.docId, document.TYPE_BASE);
+            return { ok: true, baseId: created.docId, base, url: baseUrl(this.ctx, created.docId) };
     }
 }
 
 class BaseListExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const limit = Math.max(1, Math.min(50, Number(args.limit) || 15));
-            const bases = await BaseModel.getAll(ctx.domainId, undefined, document.TYPE_BASE);
+            const limit = Math.max(1, Math.min(50, Number(this.args.limit) || 15));
+            const bases = await BaseModel.getAll(this.ctx.domainId, undefined, document.TYPE_BASE);
             const page = bases.slice(0, limit);
-            const cardStats = await loadCardStatsByBaseDocId(ctx.domainId, page.map((item) => item.docId));
+            const cardStats = await loadCardStatsByBaseDocId(this.ctx.domainId, page.map((item) => item.docId));
             return {
                 ok: true,
                 query: null,
@@ -118,7 +118,7 @@ class BaseListExecutor extends Executor<ToolContext, ToolArgs> {
                         content: item.content,
                         ...(item.slug ? { slug: item.slug } : {}),
                         ...(item.tag?.length ? { tag: item.tag } : {}),
-                        url: baseUrl(ctx, item.docId),
+                        url: baseUrl(this.ctx, item.docId),
                         nodeCount: item.nodes?.length ?? 0,
                         cardCount: stats?.cardCount ?? 0,
                         problemCount: stats?.problemCount ?? 0,
@@ -131,13 +131,13 @@ class BaseListExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseSearchExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const query = String(args.query || '').trim().toLowerCase();
+            const query = String(this.args.query || '').trim().toLowerCase();
             if (!query) throw new Error('query is required');
-            const limit = Math.max(1, Math.min(50, Number(args.limit) || 15));
-            const bases = await BaseModel.getAll(ctx.domainId, undefined, document.TYPE_BASE);
+            const limit = Math.max(1, Math.min(50, Number(this.args.limit) || 15));
+            const bases = await BaseModel.getAll(this.ctx.domainId, undefined, document.TYPE_BASE);
             const matches = bases.filter((item) => [item.title, item.content, item.slug, ...(item.tag || [])].filter((value): value is string => typeof value === 'string').some((value) => value.toLowerCase().includes(query)));
             return {
                 ok: true,
@@ -151,18 +151,18 @@ class BaseSearchExecutor extends Executor<ToolContext, ToolArgs> {
                     ...(item.tag?.length ? { tag: item.tag } : {}),
                     createdAt: item.createdAt,
                     updateAt: item.updateAt,
-                    url: baseUrl(ctx, item.docId),
+                    url: baseUrl(this.ctx, item.docId),
                 })),
             };
     }
 }
 
 class BaseGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, _args: ToolArgs) {
+    async execute(){
 
 
-            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
-            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            const base = await BaseModel.get(this.ctx.domainId, this.ctx.baseDocId, document.TYPE_BASE);
+            if (!base) throw new Error(`Base not found: ${this.ctx.baseDocId}`);
             const nodes = base.nodes || [];
             const nodeById = new Map(nodes.map((node) => [node.id, node]));
             const parentByNode = outlineParentMap(base);
@@ -174,7 +174,7 @@ class BaseGetExecutor extends Executor<ToolContext, ToolArgs> {
                 if (children) children.push(node.id);
                 else childrenByParent.set(parentId, [node.id]);
             }
-            const cardsByNode = await CardModel.getByNodeIds(ctx.domainId, ctx.baseDocId, nodes.map((node) => node.id));
+            const cardsByNode = await CardModel.getByNodeIds(this.ctx.domainId, this.ctx.baseDocId, nodes.map((node) => node.id));
             const renderedNodes = new Set<string>();
             const renderNode = (nodeId: string): OutlineEntry | undefined => {
                 if (renderedNodes.has(nodeId)) return undefined;
@@ -203,40 +203,40 @@ class BaseGetExecutor extends Executor<ToolContext, ToolArgs> {
                 const entry = renderNode(node.id);
                 if (entry) outline.push(entry);
             }
-            return { ok: true, base, outline, url: baseUrl(ctx, ctx.baseDocId) };
+            return { ok: true, base, outline, url: baseUrl(this.ctx, this.ctx.baseDocId) };
     }
 }
 
 class BaseUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
             const updates: Record<string, unknown> = {};
-            if (Object.prototype.hasOwnProperty.call(args, 'title')) {
-                const title = String(args.title || '').trim();
+            if (Object.prototype.hasOwnProperty.call(this.args, 'title')) {
+                const title = String(this.args.title || '').trim();
                 if (!title) throw new Error('title cannot be empty');
                 updates.title = title;
             }
-            if (typeof args.content === 'string') updates.content = args.content;
-            if (typeof args.slug === 'string') updates.slug = args.slug.trim();
-            if (Array.isArray(args.tag)) updates.tag = args.tag.filter((value: unknown): value is string => typeof value === 'string').map((value) => value.trim()).filter(Boolean);
+            if (typeof this.args.content === 'string') updates.content = this.args.content;
+            if (typeof this.args.slug === 'string') updates.slug = this.args.slug.trim();
+            if (Array.isArray(this.args.tag)) updates.tag = this.args.tag.filter((value: unknown): value is string => typeof value === 'string').map((value) => value.trim()).filter(Boolean);
             if (Object.keys(updates).length === 0) throw new Error('Nothing to update');
-            await BaseModel.update(ctx.domainId, ctx.baseDocId, updates as Parameters<typeof BaseModel.update>[2], document.TYPE_BASE);
+            await BaseModel.update(this.ctx.domainId, this.ctx.baseDocId, updates as Parameters<typeof BaseModel.update>[2], document.TYPE_BASE);
             return {
                 ok: true,
-                baseId: ctx.baseDocId,
-                base: await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE),
-                url: baseUrl(ctx, ctx.baseDocId),
+                baseId: this.ctx.baseDocId,
+                base: await BaseModel.get(this.ctx.domainId, this.ctx.baseDocId, document.TYPE_BASE),
+                url: baseUrl(this.ctx, this.ctx.baseDocId),
             };
     }
 }
 
 class BaseDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, _args: ToolArgs) {
+    async execute(){
 
 
-            await BaseModel.delete(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
-            return { ok: true, baseId: ctx.baseDocId };
+            await BaseModel.delete(this.ctx.domainId, this.ctx.baseDocId, document.TYPE_BASE);
+            return { ok: true, baseId: this.ctx.baseDocId };
     }
 }
 

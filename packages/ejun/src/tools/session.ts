@@ -26,13 +26,13 @@ async function instructions(context: ToolInstructionsContext): Promise<string> {
 }
 
 class BaseContextExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, _args: ToolArgs) {
+    async execute(){
 
-        const baseId = Number(ctx.baseDocId);
-        if (!Number.isSafeInteger(baseId) || baseId <= 0) return { domain: ctx.domainId };
-        const base = await BaseModel.get(ctx.domainId, baseId, document.TYPE_BASE);
+        const baseId = Number(this.ctx.baseDocId);
+        if (!Number.isSafeInteger(baseId) || baseId <= 0) return { domain: this.ctx.domainId };
+        const base = await BaseModel.get(this.ctx.domainId, baseId, document.TYPE_BASE);
         return {
-            domain: ctx.domainId,
+            domain: this.ctx.domainId,
             baseId,
             ...(base?.title ? { baseName: base.title } : {}),
         };
@@ -41,19 +41,19 @@ class BaseContextExecutor extends Executor<ToolContext, ToolArgs> {
 
 export function apply(ctx: Context) {
     class BaseSelectExecutor extends Executor<ToolContext, ToolArgs> {
-        async execute(toolContext: ToolContext, args: ToolArgs) {
+        async execute(){
 
 
-            const sessionId = toolContext.sessionId;
+            const sessionId = this.ctx.sessionId;
             if (!sessionId) throw new Error('base_select requires an Agent session');
-            const baseDocId = Number(args.baseId);
+            const baseDocId = Number(this.args.baseId);
             if (!Number.isSafeInteger(baseDocId) || baseDocId <= 0) throw new Error('baseId is required');
-            const base = await BaseModel.get(toolContext.domainId, baseDocId, document.TYPE_BASE);
+            const base = await BaseModel.get(this.ctx.domainId, baseDocId, document.TYPE_BASE);
             if (!base) throw new Error('Base not found in current domain');
             const payload: ToolBaseSelectPayload = {
                 sessionId,
-                domainId: toolContext.domainId,
-                owner: toolContext.owner,
+                domainId: this.ctx.domainId,
+                owner: this.ctx.owner,
                 baseDocId,
                 ...(base.title ? { baseName: base.title } : {}),
             };

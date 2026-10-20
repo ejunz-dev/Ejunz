@@ -54,52 +54,52 @@ export const ConfigSetSchema = Schema.object({
 
 
 class BaseGitStatusExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            return handlers().baseGitStatus(toGitInput(ctx, args));
+            return handlers().baseGitStatus(toGitInput(this.ctx, this.args));
     }
 }
 
 class BaseGitCommitExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            return handlers().baseGitCommit(toGitInput(ctx, args));
+            return handlers().baseGitCommit(toGitInput(this.ctx, this.args));
     }
 }
 
 class BaseGitPushExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            return handlers().baseGitPush(toGitInput(ctx, args));
+            return handlers().baseGitPush(toGitInput(this.ctx, this.args));
     }
 }
 
 class BaseGitPullExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            return handlers().baseGitPull(toGitInput(ctx, args));
+            return handlers().baseGitPull(toGitInput(this.ctx, this.args));
     }
 }
 
 class BaseGitConfigGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, _args: ToolArgs) {
+    async execute(){
 
 
-            return handlers().baseGitConfigGet({ domainId: ctx.domainId, baseDocId: ctx.baseDocId });
+            return handlers().baseGitConfigGet({ domainId: this.ctx.domainId, baseDocId: this.ctx.baseDocId });
     }
 }
 
 class BaseGitConfigSetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const raw = args.githubRepo;
+            const raw = this.args.githubRepo;
             const githubRepo = raw == null ? null : String(raw).trim();
-            return handlers().baseGitConfigSet({ ...toGitInput(ctx, args), githubRepo: githubRepo || null });
+            return handlers().baseGitConfigSet({ ...toGitInput(this.ctx, this.args), githubRepo: githubRepo || null });
     }
 }
 

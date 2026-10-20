@@ -108,53 +108,53 @@ function optionalCount(raw: unknown, label: string, limit: number): number | und
 
 
 class BaseNodeFileCardListExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const nodeId = String(args.nodeId || '');
+            const nodeId = String(this.args.nodeId || '');
             if (!nodeId) throw new Error('nodeId is required');
-            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
-            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            const base = await BaseModel.get(this.ctx.domainId, this.ctx.baseDocId, document.TYPE_BASE);
+            if (!base) throw new Error(`Base not found: ${this.ctx.baseDocId}`);
             if (!(base.nodes || []).some((node) => node.id === nodeId)) throw new Error(`Node not found: ${nodeId}`);
-            const cards = await CardModel.getByNodeId(ctx.domainId, ctx.baseDocId, nodeId);
-            return cards.filter((card) => (card as CardDoc).cardType === 'file').map((card) => fileCardSummary(ctx, card));
+            const cards = await CardModel.getByNodeId(this.ctx.domainId, this.ctx.baseDocId, nodeId);
+            return cards.filter((card) => (card as CardDoc).cardType === 'file').map((card) => fileCardSummary(this.ctx, card));
     }
 }
 
 class BaseNodeFileCardGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const card = await requireCard(ctx, args.cardId);
-            if ((card as CardDoc).cardType !== 'file') throw new Error(`Not a file-card: ${args.cardId}`);
-            return fileCardDetail(ctx, card);
+            const card = await requireCard(this.ctx, this.args.cardId);
+            if ((card as CardDoc).cardType !== 'file') throw new Error(`Not a file-card: ${this.args.cardId}`);
+            return fileCardDetail(this.ctx, card);
     }
 }
 
 class BaseNodeFileCardContentGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const card = await requireCard(ctx, args.cardId) as CardDoc;
-            if (card.cardType !== 'file') throw new Error(`Not a file-card: ${args.cardId}`);
+            const card = await requireCard(this.ctx, this.args.cardId) as CardDoc;
+            if (card.cardType !== 'file') throw new Error(`Not a file-card: ${this.args.cardId}`);
             const fileName = card.fileName || '';
-            if (!fileName) throw new Error(`File-card ${args.cardId} names no stored file`);
-            const firstPage = optionalCount(args.firstPage, 'firstPage', MAX_FILE_CONTENT_PAGES);
-            const lastPage = optionalCount(args.lastPage, 'lastPage', MAX_FILE_CONTENT_PAGES);
+            if (!fileName) throw new Error(`File-card ${this.args.cardId} names no stored file`);
+            const firstPage = optionalCount(this.args.firstPage, 'firstPage', MAX_FILE_CONTENT_PAGES);
+            const lastPage = optionalCount(this.args.lastPage, 'lastPage', MAX_FILE_CONTENT_PAGES);
             if (firstPage !== undefined && lastPage !== undefined && lastPage < firstPage) {
                 throw new Error(`lastPage ${lastPage} is before firstPage ${firstPage}`);
             }
             const content = await readFileContent({
-                storagePath: fileStoragePath(ctx, card.nodeId, fileName),
+                storagePath: fileStoragePath(this.ctx, card.nodeId, fileName),
                 fileType: card.fileType || '',
                 fileSize: card.fileSize || 0,
                 firstPage,
                 lastPage,
-                maxChars: optionalCount(args.maxChars, 'maxChars', MAX_FILE_CONTENT_CHARS_LIMIT) ?? MAX_FILE_CONTENT_CHARS,
+                maxChars: optionalCount(this.args.maxChars, 'maxChars', MAX_FILE_CONTENT_CHARS_LIMIT) ?? MAX_FILE_CONTENT_CHARS,
             });
             return {
                 ok: true,
-                ...fileCardDetail(ctx, card),
+                ...fileCardDetail(this.ctx, card),
                 ...content,
                 reads: { cards: 1, files: 1 },
             };
@@ -162,43 +162,43 @@ class BaseNodeFileCardContentGetExecutor extends Executor<ToolContext, ToolArgs>
 }
 
 class BaseNodeFileCardDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const card = await requireCard(ctx, args.cardId);
-            if ((card as CardDoc).cardType !== 'file') throw new Error(`Not a file-card: ${args.cardId}`);
+            const card = await requireCard(this.ctx, this.args.cardId);
+            if ((card as CardDoc).cardType !== 'file') throw new Error(`Not a file-card: ${this.args.cardId}`);
             const fileName = (card as CardDoc).fileName;
             if (fileName) {
-                const storagePath = fileStoragePath(ctx, card.nodeId, fileName);
-                try { await storage.del([storagePath], ctx.owner); } catch { /* ignore missing storage */ }
+                const storagePath = fileStoragePath(this.ctx, card.nodeId, fileName);
+                try { await storage.del([storagePath], this.ctx.owner); } catch { /* ignore missing storage */ }
             }
-            await CardModel.delete(ctx.domainId, card.docId);
-            return { ok: true, cardId: String(args.cardId), deletedFile: !!fileName };
+            await CardModel.delete(this.ctx.domainId, card.docId);
+            return { ok: true, cardId: String(this.args.cardId), deletedFile: !!fileName };
     }
 }
 
 class BaseNodeFileCardCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const nodeId = String(args.nodeId || '');
-            const fileName = String(args.fileName || '').trim();
-            const fileUrl = String(args.fileUrl || '').trim();
+            const nodeId = String(this.args.nodeId || '');
+            const fileName = String(this.args.fileName || '').trim();
+            const fileUrl = String(this.args.fileUrl || '').trim();
             if (!nodeId) throw new Error('nodeId is required');
-            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
-            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            const base = await BaseModel.get(this.ctx.domainId, this.ctx.baseDocId, document.TYPE_BASE);
+            if (!base) throw new Error(`Base not found: ${this.ctx.baseDocId}`);
             if (!(base.nodes || []).some((node) => node.id === nodeId)) throw new Error(`Node not found: ${nodeId}`);
             if (!fileName) throw new Error('fileName is required');
             if (!fileUrl) throw new Error('fileUrl is required');
             const response = await fetch(fileUrl);
             if (!response.ok) throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
-            const storagePath = fileStoragePath(ctx, nodeId, fileName);
-            await storage.put(storagePath, Buffer.from(await response.arrayBuffer()), ctx.owner);
+            const storagePath = fileStoragePath(this.ctx, nodeId, fileName);
+            await storage.put(storagePath, Buffer.from(await response.arrayBuffer()), this.ctx.owner);
             const meta = await storage.getMeta(storagePath);
             if (!meta) throw new Error('Failed to store file');
             const fileType = fileTypeOf(fileName);
-            const title = String(args.title || '').trim() || fileName;
-            const cardDocId = await CardModel.create(ctx.domainId, ctx.baseDocId, nodeId, ctx.owner, title, '', undefined, undefined, undefined, 'file', fileType, fileName, meta.size || 0);
+            const title = String(this.args.title || '').trim() || fileName;
+            const cardDocId = await CardModel.create(this.ctx.domainId, this.ctx.baseDocId, nodeId, this.ctx.owner, title, '', undefined, undefined, undefined, 'file', fileType, fileName, meta.size || 0);
             return {
                 ok: true,
                 cardId: String(cardDocId),
@@ -206,23 +206,23 @@ class BaseNodeFileCardCreateExecutor extends Executor<ToolContext, ToolArgs> {
                 fileName,
                 fileType,
                 fileSize: meta.size,
-                url: cardUrl(ctx, ctx.baseDocId, String(cardDocId)),
-                downloadUrl: fileDownloadUrl(ctx, ctx.baseDocId, nodeId, fileName),
+                url: cardUrl(this.ctx, this.ctx.baseDocId, String(cardDocId)),
+                downloadUrl: fileDownloadUrl(this.ctx, this.ctx.baseDocId, nodeId, fileName),
             };
     }
 }
 
 class BaseNodeFileCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const raw = args.files;
+            const raw = this.args.files;
             if (!Array.isArray(raw) || !raw.length) throw new Error('files must be a non-empty array of { nodeId, fileName, fileUrl }');
             if (raw.length > MAX_FILE_CREATES_PER_CALL) {
                 throw new Error(`files holds ${raw.length} entries and one call stores ${MAX_FILE_CREATES_PER_CALL}; split the work across calls`);
             }
-            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
-            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            const base = await BaseModel.get(this.ctx.domainId, this.ctx.baseDocId, document.TYPE_BASE);
+            if (!base) throw new Error(`Base not found: ${this.ctx.baseDocId}`);
             const nodeIds = new Set((base.nodes || []).map((node) => node.id));
             const planned: { index: number; nodeId: string; fileName: string; fileUrl: string; title: string }[] = [];
             const seen = new Set<string>();
@@ -248,17 +248,17 @@ class BaseNodeFileCardCreateManyExecutor extends Executor<ToolContext, ToolArgs>
             type RefusedFile = { ok: false; index: number; nodeId: string; fileName: string; error: string };
             const results: (StoredFile | RefusedFile)[] = new Array(planned.length);
             const storeOne = async (file: typeof planned[number]): Promise<StoredFile | RefusedFile> => {
-                const storagePath = fileStoragePath(ctx, file.nodeId, file.fileName);
+                const storagePath = fileStoragePath(this.ctx, file.nodeId, file.fileName);
                 try {
                     const response = await fetch(file.fileUrl);
                     if (!response.ok) throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
-                    await storage.put(storagePath, Buffer.from(await response.arrayBuffer()), ctx.owner);
+                    await storage.put(storagePath, Buffer.from(await response.arrayBuffer()), this.ctx.owner);
                     const meta = await storage.getMeta(storagePath);
                     if (!meta) throw new Error('Failed to store file');
                     const fileType = fileTypeOf(file.fileName);
                     try {
                         const cardId = await CardModel.create(
-                            ctx.domainId, ctx.baseDocId, file.nodeId, ctx.owner, file.title, '',
+                            this.ctx.domainId, this.ctx.baseDocId, file.nodeId, this.ctx.owner, file.title, '',
                             undefined, undefined, undefined, 'file', fileType, file.fileName, meta.size || 0,
                         );
                         return {
@@ -269,11 +269,11 @@ class BaseNodeFileCardCreateManyExecutor extends Executor<ToolContext, ToolArgs>
                             fileName: file.fileName,
                             fileType,
                             fileSize: meta.size || 0,
-                            url: cardUrl(ctx, ctx.baseDocId, String(cardId)),
-                            downloadUrl: fileDownloadUrl(ctx, ctx.baseDocId, file.nodeId, file.fileName),
+                            url: cardUrl(this.ctx, this.ctx.baseDocId, String(cardId)),
+                            downloadUrl: fileDownloadUrl(this.ctx, this.ctx.baseDocId, file.nodeId, file.fileName),
                         };
                     } catch (error) {
-                        try { await storage.del([storagePath], ctx.owner); } catch { /* ignore cleanup */ }
+                        try { await storage.del([storagePath], this.ctx.owner); } catch { /* ignore cleanup */ }
                         throw error;
                     }
                 } catch (error) {
@@ -293,7 +293,7 @@ class BaseNodeFileCardCreateManyExecutor extends Executor<ToolContext, ToolArgs>
             const refused = results.filter((result) => !result.ok) as RefusedFile[];
             return {
                 ok: refused.length === 0,
-                baseId: ctx.baseDocId,
+                baseId: this.ctx.baseDocId,
                 fileCount: stored.length,
                 files: stored,
                 refusedFiles: refused,
@@ -304,23 +304,23 @@ class BaseNodeFileCardCreateManyExecutor extends Executor<ToolContext, ToolArgs>
 }
 
 class BaseNodeFileCardListManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const nodeIds = idList(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
-            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId, document.TYPE_BASE);
-            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            const nodeIds = idList(this.args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
+            const base = await BaseModel.get(this.ctx.domainId, this.ctx.baseDocId, document.TYPE_BASE);
+            if (!base) throw new Error(`Base not found: ${this.ctx.baseDocId}`);
             const known = new Set((base.nodes || []).map((node) => node.id));
             const missing = nodeIds.filter((nodeId) => !known.has(nodeId));
             const present = nodeIds.filter((nodeId) => known.has(nodeId));
-            const cardsByNode = await CardModel.getByNodeIds(ctx.domainId, ctx.baseDocId, present);
+            const cardsByNode = await CardModel.getByNodeIds(this.ctx.domainId, this.ctx.baseDocId, present);
             const nodes = present.map((nodeId, index) => {
                 const files = (cardsByNode.get(nodeId) || []).filter((card) => (card as CardDoc).cardType === 'file');
-                return { index, nodeId, files: files.map((card) => fileCardSummary(ctx, card)) };
+                return { index, nodeId, files: files.map((card) => fileCardSummary(this.ctx, card)) };
             });
             return {
                 ok: missing.length === 0,
-                baseId: ctx.baseDocId,
+                baseId: this.ctx.baseDocId,
                 nodeCount: nodes.length,
                 nodes,
                 fileCount: nodes.reduce((sum, node) => sum + node.files.length, 0),
@@ -331,11 +331,11 @@ class BaseNodeFileCardListManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeFileCardGetManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
-            const byId = await cardsById(ctx, cardIds);
+            const cardIds = idList(this.args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
+            const byId = await cardsById(this.ctx, cardIds);
             const files: unknown[] = [];
             const missing: { index: number; cardId: string; error: string }[] = [];
             for (const [index, cardId] of cardIds.entries()) {
@@ -348,11 +348,11 @@ class BaseNodeFileCardGetManyExecutor extends Executor<ToolContext, ToolArgs> {
                     missing.push({ index, cardId, error: `Not a file-card: ${cardId}` });
                     continue;
                 }
-                files.push({ index, ...fileCardDetail(ctx, card) });
+                files.push({ index, ...fileCardDetail(this.ctx, card) });
             }
             return {
                 ok: missing.length === 0,
-                baseId: ctx.baseDocId,
+                baseId: this.ctx.baseDocId,
                 fileCount: files.length,
                 files,
                 missing,
@@ -362,11 +362,11 @@ class BaseNodeFileCardGetManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeFileCardDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
-            const byId = await cardsById(ctx, cardIds);
+            const cardIds = idList(this.args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
+            const byId = await cardsById(this.ctx, cardIds);
             for (const cardId of cardIds) {
                 const card = byId.get(cardId);
                 if (!card) throw new Error(`Card not found: ${cardId}`);
@@ -379,16 +379,16 @@ class BaseNodeFileCardDeleteManyExecutor extends Executor<ToolContext, ToolArgs>
                 const fileName = card.fileName;
                 if (fileName) {
                     try {
-                        await storage.del([fileStoragePath(ctx, card.nodeId, fileName)], ctx.owner);
+                        await storage.del([fileStoragePath(this.ctx, card.nodeId, fileName)], this.ctx.owner);
                         deletedFiles += 1;
                     } catch { /* ignore missing storage */ }
                 }
-                await CardModel.delete(ctx.domainId, card.docId);
+                await CardModel.delete(this.ctx.domainId, card.docId);
                 removed.push(cardId);
             }
             return {
                 ok: true,
-                baseId: ctx.baseDocId,
+                baseId: this.ctx.baseDocId,
                 removedCardIds: removed,
                 removedCount: removed.length,
                 deletedFiles,

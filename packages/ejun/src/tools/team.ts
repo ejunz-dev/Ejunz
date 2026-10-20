@@ -129,69 +129,69 @@ export const TeamDeleteManySchema = Schema.object({
 
 
 class AgentTeamListExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId, group } = await requireGroup(ctx, args);
-            await ensureGroupRoot(ctx, groupId, group.title);
-            const teams = await AgentSessionModel.listTeams(ctx.domainId, ctx.owner, groupId);
+            const { groupId, group } = await requireGroup(this.ctx, this.args);
+            await ensureGroupRoot(this.ctx, groupId, group.title);
+            const teams = await AgentSessionModel.listTeams(this.ctx.domainId, this.ctx.owner, groupId);
             return { ok: true, groupId, count: teams.length, teams: teams.map(teamView) };
     }
 }
 
 class AgentTeamGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId, group } = await requireGroup(ctx, args);
-            await ensureGroupRoot(ctx, groupId, group.title);
-            const teamId = String(args.teamId || '').trim();
+            const { groupId, group } = await requireGroup(this.ctx, this.args);
+            await ensureGroupRoot(this.ctx, groupId, group.title);
+            const teamId = String(this.args.teamId || '').trim();
             if (!teamId) throw new Error('teamId is required');
-            const team = await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId);
+            const team = await AgentSessionModel.getTeam(this.ctx.domainId, this.ctx.owner, teamId, groupId);
             if (!team) throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
-            const workspace = await groupWorkspace(ctx, groupId);
+            const workspace = await groupWorkspace(this.ctx, groupId);
             return { ok: true, groupId, ...teamDetail(team, workspace.teams, workspace.sessions) };
     }
 }
 
 class AgentTeamCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId, group } = await requireGroup(ctx, args, 'edit');
-            await ensureGroupRoot(ctx, groupId, group.title);
-            const text = String(args.text || '').trim();
+            const { groupId, group } = await requireGroup(this.ctx, this.args, 'edit');
+            await ensureGroupRoot(this.ctx, groupId, group.title);
+            const text = String(this.args.text || '').trim();
             if (!text) throw new Error('text is required');
-            const parentTeamId = typeof args.parentTeamId === 'string' && args.parentTeamId.trim() ? args.parentTeamId.trim() : undefined;
-            const team = await AgentSessionModel.createTeam(ctx.domainId, ctx.owner, text, groupId, parentTeamId);
+            const parentTeamId = typeof this.args.parentTeamId === 'string' && this.args.parentTeamId.trim() ? this.args.parentTeamId.trim() : undefined;
+            const team = await AgentSessionModel.createTeam(this.ctx.domainId, this.ctx.owner, text, groupId, parentTeamId);
             return { ok: true, groupId, team: teamView(team) };
     }
 }
 
 class AgentTeamUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId, group } = await requireGroup(ctx, args, 'edit');
-            await ensureGroupRoot(ctx, groupId, group.title);
-            const teamId = String(args.teamId || '').trim();
+            const { groupId, group } = await requireGroup(this.ctx, this.args, 'edit');
+            await ensureGroupRoot(this.ctx, groupId, group.title);
+            const teamId = String(this.args.teamId || '').trim();
             if (!teamId) throw new Error('teamId is required');
 
-            const hasText = Object.prototype.hasOwnProperty.call(args, 'text');
-            const text = hasText ? String(args.text || '').trim() : undefined;
+            const hasText = Object.prototype.hasOwnProperty.call(this.args, 'text');
+            const text = hasText ? String(this.args.text || '').trim() : undefined;
             if (hasText && !text) throw new Error('text cannot be empty');
-            const hasParent = Object.prototype.hasOwnProperty.call(args, 'parentTeamId');
-            const parentTeamId = hasParent ? asText(args.parentTeamId) : undefined;
+            const hasParent = Object.prototype.hasOwnProperty.call(this.args, 'parentTeamId');
+            const parentTeamId = hasParent ? asText(this.args.parentTeamId) : undefined;
             if (hasParent && !parentTeamId) throw new Error('parentTeamId cannot be empty');
-            const hasAddonIds = Object.prototype.hasOwnProperty.call(args, 'addonIds');
-            const hasContext = Object.prototype.hasOwnProperty.call(args, 'context');
+            const hasAddonIds = Object.prototype.hasOwnProperty.call(this.args, 'addonIds');
+            const hasContext = Object.prototype.hasOwnProperty.call(this.args, 'context');
             if (!hasText && !hasParent && !hasAddonIds && !hasContext) throw new Error('Nothing to update');
             if ((hasAddonIds || hasContext) && (hasText || hasParent)) throw new Error('Update team configuration separately from team text or placement');
 
-            let team = await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId);
+            let team = await AgentSessionModel.getTeam(this.ctx.domainId, this.ctx.owner, teamId, groupId);
             if (!team) throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
             if (hasText || hasParent) {
-                team = await AgentSessionModel.updateTeam(ctx.domainId, ctx.owner, teamId, text ?? team.text, groupId, parentTeamId);
+                team = await AgentSessionModel.updateTeam(this.ctx.domainId, this.ctx.owner, teamId, text ?? team.text, groupId, parentTeamId);
                 if (!team) throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
             }
 
@@ -203,11 +203,11 @@ class AgentTeamUpdateExecutor extends Executor<ToolContext, ToolArgs> {
                     ...(team.config?.context === undefined ? {} : { context: team.config.context }),
                 };
                 if (hasAddonIds) {
-                    if (!Array.isArray(args.addonIds) || args.addonIds.some((id: unknown) => typeof id !== 'string' || !id.trim())) {
+                    if (!Array.isArray(this.args.addonIds) || this.args.addonIds.some((id: unknown) => typeof id !== 'string' || !id.trim())) {
                         throw new Error('addonIds must be an array of non-empty add-on ids');
                     }
-                    const addonIds = [...new Set((args.addonIds as string[]).map((id) => id.trim()))];
-                    const result = await agentRuntimeHandlerContext.agentAddonsList({ rpcId: 'agent-team-addons', method: 'agent.addons.list' }, sessionScope(ctx, groupId));
+                    const addonIds = [...new Set((this.args.addonIds as string[]).map((id) => id.trim()))];
+                    const result = await agentRuntimeHandlerContext.agentAddonsList({ rpcId: 'agent-team-addons', method: 'agent.addons.list' }, sessionScope(this.ctx, groupId));
                     const available = (result.result?.value as { addons?: { addonId: string; installed: boolean; enabled: boolean }[] } | undefined)?.addons ?? [];
                     for (const addonId of addonIds) {
                         if (!available.some((addon) => addon.addonId === addonId && addon.installed && addon.enabled)) {
@@ -217,19 +217,19 @@ class AgentTeamUpdateExecutor extends Executor<ToolContext, ToolArgs> {
                     config.addons = Object.fromEntries(addonIds.map((id) => [id, true]));
                 }
                 if (hasContext) {
-                    if (typeof args.context !== 'string') throw new Error('context must be a string');
-                    if (args.context.length > 20_000) throw new Error('context must not exceed 20000 characters');
-                    config.context = args.context;
+                    if (typeof this.args.context !== 'string') throw new Error('context must be a string');
+                    if (this.args.context.length > 20_000) throw new Error('context must not exceed 20000 characters');
+                    config.context = this.args.context;
                 }
-                if (!ctx.broadcastAgentEvent) throw new Error('Cordis event publisher is unavailable');
-                const updated = await AgentSessionModel.updateTeamConfig(ctx.domainId, ctx.owner, teamId, config, groupId);
+                if (!this.ctx.broadcastAgentEvent) throw new Error('Cordis event publisher is unavailable');
+                const updated = await AgentSessionModel.updateTeamConfig(this.ctx.domainId, this.ctx.owner, teamId, config, groupId);
                 if (!updated) throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
                 resultTeam = teamView(updated);
                 if (hasAddonIds) {
                     for (const addon of listRegisteredAgentAddons()) {
-                        await ctx.broadcastAgentEvent('agent/addon-state', {
-                            domainId: ctx.domainId,
-                            userId: ctx.owner,
+                        await this.ctx.broadcastAgentEvent('agent/addon-state', {
+                            domainId: this.ctx.domainId,
+                            userId: this.ctx.owner,
                             groupId,
                             teamId,
                             addonId: addon.addonId,
@@ -238,7 +238,7 @@ class AgentTeamUpdateExecutor extends Executor<ToolContext, ToolArgs> {
                     }
                 }
                 if (hasContext) {
-                    await ctx.broadcastAgentEvent('agent/team-context', { domainId: ctx.domainId, userId: ctx.owner, groupId, teamId });
+                    await this.ctx.broadcastAgentEvent('agent/team-context', { domainId: this.ctx.domainId, userId: this.ctx.owner, groupId, teamId });
                 }
                 configUpdate = { syncScheduled: true };
             }
@@ -247,20 +247,20 @@ class AgentTeamUpdateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentTeamDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId, group } = await requireGroup(ctx, args, 'edit');
-            await ensureGroupRoot(ctx, groupId, group.title);
-            const teamId = String(args.teamId || '').trim();
+            const { groupId, group } = await requireGroup(this.ctx, this.args, 'edit');
+            await ensureGroupRoot(this.ctx, groupId, group.title);
+            const teamId = String(this.args.teamId || '').trim();
             if (!teamId) throw new Error('teamId is required');
-            const team = await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId);
+            const team = await AgentSessionModel.getTeam(this.ctx.domainId, this.ctx.owner, teamId, groupId);
             if (!team) throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
             const response = await agentRuntimeHandlerContext.teamRpc({
                 rpcId: 'agent_team_delete',
                 method: 'team.delete',
                 payload: { teamId },
-            }, sessionScope(ctx, groupId));
+            }, sessionScope(this.ctx, groupId));
             if (!response.result?.ok) throw new Error(response.error?.message || 'Failed to delete Agent team');
             const value = response.result.value as Record<string, unknown> | undefined;
             return { ok: true, groupId, teamId, ...value };
@@ -268,22 +268,22 @@ class AgentTeamDeleteExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentRoleListExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId, group } = await requireGroup(ctx, args);
-            const { acl } = await groupRootAcl(ctx, groupId, group.title);
+            const { groupId, group } = await requireGroup(this.ctx, this.args);
+            const { acl } = await groupRootAcl(this.ctx, groupId, group.title);
             return { ok: true, groupId, roles: acl.roles, permissions: agentPermissionCatalog() };
     }
 }
 
 class AgentRoleGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId, group } = await requireGroup(ctx, args);
-            const roleId = asText(args.roleId);
-            const { acl } = await groupRootAcl(ctx, groupId, group.title);
+            const { groupId, group } = await requireGroup(this.ctx, this.args);
+            const roleId = asText(this.args.roleId);
+            const { acl } = await groupRootAcl(this.ctx, groupId, group.title);
             const role = acl.roles.find((item) => item.roleId === roleId);
             if (!role) throw new Error(`Agent role not found: ${roleId}`);
             return { ok: true, groupId, role };
@@ -291,73 +291,73 @@ class AgentRoleGetExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentRoleCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            await requireAgentConfigurationPermission(ctx);
-            const { groupId, group } = await requireGroup(ctx, args, 'edit');
-            const roleId = asText(args.roleId);
-            const name = asText(args.name);
+            await requireAgentConfigurationPermission(this.ctx);
+            const { groupId, group } = await requireGroup(this.ctx, this.args, 'edit');
+            const roleId = asText(this.args.roleId);
+            const name = asText(this.args.name);
             if (!/^[a-z][a-z0-9._-]{0,31}$/.test(roleId)) throw new Error('roleId must be 1–32 lowercase letters, digits, dots, underscores, or hyphens and start with a letter');
             if (['root', 'default', 'guest'].includes(roleId)) throw new Error(`Built-in role id is reserved: ${roleId}`);
             if (!name || name.length > 64) throw new Error('name must be between 1 and 64 characters');
-            const { root, acl } = await groupRootAcl(ctx, groupId, group.title);
+            const { root, acl } = await groupRootAcl(this.ctx, groupId, group.title);
             if (acl.roles.some((role) => role.roleId === roleId)) throw new Error(`Agent role already exists: ${roleId}`);
-            acl.roles.push({ roleId, name, permissions: args.permissions === undefined ? [] : validateRolePermissions(args.permissions) });
-            const updated = await saveGroupRootAcl(ctx, groupId, root, normalizeAgentAcl(acl));
+            acl.roles.push({ roleId, name, permissions: this.args.permissions === undefined ? [] : validateRolePermissions(this.args.permissions) });
+            const updated = await saveGroupRootAcl(this.ctx, groupId, root, normalizeAgentAcl(acl));
             return { ok: true, groupId, role: updated.config?.acl?.roles.find((role) => role.roleId === roleId) };
     }
 }
 
 class AgentRoleUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            await requireAgentConfigurationPermission(ctx);
-            const { groupId, group } = await requireGroup(ctx, args, 'edit');
-            const roleId = asText(args.roleId);
-            const hasName = Object.prototype.hasOwnProperty.call(args, 'name');
-            const hasPermissions = Object.prototype.hasOwnProperty.call(args, 'permissions');
+            await requireAgentConfigurationPermission(this.ctx);
+            const { groupId, group } = await requireGroup(this.ctx, this.args, 'edit');
+            const roleId = asText(this.args.roleId);
+            const hasName = Object.prototype.hasOwnProperty.call(this.args, 'name');
+            const hasPermissions = Object.prototype.hasOwnProperty.call(this.args, 'permissions');
             if (!hasName && !hasPermissions) throw new Error('Nothing to update');
-            const { root, acl } = await groupRootAcl(ctx, groupId, group.title);
+            const { root, acl } = await groupRootAcl(this.ctx, groupId, group.title);
             const role = acl.roles.find((item) => item.roleId === roleId);
             if (!role) throw new Error(`Agent role not found: ${roleId}`);
             if (roleId === 'root') throw new Error('The Root role is fixed and cannot be updated');
             if (hasName) {
-                const name = asText(args.name);
+                const name = asText(this.args.name);
                 if (['default', 'guest'].includes(roleId)) throw new Error(`Built-in role name cannot be changed: ${roleId}`);
                 if (!name || name.length > 64) throw new Error('name must be between 1 and 64 characters');
                 role.name = name;
             }
-            if (hasPermissions) role.permissions = validateRolePermissions(args.permissions);
-            const updated = await saveGroupRootAcl(ctx, groupId, root, normalizeAgentAcl(acl));
+            if (hasPermissions) role.permissions = validateRolePermissions(this.args.permissions);
+            const updated = await saveGroupRootAcl(this.ctx, groupId, root, normalizeAgentAcl(acl));
             return { ok: true, groupId, role: updated.config?.acl?.roles.find((item) => item.roleId === roleId) };
     }
 }
 
 class AgentRoleDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            await requireAgentConfigurationPermission(ctx);
-            const { groupId, group } = await requireGroup(ctx, args, 'edit');
-            const roleId = asText(args.roleId);
+            await requireAgentConfigurationPermission(this.ctx);
+            const { groupId, group } = await requireGroup(this.ctx, this.args, 'edit');
+            const roleId = asText(this.args.roleId);
             if (['root', 'default', 'guest'].includes(roleId)) throw new Error(`Built-in role cannot be deleted: ${roleId}`);
-            const { root, acl } = await groupRootAcl(ctx, groupId, group.title);
+            const { root, acl } = await groupRootAcl(this.ctx, groupId, group.title);
             if (!acl.roles.some((role) => role.roleId === roleId)) throw new Error(`Agent role not found: ${roleId}`);
             acl.roles = acl.roles.filter((role) => role.roleId !== roleId);
-            await saveGroupRootAcl(ctx, groupId, root, normalizeAgentAcl(acl));
+            await saveGroupRootAcl(this.ctx, groupId, root, normalizeAgentAcl(acl));
             return { ok: true, groupId, roleId, deleted: true };
     }
 }
 
 class AgentTeamCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId } = await requireGroup(ctx, args, 'edit');
-            const rawTeams = optionalEntries(args.teams, 'teams');
-            const rawAgents = optionalEntries(args.agents, 'agents');
+            const { groupId } = await requireGroup(this.ctx, this.args, 'edit');
+            const rawTeams = optionalEntries(this.args.teams, 'teams');
+            const rawAgents = optionalEntries(this.args.agents, 'agents');
             if (rawTeams.length > MAX_TEAMS_PER_CALL) throw new Error(`teams holds ${rawTeams.length} entries; one call creates at most ${MAX_TEAMS_PER_CALL}`);
             if (rawAgents.length > MAX_AGENTS_PER_CALL) throw new Error(`agents holds ${rawAgents.length} entries; one call creates at most ${MAX_AGENTS_PER_CALL}`);
             if (!rawTeams.length && !rawAgents.length) throw new Error('Give teams, agents, or both');
@@ -373,7 +373,7 @@ class AgentTeamCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
                     const parentRef = asText(fields.parentRef);
                     if (!text) throw new Error(`teams[${index}].text is required`);
                     if (ref && refs.has(ref)) throw new Error(`Duplicate team ref: ${ref}`);
-                    let parentTeamId = asText(fields.parentTeamId) || asText(args.parentTeamId);
+                    let parentTeamId = asText(fields.parentTeamId) || asText(this.args.parentTeamId);
                     if (parentRef) {
                         const parent = createdTeams.find((item) => item.ref === parentRef);
                         if (!parent) {
@@ -383,7 +383,7 @@ class AgentTeamCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
                         parentTeamId = parent.teamId;
                     }
                     try {
-                        const result = await new AgentTeamCreateExecutor(ctx, {
+                        const result = await new AgentTeamCreateExecutor(this.ctx, {
                             groupId,
                             text,
                             ...(parentTeamId ? { parentTeamId } : {}),
@@ -421,7 +421,7 @@ class AgentTeamCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
                 }
                 delete fields.teamRef;
                 try {
-                    const result = await new AgentAgentCreateExecutor(ctx, { ...fields, groupId }).run() as any;
+                    const result = await new AgentAgentCreateExecutor(this.ctx, { ...fields, groupId }).run() as any;
                     agents.push({ index, agent: result.agent });
                 } catch (error) {
                     refusedAgents.push({ index, error: (error as Error).message });
@@ -440,16 +440,16 @@ class AgentTeamCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentTeamGetManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId } = await requireGroup(ctx, args);
-            const teamIds = optionalIds(args.teamIds, 'teamIds', MAX_TEAMS_PER_CALL);
-            const agentIds = optionalIds(args.agentIds, 'agentIds', MAX_AGENTS_PER_CALL);
+            const { groupId } = await requireGroup(this.ctx, this.args);
+            const teamIds = optionalIds(this.args.teamIds, 'teamIds', MAX_TEAMS_PER_CALL);
+            const agentIds = optionalIds(this.args.agentIds, 'agentIds', MAX_AGENTS_PER_CALL);
             if (!teamIds.length && !agentIds.length) throw new Error('Give teamIds, agentIds, or both');
             const [teamResult, agentResult] = await Promise.all([
                 teamIds.length ? (async () => {
-                    const workspace = await groupWorkspace(ctx, groupId);
+                    const workspace = await groupWorkspace(this.ctx, groupId);
                     const byId = new Map(workspace.teams.map((team) => [team.teamId, team]));
                     const teams = teamIds.flatMap((teamId, index) => {
                         const team = byId.get(teamId);
@@ -458,7 +458,7 @@ class AgentTeamGetManyExecutor extends Executor<ToolContext, ToolArgs> {
                     const missingTeamIds = teamIds.filter((teamId) => !byId.has(teamId));
                     return { ok: !missingTeamIds.length, groupId, teams, missingTeamIds };
                 })() : Promise.resolve(undefined),
-                agentIds.length ? new AgentAgentGetManyExecutor(ctx, { groupId, agentIds }).run() as Promise<any> : Promise.resolve(undefined),
+                agentIds.length ? new AgentAgentGetManyExecutor(this.ctx, { groupId, agentIds }).run() as Promise<any> : Promise.resolve(undefined),
             ]);
             return {
                 ok: (teamResult?.ok ?? true) && (agentResult?.ok ?? true),
@@ -470,12 +470,12 @@ class AgentTeamGetManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentTeamUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId } = await requireGroup(ctx, args, 'edit');
-            const rawTeams = optionalEntries(args.teams, 'teams');
-            const rawAgents = optionalEntries(args.agents, 'agents');
+            const { groupId } = await requireGroup(this.ctx, this.args, 'edit');
+            const rawTeams = optionalEntries(this.args.teams, 'teams');
+            const rawAgents = optionalEntries(this.args.agents, 'agents');
             if (rawTeams.length > MAX_TEAMS_PER_CALL) throw new Error(`teams holds ${rawTeams.length} entries; one call updates at most ${MAX_TEAMS_PER_CALL}`);
             if (rawAgents.length > MAX_AGENTS_PER_CALL) throw new Error(`agents holds ${rawAgents.length} entries; one call updates at most ${MAX_AGENTS_PER_CALL}`);
             if (!rawTeams.length && !rawAgents.length) throw new Error('Give teams, agents, or both');
@@ -489,7 +489,7 @@ class AgentTeamUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
                 if (seenTeamIds.has(teamId)) throw new Error(`teams[${index}].teamId ${teamId} appears twice`);
                 seenTeamIds.add(teamId);
                 try {
-                    const result = await new AgentTeamUpdateExecutor(ctx, { ...entry, groupId, teamId }).run() as any;
+                    const result = await new AgentTeamUpdateExecutor(this.ctx, { ...entry, groupId, teamId }).run() as any;
                     updatedTeams.push({ index, team: result.team });
                 } catch (error) {
                     refusedTeams.push({ index, teamId, error: (error as Error).message });
@@ -497,7 +497,7 @@ class AgentTeamUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
             }
 
             let agentResult: any;
-            if (rawAgents.length) agentResult = await new AgentAgentUpdateManyExecutor(ctx, { groupId, entries: rawAgents }).run() as any;
+            if (rawAgents.length) agentResult = await new AgentAgentUpdateManyExecutor(this.ctx, { groupId, entries: rawAgents }).run() as any;
             const refusedAgents = agentResult?.refusedAgents ?? [];
             return {
                 ok: refusedTeams.length === 0 && refusedAgents.length === 0,
@@ -511,17 +511,17 @@ class AgentTeamUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentTeamDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId } = await requireGroup(ctx, args, 'delete');
-            const teamIds = optionalIds(args.teamIds, 'teamIds', MAX_TEAMS_PER_CALL);
-            const agentIds = optionalIds(args.agentIds, 'agentIds', MAX_AGENTS_PER_CALL);
+            const { groupId } = await requireGroup(this.ctx, this.args, 'delete');
+            const teamIds = optionalIds(this.args.teamIds, 'teamIds', MAX_TEAMS_PER_CALL);
+            const agentIds = optionalIds(this.args.agentIds, 'agentIds', MAX_AGENTS_PER_CALL);
             if (!teamIds.length && !agentIds.length) throw new Error('Give teamIds, agentIds, or both');
-            const agents = agentIds.length ? await new AgentAgentDeleteManyExecutor(ctx, { groupId, agentIds }).run() as any : undefined;
+            const agents = agentIds.length ? await new AgentAgentDeleteManyExecutor(this.ctx, { groupId, agentIds }).run() as any : undefined;
             let teams: { removedTeamIds: string[]; failedSessionIds: string[] } | undefined;
             if (teamIds.length) {
-                for (const teamId of teamIds) await new AgentTeamDeleteExecutor(ctx, { groupId, teamId }).run();
+                for (const teamId of teamIds) await new AgentTeamDeleteExecutor(this.ctx, { groupId, teamId }).run();
                 teams = { removedTeamIds: teamIds, failedSessionIds: [] };
             }
             return {

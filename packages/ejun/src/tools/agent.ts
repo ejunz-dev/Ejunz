@@ -72,168 +72,168 @@ export const AgentSessionDeleteManySchema = Schema.object({ groupId: Schema.numb
 
 
 class AgentAgentListExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-         const { groupId } = await requireGroup(ctx,args); const agents = await AgentModel.listAgents(ctx.domainId,ctx.owner,groupId,asText(args.teamId)||undefined); return { ok:true,groupId,count:agents.length,agents:agents.map(agentRecordView) };
+         const { groupId } = await requireGroup(this.ctx,this.args); const agents = await AgentModel.listAgents(this.ctx.domainId,this.ctx.owner,groupId,asText(this.args.teamId)||undefined); return { ok:true,groupId,count:agents.length,agents:agents.map(agentRecordView) };
     }
 }
 
 class AgentAgentGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-         const {groupId}=await requireGroup(ctx,args); const agentId=asText(args.agentId); const a=agentId&&await AgentModel.getAgent(ctx.domainId,ctx.owner,agentId,groupId); if(!a) throw new Error(`Agent not found: ${agentId}`); return {ok:true,groupId,agent:agentRecordView(a)};
+         const {groupId}=await requireGroup(this.ctx,this.args); const agentId=asText(this.args.agentId); const a=agentId&&await AgentModel.getAgent(this.ctx.domainId,this.ctx.owner,agentId,groupId); if(!a) throw new Error(`Agent not found: ${agentId}`); return {ok:true,groupId,agent:agentRecordView(a)};
     }
 }
 
 export class AgentAgentCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId, group } = await requireGroup(ctx, args, 'edit');
-            const root = await ensureGroupRoot(ctx, groupId, group.title);
-            const title = asText(args.title);
+            const { groupId, group } = await requireGroup(this.ctx, this.args, 'edit');
+            const root = await ensureGroupRoot(this.ctx, groupId, group.title);
+            const title = asText(this.args.title);
             if (!title) throw new Error('title is required');
-            const teamId = asText(args.teamId) || root.teamId;
-            if (!await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId)) throw new Error(`Team not found: ${teamId}`);
-            const roleId = asText(args.roleId);
-            if (roleId) await requireAgentConfigurationPermission(ctx);
-            await validateRoleAssignment(ctx, groupId, group.title, roleId);
-            const agent = await AgentModel.createAgent(ctx.domainId, ctx.owner, groupId, teamId, title, settingsFromArgs(args), configFromArgs(args));
-            if (Object.prototype.hasOwnProperty.call(args, 'context')) {
-                await ctx.broadcastAgentEvent?.('agent/agent-context', { domainId: ctx.domainId, userId: ctx.owner, groupId, agentId: agent.agentId });
+            const teamId = asText(this.args.teamId) || root.teamId;
+            if (!await AgentSessionModel.getTeam(this.ctx.domainId, this.ctx.owner, teamId, groupId)) throw new Error(`Team not found: ${teamId}`);
+            const roleId = asText(this.args.roleId);
+            if (roleId) await requireAgentConfigurationPermission(this.ctx);
+            await validateRoleAssignment(this.ctx, groupId, group.title, roleId);
+            const agent = await AgentModel.createAgent(this.ctx.domainId, this.ctx.owner, groupId, teamId, title, settingsFromArgs(this.args), configFromArgs(this.args));
+            if (Object.prototype.hasOwnProperty.call(this.args, 'context')) {
+                await this.ctx.broadcastAgentEvent?.('agent/agent-context', { domainId: this.ctx.domainId, userId: this.ctx.owner, groupId, agentId: agent.agentId });
             }
             return { ok: true, groupId, agent: agentRecordView(agent) };
     }
 }
 
 export class AgentAgentUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId, group } = await requireGroup(ctx, args, 'edit');
-            const agentId = asText(args.agentId);
-            const old = agentId && await AgentModel.getAgent(ctx.domainId, ctx.owner, agentId, groupId);
+            const { groupId, group } = await requireGroup(this.ctx, this.args, 'edit');
+            const agentId = asText(this.args.agentId);
+            const old = agentId && await AgentModel.getAgent(this.ctx.domainId, this.ctx.owner, agentId, groupId);
             if (!old) throw new Error(`Agent not found: ${agentId}`);
             const patch: { title?: string; teamId?: string; settings?: AgentSettings; config?: AgentConfig } = {};
-            if (Object.prototype.hasOwnProperty.call(args, 'title')) {
-                const title = asText(args.title);
+            if (Object.prototype.hasOwnProperty.call(this.args, 'title')) {
+                const title = asText(this.args.title);
                 if (!title) throw new Error('title cannot be empty');
                 patch.title = title;
             }
-            if (Object.prototype.hasOwnProperty.call(args, 'teamId')) {
-                const teamId = asText(args.teamId);
-                if (!teamId || !await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId)) throw new Error(`Team not found: ${teamId}`);
+            if (Object.prototype.hasOwnProperty.call(this.args, 'teamId')) {
+                const teamId = asText(this.args.teamId);
+                if (!teamId || !await AgentSessionModel.getTeam(this.ctx.domainId, this.ctx.owner, teamId, groupId)) throw new Error(`Team not found: ${teamId}`);
                 patch.teamId = teamId;
             }
-            if (['provider', 'model', 'baseDocId', 'runtimeId', 'agentPreset', 'roleId'].some((key) => Object.prototype.hasOwnProperty.call(args, key))) {
-                const roleId = asText(args.roleId);
-                if (Object.prototype.hasOwnProperty.call(args, 'roleId') && roleId) await requireAgentConfigurationPermission(ctx);
-                await validateRoleAssignment(ctx, groupId, group.title, roleId);
-                patch.settings = settingsFromArgs(args, old.settings);
+            if (['provider', 'model', 'baseDocId', 'runtimeId', 'agentPreset', 'roleId'].some((key) => Object.prototype.hasOwnProperty.call(this.args, key))) {
+                const roleId = asText(this.args.roleId);
+                if (Object.prototype.hasOwnProperty.call(this.args, 'roleId') && roleId) await requireAgentConfigurationPermission(this.ctx);
+                await validateRoleAssignment(this.ctx, groupId, group.title, roleId);
+                patch.settings = settingsFromArgs(this.args, old.settings);
             }
-            if (Object.prototype.hasOwnProperty.call(args, 'context')) patch.config = configFromArgs(args, old.config);
+            if (Object.prototype.hasOwnProperty.call(this.args, 'context')) patch.config = configFromArgs(this.args, old.config);
             if (!Object.keys(patch).length) throw new Error('Nothing to update');
-            const agent = await AgentModel.updateAgent(ctx.domainId, ctx.owner, agentId, patch, groupId);
+            const agent = await AgentModel.updateAgent(this.ctx.domainId, this.ctx.owner, agentId, patch, groupId);
             if (!agent) throw new Error(`Agent not found: ${agentId}`);
             if (patch.config !== undefined) {
-                await ctx.broadcastAgentEvent?.('agent/agent-context', { domainId: ctx.domainId, userId: ctx.owner, groupId, agentId });
+                await this.ctx.broadcastAgentEvent?.('agent/agent-context', { domainId: this.ctx.domainId, userId: this.ctx.owner, groupId, agentId });
             }
             return { ok: true, groupId, agent: agentRecordView(agent) };
     }
 }
 
 class AgentAgentDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-         const {groupId}=await requireGroup(ctx,args,'delete'); const agentId=asText(args.agentId);if(!agentId)throw new Error('agentId is required');await AgentModel.deleteAgent(ctx.domainId,ctx.owner,agentId,groupId);return {ok:true,groupId,agentId,deleted:true};
+         const {groupId}=await requireGroup(this.ctx,this.args,'delete'); const agentId=asText(this.args.agentId);if(!agentId)throw new Error('agentId is required');await AgentModel.deleteAgent(this.ctx.domainId,this.ctx.owner,agentId,groupId);return {ok:true,groupId,agentId,deleted:true};
     }
 }
 
 class AgentAgentCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-         const {groupId}=await requireGroup(ctx,args,'edit'); const entries=objectEntries(args.agents,'agents'); const agents=[] as any[]; const refusedAgents=[] as any[];
-         for(const [index,e] of entries.entries()) try { const r=await new AgentAgentCreateExecutor(ctx, { ...e, groupId }).run() as any; agents.push({index,agent:r.agent}); } catch(err){refusedAgents.push({index,error:(err as Error).message});}
+         const {groupId}=await requireGroup(this.ctx,this.args,'edit'); const entries=objectEntries(this.args.agents,'agents'); const agents=[] as any[]; const refusedAgents=[] as any[];
+         for(const [index,e] of entries.entries()) try { const r=await new AgentAgentCreateExecutor(this.ctx, { ...e, groupId }).run() as any; agents.push({index,agent:r.agent}); } catch(err){refusedAgents.push({index,error:(err as Error).message});}
          return {ok:!refusedAgents.length,groupId,agents,refusedAgents};
     }
 }
 
 export class AgentAgentGetManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-         const {groupId}=await requireGroup(ctx,args); const ids=idList(args.agentIds,'agentIds',MAX_AGENTS_PER_CALL); const docs=await AgentModel.listAgents(ctx.domainId,ctx.owner,groupId); const map=new Map(docs.map(x=>[x.agentId,x])); const agents=ids.flatMap((id,index)=>{const a=map.get(id);return a?[{index,...agentRecordView(a)}]:[]}); const missingAgentIds=ids.filter(id=>!map.has(id)); return {ok:!missingAgentIds.length,groupId,agents,missingAgentIds};
+         const {groupId}=await requireGroup(this.ctx,this.args); const ids=idList(this.args.agentIds,'agentIds',MAX_AGENTS_PER_CALL); const docs=await AgentModel.listAgents(this.ctx.domainId,this.ctx.owner,groupId); const map=new Map(docs.map(x=>[x.agentId,x])); const agents=ids.flatMap((id,index)=>{const a=map.get(id);return a?[{index,...agentRecordView(a)}]:[]}); const missingAgentIds=ids.filter(id=>!map.has(id)); return {ok:!missingAgentIds.length,groupId,agents,missingAgentIds};
     }
 }
 
 export class AgentAgentUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-         const {groupId}=await requireGroup(ctx,args,'edit'); const entries=objectEntries(args.entries,'entries'); const agents=[] as any[]; const refusedAgents=[] as any[];
-         for(const [index,e] of entries.entries()) try {const r=await new AgentAgentUpdateExecutor(ctx, { ...e, groupId }).run() as any;agents.push({index,agent:r.agent});}catch(err){refusedAgents.push({index,agentId:asText(e.agentId),error:(err as Error).message});}
+         const {groupId}=await requireGroup(this.ctx,this.args,'edit'); const entries=objectEntries(this.args.entries,'entries'); const agents=[] as any[]; const refusedAgents=[] as any[];
+         for(const [index,e] of entries.entries()) try {const r=await new AgentAgentUpdateExecutor(this.ctx, { ...e, groupId }).run() as any;agents.push({index,agent:r.agent});}catch(err){refusedAgents.push({index,agentId:asText(e.agentId),error:(err as Error).message});}
          return {ok:!refusedAgents.length,groupId,agents,refusedAgents};
     }
 }
 
 export class AgentAgentDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-         const {groupId}=await requireGroup(ctx,args,'delete'); const agentIds=idList(args.agentIds,'agentIds',MAX_AGENTS_PER_CALL); for(const id of agentIds) await AgentModel.deleteAgent(ctx.domainId,ctx.owner,id,groupId); return {ok:true,groupId,removedAgentIds:agentIds};
+         const {groupId}=await requireGroup(this.ctx,this.args,'delete'); const agentIds=idList(this.args.agentIds,'agentIds',MAX_AGENTS_PER_CALL); for(const id of agentIds) await AgentModel.deleteAgent(this.ctx.domainId,this.ctx.owner,id,groupId); return {ok:true,groupId,removedAgentIds:agentIds};
     }
 }
 
 class AgentSessionListExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId } = await requireGroup(ctx, args);
-            const teamId = typeof args.teamId === 'string' && args.teamId.trim() ? args.teamId.trim() : undefined;
-            if (teamId && !await AgentSessionModel.getTeam(ctx.domainId, ctx.owner, teamId, groupId)) {
+            const { groupId } = await requireGroup(this.ctx, this.args);
+            const teamId = typeof this.args.teamId === 'string' && this.args.teamId.trim() ? this.args.teamId.trim() : undefined;
+            if (teamId && !await AgentSessionModel.getTeam(this.ctx.domainId, this.ctx.owner, teamId, groupId)) {
                 throw new Error(`Team not found in Group ${groupId}: ${teamId}`);
             }
-            const sessions = await AgentSessionModel.listSessionViews(ctx.domainId, ctx.owner, groupId);
+            const sessions = await AgentSessionModel.listSessionViews(this.ctx.domainId, this.ctx.owner, groupId);
             const agents = teamId ? sessions.filter((session) => session.teamId === teamId) : sessions;
             return { ok: true, groupId, ...(teamId ? { teamId } : {}), count: agents.length, agents: agents.map(sessionAgentView) };
     }
 }
 
 class AgentSessionGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId } = await requireGroup(ctx, args);
-            const sessionId = String(args.sessionId || '').trim();
+            const { groupId } = await requireGroup(this.ctx, this.args);
+            const sessionId = String(this.args.sessionId || '').trim();
             if (!sessionId) throw new Error('sessionId is required');
-            const agent = await sessionConversation(ctx, groupId, sessionId, args);
+            const agent = await sessionConversation(this.ctx, groupId, sessionId, this.args);
             return { ok: true, groupId, ...agent };
     }
 }
 
 class AgentSessionCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId } = await requireGroup(ctx, args, 'edit');
-            const agentId = asText(args.agentId);
-            if (!agentId || !await AgentModel.getAgent(ctx.domainId, ctx.owner, agentId, groupId)) {
+            const { groupId } = await requireGroup(this.ctx, this.args, 'edit');
+            const agentId = asText(this.args.agentId);
+            if (!agentId || !await AgentModel.getAgent(this.ctx.domainId, this.ctx.owner, agentId, groupId)) {
                 throw new Error(`Agent not found: ${agentId}`);
             }
-            const message = asText(args.message);
+            const message = asText(this.args.message);
             if (!message) throw new Error('message is required and must not be empty');
 
-            const response = await agentRuntimeHandlerContext.sessionCreate({ payload: { agentId } }, sessionScope(ctx, groupId));
+            const response = await agentRuntimeHandlerContext.sessionCreate({ payload: { agentId } }, sessionScope(this.ctx, groupId));
             if (!response.result?.ok) throw new Error(response.error?.message || 'Failed to create session');
             const sessionId = (response.result.value as { sessionId?: string } | undefined)?.sessionId;
             if (!sessionId) throw new Error('Session creation returned no sessionId');
-            const title = asText(args.title);
-            if (title) await renameSessionAgent(ctx, groupId, sessionId, title);
-            const link = await agentRuntimeHandlerContext.linkForSession(sessionScope(ctx, groupId), sessionId);
+            const title = asText(this.args.title);
+            if (title) await renameSessionAgent(this.ctx, groupId, sessionId, title);
+            const link = await agentRuntimeHandlerContext.linkForSession(sessionScope(this.ctx, groupId), sessionId);
             const sent = await agentRuntimeHandlerContext.callUpstream('session.prompt', {
                 sessionId,
                 mode: 'queue',
@@ -245,18 +245,18 @@ class AgentSessionCreateExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentSessionCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId } = await requireGroup(ctx, args, 'edit');
-            const entries = objectEntries(args.sessions, 'sessions');
+            const { groupId } = await requireGroup(this.ctx, this.args, 'edit');
+            const entries = objectEntries(this.args.sessions, 'sessions');
             type SessionCreateResult =
                 | { index: number; agentId: string; sessionId: string }
                 | { index: number; agentId?: string; error: string };
             const results = await Promise.all(entries.map(async (entry, index): Promise<SessionCreateResult> => {
                 const agentId = asText(entry.agentId);
                 try {
-                    const result = await new AgentSessionCreateExecutor(ctx, { ...entry, groupId }).run() as any;
+                    const result = await new AgentSessionCreateExecutor(this.ctx, { ...entry, groupId }).run() as any;
                     return { index, agentId, sessionId: result.sessionId };
                 } catch (error) {
                     return { index, ...(agentId ? { agentId } : {}), error: (error as Error).message };
@@ -269,28 +269,28 @@ class AgentSessionCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentSessionUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-         const {groupId}=await requireGroup(ctx,args,'edit');const sessionId=asText(args.sessionId),title=asText(args.title);if(!sessionId||!title)throw new Error('sessionId and title are required');await renameSessionAgent(ctx,groupId,sessionId,title);return {ok:true,groupId,sessionId,title};
+         const {groupId}=await requireGroup(this.ctx,this.args,'edit');const sessionId=asText(this.args.sessionId),title=asText(this.args.title);if(!sessionId||!title)throw new Error('sessionId and title are required');await renameSessionAgent(this.ctx,groupId,sessionId,title);return {ok:true,groupId,sessionId,title};
     }
 }
 
 class AgentSessionDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-        const {groupId}=await requireGroup(ctx,args,'delete');const sessionId=asText(args.sessionId);if(!sessionId)throw new Error('sessionId is required');await AgentSessionModel.deleteSession(ctx.domainId,ctx.owner,sessionId,groupId);return {ok:true,groupId,sessionId,deleted:true};
+        const {groupId}=await requireGroup(this.ctx,this.args,'delete');const sessionId=asText(this.args.sessionId);if(!sessionId)throw new Error('sessionId is required');await AgentSessionModel.deleteSession(this.ctx.domainId,this.ctx.owner,sessionId,groupId);return {ok:true,groupId,sessionId,deleted:true};
     }
 }
 
 class AgentSessionGetManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const { groupId } = await requireGroup(ctx, args);
-            const sessionIds = idList(args.sessionIds, 'sessionIds', MAX_AGENTS_PER_CALL);
-            const sessions = await AgentSessionModel.listSessions(ctx.domainId, ctx.owner, groupId);
+            const { groupId } = await requireGroup(this.ctx, this.args);
+            const sessionIds = idList(this.args.sessionIds, 'sessionIds', MAX_AGENTS_PER_CALL);
+            const sessions = await AgentSessionModel.listSessions(this.ctx.domainId, this.ctx.owner, groupId);
             const byId = new Map(sessions.map((session) => [session.sessionId, session]));
             const found: { index: number; sessionId: string; title: string; content: string; hasMore?: boolean; beforeSeq?: number; truncated?: boolean }[] = [];
             const missing: string[] = [];
@@ -300,7 +300,7 @@ class AgentSessionGetManyExecutor extends Executor<ToolContext, ToolArgs> {
                     missing.push(sessionId);
                     continue;
                 }
-                const agent = await sessionConversation(ctx, groupId, sessionId, args);
+                const agent = await sessionConversation(this.ctx, groupId, sessionId, this.args);
                 found.push({
                     index,
                     sessionId: agent.sessionId,
@@ -315,10 +315,10 @@ class AgentSessionGetManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class AgentSessionDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-        const {groupId}=await requireGroup(ctx,args,'delete');const sessionIds=idList(args.sessionIds,'sessionIds',MAX_AGENTS_PER_CALL);await AgentSessionModel.deleteSessions(ctx.domainId,ctx.owner,sessionIds,groupId);return {ok:true,groupId,removedSessionIds:sessionIds,removedCount:sessionIds.length};
+        const {groupId}=await requireGroup(this.ctx,this.args,'delete');const sessionIds=idList(this.args.sessionIds,'sessionIds',MAX_AGENTS_PER_CALL);await AgentSessionModel.deleteSessions(this.ctx.domainId,this.ctx.owner,sessionIds,groupId);return {ok:true,groupId,removedSessionIds:sessionIds,removedCount:sessionIds.length};
     }
 }
 

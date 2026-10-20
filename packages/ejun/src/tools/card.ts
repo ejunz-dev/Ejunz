@@ -107,71 +107,71 @@ function problemsOf(raw: unknown, label: string): Problem[] {
 
 
 class BaseCardCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const nodeId = String(args.nodeId || '');
-            const title = String(args.title || '').trim();
+            const nodeId = String(this.args.nodeId || '');
+            const title = String(this.args.title || '').trim();
             if (!nodeId) throw new Error('nodeId is required');
-            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
-            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            const base = await BaseModel.get(this.ctx.domainId, this.ctx.baseDocId);
+            if (!base) throw new Error(`Base not found: ${this.ctx.baseDocId}`);
             if (!(base.nodes || []).some((node) => node.id === nodeId)) throw new Error(`Node not found: ${nodeId}`);
             if (!title) throw new Error('title is required');
-            const docId = await CardModel.create(ctx.domainId, ctx.baseDocId, nodeId, ctx.owner, title, String(args.content || ''), undefined, undefined, undefined, undefined);
-            return { ok: true, cardId: String(docId), nodeId, url: cardUrl(ctx, ctx.baseDocId, String(docId)) };
+            const docId = await CardModel.create(this.ctx.domainId, this.ctx.baseDocId, nodeId, this.ctx.owner, title, String(this.args.content || ''), undefined, undefined, undefined, undefined);
+            return { ok: true, cardId: String(docId), nodeId, url: cardUrl(this.ctx, this.ctx.baseDocId, String(docId)) };
     }
 }
 
 class BaseCardUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const card = await requireCard(ctx, args.cardId);
+            const card = await requireCard(this.ctx, this.args.cardId);
             const updates: Record<string, any> = {};
-            if (typeof args.title === 'string') updates.title = args.title;
-            if (typeof args.content === 'string') updates.content = args.content;
+            if (typeof this.args.title === 'string') updates.title = this.args.title;
+            if (typeof this.args.content === 'string') updates.content = this.args.content;
             if (!Object.keys(updates).length) throw new Error('Nothing to update (title or content required)');
-            await CardModel.update(ctx.domainId, card.docId, updates);
-            return { ok: true, cardId: String(card.docId), url: cardUrl(ctx, ctx.baseDocId, String(card.docId)) };
+            await CardModel.update(this.ctx.domainId, card.docId, updates);
+            return { ok: true, cardId: String(card.docId), url: cardUrl(this.ctx, this.ctx.baseDocId, String(card.docId)) };
     }
 }
 
 class BaseCardGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const card = await requireCard(ctx, args.cardId);
+            const card = await requireCard(this.ctx, this.args.cardId);
             return {
                 ok: true,
                 cardId: String(card.docId),
                 title: card.title || '',
                 content: card.content || '',
-                url: cardUrl(ctx, ctx.baseDocId, String(card.docId)),
+                url: cardUrl(this.ctx, this.ctx.baseDocId, String(card.docId)),
             };
     }
 }
 
 class BaseCardDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const card = await requireCard(ctx, args.cardId);
-            await CardModel.delete(ctx.domainId, card.docId);
+            const card = await requireCard(this.ctx, this.args.cardId);
+            await CardModel.delete(this.ctx.domainId, card.docId);
             return { ok: true, cardId: String(card.docId) };
     }
 }
 
 class BaseCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const raw = args.cards;
+            const raw = this.args.cards;
             if (!Array.isArray(raw) || !raw.length) throw new Error('cards must be a non-empty array of { nodeId, title, ... }');
             if (raw.length > MAX_CARDS_PER_CALL) {
                 throw new Error(`cards holds ${raw.length} entries and one call creates ${MAX_CARDS_PER_CALL}; split the work across calls`);
             }
-            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
-            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            const base = await BaseModel.get(this.ctx.domainId, this.ctx.baseDocId);
+            if (!base) throw new Error(`Base not found: ${this.ctx.baseDocId}`);
             const nodeIds = new Set((base.nodes || []).map((node) => node.id));
             const planned = raw.map((entry, index) => {
                 if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`cards[${index}] must be an object with nodeId and title`);
@@ -194,7 +194,7 @@ class BaseCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
             });
             const positions = new Map<string, number>();
             for (const nodeId of new Set(planned.map((card) => card.nodeId))) {
-                const existing = await CardModel.getByNodeId(ctx.domainId, ctx.baseDocId, nodeId);
+                const existing = await CardModel.getByNodeId(this.ctx.domainId, this.ctx.baseDocId, nodeId);
                 positions.set(nodeId, existing.reduce((max, card) => Math.max(max, card.order ?? -1), -1) + 1);
             }
             const created: { index: number; cardId: string; nodeId: string; title: string; order: number; problems: string[]; url: string }[] = [];
@@ -204,7 +204,7 @@ class BaseCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
                 positions.set(card.nodeId, order + 1);
                 try {
                     const cardId = await CardModel.create(
-                        ctx.domainId, ctx.baseDocId, card.nodeId, ctx.owner, card.title, card.content,
+                        this.ctx.domainId, this.ctx.baseDocId, card.nodeId, this.ctx.owner, card.title, card.content,
                         undefined, card.problems.length ? card.problems : undefined, order,
                         undefined, undefined, undefined, undefined, card.tags,
                     );
@@ -215,7 +215,7 @@ class BaseCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
                         title: card.title,
                         order,
                         problems: card.problems.map((problem) => problem.pid),
-                        url: cardUrl(ctx, ctx.baseDocId, String(cardId)),
+                        url: cardUrl(this.ctx, this.ctx.baseDocId, String(cardId)),
                     });
                 } catch (error) {
                     refused.push({ index: card.index, nodeId: card.nodeId, title: card.title, error: (error as Error).message });
@@ -223,7 +223,7 @@ class BaseCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
             }
             return {
                 ok: refused.length === 0,
-                baseId: ctx.baseDocId,
+                baseId: this.ctx.baseDocId,
                 cardCount: created.length,
                 cards: created,
                 refusedCards: refused,
@@ -233,11 +233,11 @@ class BaseCardCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseCardGetManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
-            const byId = await cardsById(ctx, cardIds);
+            const cardIds = idList(this.args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
+            const byId = await cardsById(this.ctx, cardIds);
             const found: unknown[] = [];
             const missing: string[] = [];
             for (const [index, cardId] of cardIds.entries()) {
@@ -251,12 +251,12 @@ class BaseCardGetManyExecutor extends Executor<ToolContext, ToolArgs> {
                     cardId: String(card.docId),
                     title: card.title || '',
                     content: card.content || '',
-                    url: cardUrl(ctx, ctx.baseDocId, String(card.docId)),
+                    url: cardUrl(this.ctx, this.ctx.baseDocId, String(card.docId)),
                 });
             }
             return {
                 ok: missing.length === 0,
-                baseId: ctx.baseDocId,
+                baseId: this.ctx.baseDocId,
                 cardCount: found.length,
                 cards: found,
                 missingCardIds: missing,
@@ -266,10 +266,10 @@ class BaseCardGetManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseCardUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const raw = args.entries;
+            const raw = this.args.entries;
             if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { cardId, title?, content? }');
             if (raw.length > MAX_CARDS_PER_CALL) {
                 throw new Error(`entries holds ${raw.length} entries and one call updates ${MAX_CARDS_PER_CALL}; split the work across calls`);
@@ -294,7 +294,7 @@ class BaseCardUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
                 if (!changed.length) throw new Error(`entries[${index}] names nothing to change; give title, content, or both`);
                 planned.push({ index, cardId, fields: changed, update });
             }
-            const byId = await cardsById(ctx, planned.map((entry) => entry.cardId));
+            const byId = await cardsById(this.ctx, planned.map((entry) => entry.cardId));
             for (const entry of planned) {
                 if (!byId.has(entry.cardId)) throw new Error(`Card not found: ${entry.cardId}`);
             }
@@ -303,15 +303,15 @@ class BaseCardUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
             for (const entry of planned) {
                 const card = byId.get(entry.cardId) as CardDoc;
                 try {
-                    await CardModel.update(ctx.domainId, card.docId, entry.update);
-                    updated.push({ index: entry.index, cardId: entry.cardId, changed: entry.fields, url: cardUrl(ctx, ctx.baseDocId, entry.cardId) });
+                    await CardModel.update(this.ctx.domainId, card.docId, entry.update);
+                    updated.push({ index: entry.index, cardId: entry.cardId, changed: entry.fields, url: cardUrl(this.ctx, this.ctx.baseDocId, entry.cardId) });
                 } catch (error) {
                     refused.push({ index: entry.index, cardId: entry.cardId, error: (error as Error).message });
                 }
             }
             return {
                 ok: refused.length === 0,
-                baseId: ctx.baseDocId,
+                baseId: this.ctx.baseDocId,
                 cardCount: updated.length,
                 cards: updated,
                 refusedCards: refused,
@@ -322,19 +322,19 @@ class BaseCardUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseCardDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const cardIds = idList(args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
+            const cardIds = idList(this.args.cardIds, 'cardIds', MAX_CARDS_PER_CALL);
             const objectIds = cardIds.map((cardId) => toObjectId(cardId));
-            const byId = await cardsById(ctx, cardIds);
+            const byId = await cardsById(this.ctx, cardIds);
             for (const cardId of cardIds) {
                 if (!byId.has(cardId)) throw new Error(`Card not found: ${cardId}`);
             }
-            await CardModel.deleteMany(ctx.domainId, objectIds);
+            await CardModel.deleteMany(this.ctx.domainId, objectIds);
             return {
                 ok: true,
-                baseId: ctx.baseDocId,
+                baseId: this.ctx.baseDocId,
                 removedCardIds: cardIds,
                 removedCount: cardIds.length,
                 reads: { cards: 1 },

@@ -267,13 +267,13 @@ export class Handler<C = CordisContext> extends HandlerCommon<C> {
 }
 
 export abstract class Executor<C = unknown, A = unknown, R = unknown> {
-    constructor(public context: C, public args: A) { }
+    constructor(public ctx: C, public args: A) { }
 
     async init(): Promise<void> { }
 
     async prepare(): Promise<void> { }
 
-    abstract execute(context: C, args: A): R | Promise<R>;
+    abstract execute(): R | Promise<R>;
 
     async after(_result: R): Promise<void> { }
 
@@ -289,7 +289,7 @@ export abstract class Executor<C = unknown, A = unknown, R = unknown> {
         try {
             await this.init();
             await this.prepare();
-            const result = await this.execute(this.context, this.args);
+            const result = await this.execute();
             await this.after(result);
             return result;
         } catch (error) {

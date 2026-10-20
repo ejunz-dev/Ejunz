@@ -100,51 +100,51 @@ function newEdgeId() {
 
 
 class BaseNodeCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const text = String(args.text || '').trim();
+            const text = String(this.args.text || '').trim();
             if (!text) throw new Error('text is required');
-            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
-            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
-            const parentId = args.parentId ? String(args.parentId).trim() : findRootNodeId(base.nodes || [], base.edges || []);
+            const base = await BaseModel.get(this.ctx.domainId, this.ctx.baseDocId);
+            if (!base) throw new Error(`Base not found: ${this.ctx.baseDocId}`);
+            const parentId = this.args.parentId ? String(this.args.parentId).trim() : findRootNodeId(base.nodes || [], base.edges || []);
             if (parentId && !(base.nodes || []).some((node) => node.id === parentId)) throw new Error(`Parent node not found: ${parentId}`);
-            const result = await BaseModel.addNode(ctx.domainId, ctx.baseDocId, { text } as any, parentId, parentId);
-            return { ok: true, nodeId: result.nodeId, edgeId: result.edgeId, parentId: parentId ?? null, url: nodeUrl(ctx, ctx.baseDocId, result.nodeId) };
+            const result = await BaseModel.addNode(this.ctx.domainId, this.ctx.baseDocId, { text } as any, parentId, parentId);
+            return { ok: true, nodeId: result.nodeId, edgeId: result.edgeId, parentId: parentId ?? null, url: nodeUrl(this.ctx, this.ctx.baseDocId, result.nodeId) };
     }
 }
 
 class BaseNodeUpdateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const nodeId = String(args.nodeId || '');
-            const text = String(args.text || '');
+            const nodeId = String(this.args.nodeId || '');
+            const text = String(this.args.text || '');
             if (!nodeId) throw new Error('nodeId is required');
             const updates: Record<string, unknown> = { text };
-            if (Object.prototype.hasOwnProperty.call(args, 'parentId')) {
-                const parentId = String(args.parentId || '').trim();
+            if (Object.prototype.hasOwnProperty.call(this.args, 'parentId')) {
+                const parentId = String(this.args.parentId || '').trim();
                 if (!parentId) throw new Error('parentId is required when provided');
                 updates.parentId = parentId;
             }
-            await BaseModel.updateNode(ctx.domainId, ctx.baseDocId, nodeId, updates as any);
+            await BaseModel.updateNode(this.ctx.domainId, this.ctx.baseDocId, nodeId, updates as any);
             return {
                 ok: true,
                 nodeId,
                 ...(updates.parentId ? { parentId: updates.parentId } : {}),
-                url: nodeUrl(ctx, ctx.baseDocId, nodeId),
+                url: nodeUrl(this.ctx, this.ctx.baseDocId, nodeId),
             };
     }
 }
 
 class BaseNodeGetExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const nodeId = String(args.nodeId || '').trim();
+            const nodeId = String(this.args.nodeId || '').trim();
             if (!nodeId) throw new Error('nodeId is required');
-            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
-            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            const base = await BaseModel.get(this.ctx.domainId, this.ctx.baseDocId);
+            if (!base) throw new Error(`Base not found: ${this.ctx.baseDocId}`);
             const node = (base.nodes || []).find((item) => item.id === nodeId);
             if (!node) throw new Error(`Node not found: ${nodeId}`);
             const nodeById = new Map((base.nodes || []).map((item) => [item.id, item]));
@@ -160,13 +160,13 @@ class BaseNodeGetExecutor extends Executor<ToolContext, ToolArgs> {
                 const child = nodeById.get(childId);
                 if (child && !child.parentId) childIds.add(childId);
             }
-            const cards = await CardModel.getByNodeId(ctx.domainId, ctx.baseDocId, nodeId);
+            const cards = await CardModel.getByNodeId(this.ctx.domainId, this.ctx.baseDocId, nodeId);
             return {
                 ok: true,
                 node: {
                     nodeId: node.id,
                     title: node.text || '',
-                    url: nodeUrl(ctx, ctx.baseDocId, node.id),
+                    url: nodeUrl(this.ctx, this.ctx.baseDocId, node.id),
                 },
                 childNodes: (base.nodes || [])
                     .filter((child) => childIds.has(child.id))
@@ -181,31 +181,31 @@ class BaseNodeGetExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const nodeId = String(args.nodeId || '');
+            const nodeId = String(this.args.nodeId || '');
             if (!nodeId) throw new Error('nodeId is required');
-            await BaseModel.deleteNode(ctx.domainId, ctx.baseDocId, nodeId);
+            await BaseModel.deleteNode(this.ctx.domainId, this.ctx.baseDocId, nodeId);
             return { ok: true, nodeId };
     }
 }
 
 class BaseNodeCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const raw = args.nodes;
+            const raw = this.args.nodes;
             if (!Array.isArray(raw) || !raw.length) throw new Error('nodes must be a non-empty array of { text, ref?, parentId?, parentRef? }');
             if (raw.length > MAX_NODES_PER_CALL) {
                 throw new Error(`nodes holds ${raw.length} entries and one call creates ${MAX_NODES_PER_CALL}; split the work across calls`);
             }
-            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
-            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            const base = await BaseModel.get(this.ctx.domainId, this.ctx.baseDocId);
+            if (!base) throw new Error(`Base not found: ${this.ctx.baseDocId}`);
             const nodes: BaseNode[] = base.nodes || [];
             const edges: BaseEdge[] = base.edges || [];
             const nodeById = new Map(nodes.map((node) => [node.id, node]));
-            const namedParent = asText(args.parentId);
+            const namedParent = asText(this.args.parentId);
             if (namedParent && !nodeById.has(namedParent)) throw new Error(`Parent node not found: ${namedParent}`);
             const defaultParent = namedParent || findRootNodeId(nodes, edges) || '';
             const planned: { index: number; ref: string; text: string; parentId: string; level: number; nodeId: string }[] = [];
@@ -250,11 +250,11 @@ class BaseNodeCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
                     refOwner.set(ref, index);
                 }
             }
-            await BaseModel.updateFull(ctx.domainId, ctx.baseDocId, { nodes, edges });
+            await BaseModel.updateFull(this.ctx.domainId, this.ctx.baseDocId, { nodes, edges });
             const parentMap = buildParentMap(edges);
             return {
                 ok: true,
-                baseId: ctx.baseDocId,
+                baseId: this.ctx.baseDocId,
                 nodeCount: planned.length,
                 nodes: planned.map((entry) => ({
                     index: entry.index,
@@ -263,7 +263,7 @@ class BaseNodeCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
                     parentId: entry.parentId,
                     level: entry.level,
                     path: pathLabelFor(entry.nodeId, parentMap, nodeById),
-                    url: nodeUrl(ctx, ctx.baseDocId, entry.nodeId),
+                    url: nodeUrl(this.ctx, this.ctx.baseDocId, entry.nodeId),
                 })),
                 writes: 1,
             };
@@ -271,16 +271,16 @@ class BaseNodeCreateManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeGetManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const nodeIds = idList(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
-            const base = await BaseModel.get(ctx.domainId, ctx.baseDocId);
-            if (!base) throw new Error(`Base not found: ${ctx.baseDocId}`);
+            const nodeIds = idList(this.args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
+            const base = await BaseModel.get(this.ctx.domainId, this.ctx.baseDocId);
+            if (!base) throw new Error(`Base not found: ${this.ctx.baseDocId}`);
             const nodes = base.nodes || [];
             const edges = base.edges || [];
             const nodeById = new Map(nodes.map((node) => [node.id, node]));
-            const cardsByNode = await CardModel.getByNodeIds(ctx.domainId, ctx.baseDocId, nodeIds);
+            const cardsByNode = await CardModel.getByNodeIds(this.ctx.domainId, this.ctx.baseDocId, nodeIds);
             const found: unknown[] = [];
             const missing: string[] = [];
             for (const [index, nodeId] of nodeIds.entries()) {
@@ -306,7 +306,7 @@ class BaseNodeGetManyExecutor extends Executor<ToolContext, ToolArgs> {
                     index,
                     nodeId,
                     title: node.text || '',
-                    url: nodeUrl(ctx, ctx.baseDocId, nodeId),
+                    url: nodeUrl(this.ctx, this.ctx.baseDocId, nodeId),
                     childNodes: nodes
                         .filter((child) => childIds.has(child.id))
                         .map((child) => ({ nodeId: child.id, title: child.text || '' })),
@@ -319,7 +319,7 @@ class BaseNodeGetManyExecutor extends Executor<ToolContext, ToolArgs> {
             }
             return {
                 ok: missing.length === 0,
-                baseId: ctx.baseDocId,
+                baseId: this.ctx.baseDocId,
                 nodeCount: found.length,
                 nodes: found,
                 missingNodeIds: missing,
@@ -329,10 +329,10 @@ class BaseNodeGetManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const raw = args.entries;
+            const raw = this.args.entries;
             if (!Array.isArray(raw) || !raw.length) throw new Error('entries must be a non-empty array of { nodeId, text?, parentId? }');
             if (raw.length > MAX_NODES_PER_CALL) {
                 throw new Error(`entries holds ${raw.length} entries and one call updates ${MAX_NODES_PER_CALL}; split the work across calls`);
@@ -362,16 +362,16 @@ class BaseNodeUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
                 if (!changed.length) throw new Error(`entries[${index}] names nothing to change; give text, parentId, or both`);
                 planned.push({ index, nodeId, update, fields: changed });
             }
-            await BaseModel.applyNodeUpdates(ctx.domainId, ctx.baseDocId, planned.map((entry) => entry.update));
+            await BaseModel.applyNodeUpdates(this.ctx.domainId, this.ctx.baseDocId, planned.map((entry) => entry.update));
             return {
                 ok: true,
-                baseId: ctx.baseDocId,
+                baseId: this.ctx.baseDocId,
                 nodeCount: planned.length,
                 nodes: planned.map((entry) => ({
                     index: entry.index,
                     changed: entry.fields,
                     ...entry.update,
-                    url: nodeUrl(ctx, ctx.baseDocId, entry.nodeId),
+                    url: nodeUrl(this.ctx, this.ctx.baseDocId, entry.nodeId),
                 })),
                 reads: 1,
                 writes: 1,
@@ -380,14 +380,14 @@ class BaseNodeUpdateManyExecutor extends Executor<ToolContext, ToolArgs> {
 }
 
 class BaseNodeDeleteManyExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute(ctx: ToolContext, args: ToolArgs) {
+    async execute(){
 
 
-            const nodeIds = idList(args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
-            const result = await BaseModel.deleteNodes(ctx.domainId, ctx.baseDocId, nodeIds);
+            const nodeIds = idList(this.args.nodeIds, 'nodeIds', MAX_NODES_PER_CALL);
+            const result = await BaseModel.deleteNodes(this.ctx.domainId, this.ctx.baseDocId, nodeIds);
             return {
                 ok: result.missing.length === 0,
-                baseId: ctx.baseDocId,
+                baseId: this.ctx.baseDocId,
                 removedNodeIds: result.removed,
                 missingNodeIds: result.missing,
                 writes: { graph: 1 },
