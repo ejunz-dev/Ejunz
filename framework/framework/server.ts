@@ -266,6 +266,14 @@ export class Handler<C = CordisContext> extends HandlerCommon<C> {
     }
 }
 
+export type ExecutorHook = 'init' | 'before-prepare' | 'before' | 'after' | 'cleanup' | 'finish';
+
+export interface ExecutorLifecycle {
+    create?: () => Promise<void>;
+    hook?: (name: ExecutorHook) => Promise<void>;
+    error?: (error: unknown) => Promise<void>;
+}
+
 export abstract class Executor<C = unknown, A = unknown, R = unknown> {
     constructor(public ctx: C, public args: A) { }
 
@@ -285,20 +293,37 @@ export abstract class Executor<C = unknown, A = unknown, R = unknown> {
         throw error;
     }
 
-    async run(): Promise<R> {
+    async run(lifecycle?: ExecutorLifecycle): Promise<R> {
         try {
+            await lifecycle?.create?.();
             await this.init();
+            await lifecycle?.hook?.('init');
+            await lifecycle?.hook?.('before-prepare');
             await this.prepare();
+            await lifecycle?.hook?.('before');
             const result = await this.execute();
             await this.after(result);
+            await lifecycle?.hook?.('after');
             return result;
         } catch (error) {
-            return await this.onerror(error);
+            try {
+                await lifecycle?.error?.(error);
+            } finally {
+                return await this.onerror(error);
+            }
         } finally {
             try {
                 await this.cleanup();
             } finally {
-                await this.finish();
+                try {
+                    await lifecycle?.hook?.('cleanup');
+                } finally {
+                    try {
+                        await this.finish();
+                    } finally {
+                        await lifecycle?.hook?.('finish');
+                    }
+                }
             }
         }
     }
@@ -911,7 +936,22 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
             const invocation = prepare ? prepare(context, args) : { context, args };
             if (registration.executorClass) {
                 const ExecutorClass = registration.executorClass as ExecutorClass<unknown, unknown, unknown>;
-                return await new ExecutorClass(invocation.context, invocation.args).run();
+                const executor = new ExecutorClass(invocation.context, invocation.args);
+                const executorName = ExecutorClass.name.replace(/Executor$/, '');
+                return await executor.run({
+                    create: async () => {
+                        await (this.ctx.parallel as any)('executor/create', executor, name);
+                        await (this.ctx.parallel as any)(`executor/create/${executorName}`, executor, name);
+                    },
+                    hook: async (hook) => {
+                        await (this.ctx.serial as any)(`executor/${hook}/${executorName}`, executor, name);
+                        await (this.ctx.serial as any)(`executor/${hook}`, executor, name);
+                    },
+                    error: async (error) => {
+                        await (this.ctx.serial as any)(`executor/error/${executorName}`, executor, error, name);
+                        await (this.ctx.serial as any)('executor/error', executor, error, name);
+                    },
+                });
             }
             if (typeof registration.execute !== 'function') throw new Error(`Tool ${name} is not executable.`);
             return await registration.execute(invocation.context, invocation.args);
