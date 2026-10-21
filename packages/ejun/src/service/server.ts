@@ -37,6 +37,10 @@ declare module '@ejunz/framework' {
         limitRate(op: string, periodSecs: number, maxOperations: number, defaultKey?: string): Promise<void>;
         renderTitle(str: string): string;
     }
+
+    export interface Executor<C = unknown, A = unknown, R = unknown> {
+        requireAgentPermissions(...permissions: string[]): void;
+    }
 }
 
 export { Mutation, Query } from '@ejunz/framework/api';
@@ -108,6 +112,18 @@ export async function apply(ctx: Context) {
             }
         });
 
+        server.addExecutorLayer('agent_addon_access', async ({ name, context }, next) => {
+            const registration = server.listTools().find((tool) => tool.name === name);
+            const toolContext = context as { mountedAddons?: ReadonlySet<string>; sessionId?: string } | undefined;
+            if (registration && toolContext?.sessionId && !toolContext.mountedAddons) {
+                throw new Error('Agent add-on scope is unavailable for this session.');
+            }
+            if (registration && toolContext?.mountedAddons && !toolContext.mountedAddons.has(registration.addonId)) {
+                throw new Error(`Addon "${registration.addonId}" is not mounted in this session.`);
+            }
+            return next();
+        });
+
         server.addExecutorLayer('slow_executor', async ({ name }, next) => {
             const init = Date.now();
             try {
@@ -116,6 +132,27 @@ export async function apply(ctx: Context) {
                 const finish = Date.now();
                 if (finish - init > 5000) logger.warn(`Slow executor: ${name} ${finish - init}ms`);
             }
+        });
+
+        const executorNames = new WeakMap<object, string>();
+        on('executor/create', (executor, toolName) => {
+            executorNames.set(executor, toolName);
+        });
+        on('executor/error', (executor, error, toolName) => {
+            const context = executor.ctx as { domainId?: string; owner?: number; sessionId?: string };
+            const name = executorNames.get(executor) || toolName;
+            logger.error(
+                `Executor ${name} failed (domain=${context.domainId || 'unknown'}, owner=${context.owner ?? 'unknown'}, session=${context.sessionId || 'unknown'})`,
+                error,
+            );
+        });
+
+        server.executorMixin({
+            requireAgentPermissions(...permissions: string[]) {
+                const granted = (this.ctx as { agentPermissions?: ReadonlySet<string> }).agentPermissions;
+                const missing = permissions.filter((permission) => !granted?.has(permission));
+                if (missing.length) throw new Error(`Agent role is missing permission(s): ${missing.join(', ')}`);
+            },
         });
 
         applyApiHandler(childContext, 'api', '/api/:op');
