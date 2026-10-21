@@ -108,6 +108,16 @@ export async function apply(ctx: Context) {
             }
         });
 
+        server.addExecutorLayer('slow_executor', async ({ name }, next) => {
+            const init = Date.now();
+            try {
+                return await next();
+            } finally {
+                const finish = Date.now();
+                if (finish - init > 5000) logger.warn(`Slow executor: ${name} ${finish - init}ms`);
+            }
+        });
+
         applyApiHandler(childContext, 'api', '/api/:op');
         server.setDefaultContext(childContext);
 
