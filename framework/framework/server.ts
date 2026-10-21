@@ -266,13 +266,6 @@ export class Handler<C = CordisContext> extends HandlerCommon<C> {
     }
 }
 
-type ExecutorChecker = (context?: unknown) => void;
-const executorCheckers = new WeakSet<ExecutorChecker>();
-
-export function isExecutorChecker(checker: unknown): checker is ExecutorChecker {
-    return typeof checker === 'function' && executorCheckers.has(checker as ExecutorChecker);
-}
-
 export abstract class Executor<C = unknown, A = unknown, R = unknown> {
     constructor(public ctx: C, public args: A) { }
 
@@ -765,7 +758,7 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
         }
     }
 
-    private register(type: 'route' | 'conn' | 'executor', routeName: string, path: string, RegisteredClass: any, ...permPrivChecker) {
+    private register(type: 'route' | 'conn' | 'tool', routeName: string, path: string, RegisteredClass: any, ...permPrivChecker) {
         const Checker = (args) => {
             let perm: bigint | bigint[];
             let priv: number | number[];
@@ -792,21 +785,51 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
             };
         };
 
-        if (type === 'executor') {
-            if (!isClass(RegisteredClass) || !(RegisteredClass.prototype instanceof Executor)) throw new Error('Invalid registration.');
-            const tools = this.ctx.get('tools') as {
-                Tool(addonId: string, name: string, execute: unknown, ...args: unknown[]): unknown;
-            } | undefined;
-            if (!tools) throw new Error('Tool service is unavailable.');
-            const ExecutorClass = RegisteredClass as ExecutorClass<unknown, unknown, unknown>;
-            const invoke = (context: unknown, toolArgs: unknown) => new ExecutorClass(context, toolArgs).run();
-            const executorChecker = Checker(permPrivChecker);
-            executorCheckers.add(executorChecker);
-            return tools.Tool(routeName, path, {
-                execute: invoke,
-                executorClass: ExecutorClass,
-                executorChecker,
-            }, ...permPrivChecker);
+        if (type === 'tool') {
+            const toolKey = `tool:${path}`;
+            if (this.registry[toolKey]) throw new Error(`Tool ${path} is already registered.`);
+            const executorClass = typeof RegisteredClass === 'function' && RegisteredClass.prototype instanceof Executor
+                ? RegisteredClass as ExecutorClass<unknown, unknown, unknown>
+                : undefined;
+            if (executorClass && !isClass(executorClass)) throw new Error('Invalid registration.');
+            const checker = Checker(permPrivChecker);
+            const registration = {
+                addonId: routeName,
+                name: path,
+                execute: RegisteredClass,
+                executorClass,
+                checker,
+                checkerArgs: permPrivChecker,
+            };
+            this.registry[toolKey] = registration;
+            try {
+                (this.ctx.emit as any)('tool/register', registration);
+            } catch (error) {
+                delete this.registry[toolKey];
+                throw error;
+            }
+            let executorKey: string;
+            if (executorClass) {
+                const name = executorClass.name.replace(/Executor$/, '');
+                executorKey = `executor:${name}`;
+                if (this.registrationCount[executorKey] && this.registry[executorKey] !== executorClass) {
+                    logger.warn('Executor with name %s already exists.', name);
+                }
+                this.registry[executorKey] = executorClass;
+                this.registrationCount[executorKey]++;
+                void (this.ctx.parallel as any)(`executor/register/${name}`, executorClass);
+            }
+            return this.ctx.effect(() => () => {
+                delete this.registry[toolKey];
+                try {
+                    (this.ctx.emit as any)('tool/unregister', registration);
+                } finally {
+                    if (executorKey) {
+                        this.registrationCount[executorKey]--;
+                        if (!this.registrationCount[executorKey]) delete this.registry[executorKey];
+                    }
+                }
+            });
         }
 
         const HandlerClass = RegisteredClass;
@@ -861,22 +884,49 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
     }
 
     public Tool(addonId: string, name: string, execute: unknown, ...args: unknown[]) {
-        const tools = this.ctx.get('tools') as {
-            Tool(addonId: string, name: string, execute: unknown, ...args: unknown[]): unknown;
-        } | undefined;
-        if (!tools) throw new Error('Tool service is unavailable.');
-        if (typeof execute === 'function' && execute.prototype instanceof Executor) {
-            return this.register('executor', addonId, name, execute, ...args);
+        return this.register('tool', addonId, name, execute, ...args);
+    }
+
+    public listTools(): any[] {
+        return Object.entries(this.registry)
+            .filter(([key]) => key.startsWith('tool:'))
+            .map(([, registration]) => registration);
+    }
+
+    public async executeTool(
+        name: string,
+        context: unknown,
+        args: unknown,
+        checkerContext: unknown,
+        prepare?: (context: unknown, args: unknown) => { context: unknown; args: unknown },
+    ): Promise<unknown> {
+        const registration = this.registry[`tool:${name}`];
+        if (!registration) throw new Error(`Unknown tool: ${name}`);
+        const executorName = registration.executorClass?.name || registration.execute?.name || 'callback';
+        const startedAt = Date.now();
+        let status = 'ok';
+        try {
+            registration.checker.call(checkerContext, context);
+            const invocation = prepare ? prepare(context, args) : { context, args };
+            if (registration.executorClass) {
+                const ExecutorClass = registration.executorClass as ExecutorClass<unknown, unknown, unknown>;
+                return await new ExecutorClass(invocation.context, invocation.args).run();
+            }
+            if (typeof registration.execute !== 'function') throw new Error(`Tool ${name} is not executable.`);
+            return await registration.execute(invocation.context, invocation.args);
+        } catch (error) {
+            status = 'error';
+            throw error;
+        } finally {
+            if (process.env.DEV) logger.debug('TOOL %s (%s) %s %dms', name, executorName, status, Date.now() - startedAt);
         }
-        return tools.Tool(addonId, name, execute, ...args);
     }
 
     public withExecutorClass(name: string, callback: (ExecutorClass: ExecutorClass) => any) {
-        const tools = this.ctx.get('tools') as {
-            withExecutorClass?(name: string, callback: (ExecutorClass: ExecutorClass) => any): unknown;
-        } | undefined;
-        if (!tools?.withExecutorClass) throw new Error('Tool registry does not support Executor hooks.');
-        return tools.withExecutorClass(name, callback);
+        name = name.replace(/Executor$/, '');
+        const ExecutorClass = this.registry[`executor:${name}`];
+        if (ExecutorClass) callback(ExecutorClass);
+        (this.ctx.on as any)(`executor/register/${name}`, callback);
     }
 
     public withHandlerClass<T extends string>(

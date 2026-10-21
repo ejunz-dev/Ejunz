@@ -6,11 +6,10 @@ import { type FindCursor, ObjectId } from 'mongodb';
 import {
     applyApiHandler, ConnectionHandler as ConnectionHandlerOriginal,
     Handler as HandlerOriginal, EjunzError, NotFoundError, UserFacingError,
-    WebService, isExecutorChecker, type ExecutorClass,
+    WebService,
 } from '@ejunz/framework';
 import { errorMessage, Time } from '@ejunz/utils';
-import { Context, Service } from '../context';
-import type { Disposable } from '../context';
+import { Context } from '../context';
 import Schema from 'schemastery';
 import { isSchema, schemaDescription, schemaToJsonSchema, validateToolArgs } from '../lib/tool-schema';
 import type { ToolArgs, ToolBaseSelectPayload, ToolCalledPayload, ToolContext, ToolSpec } from '../lib/tool-types';
@@ -286,15 +285,12 @@ export async function apply(ctx: Context) {
 }
 
 
-const toolLogger = new Logger('tools/registry');
-
 export interface ToolDeclaration {
     addonId: string;
     name: string;
     description: string;
     inputSchema: Record<string, any>;
     agentPermissions?: readonly string[];
-    executorClass?: ExecutorClass;
     mutating?: boolean;
     execute(context: ToolContext, args: ToolArgs): Promise<unknown>;
 }
@@ -330,8 +326,6 @@ export interface ToolRegisterOptions {
     enabled?: boolean | (() => boolean);
     /** Permission IDs supplied by mounted add-ons. */
     agentPermissions?: readonly string[];
-    executorClass?: ExecutorClass;
-    executorChecker?: (context: ToolContext) => void;
     instructions?: (context: ToolInstructionsContext) => string | Promise<string>;
 }
 
@@ -344,13 +338,11 @@ export interface ToolAccess {
     agentPermissions?: ReadonlySet<string>;
 }
 
-type StoredTool = ToolDeclaration & {
+type StoredTool = Omit<ToolDeclaration, 'execute'> & {
     schema?: Schema;
     config?: ToolRegisterOptions;
     priv?: number | number[];
     perm?: bigint | bigint[];
-    checker?: (context: ToolContext) => void;
-    executorChecker?: (context: ToolContext) => void;
     agentPermissions?: readonly string[];
 };
 
@@ -424,17 +416,15 @@ function canAccess(tool: StoredTool, access: ToolAccess | undefined): boolean {
     return true;
 }
 
-function wrapBindBase(execute: ToolExecute, mode?: ToolBindBase): ToolExecute {
-    if (!mode || mode === 'none') return execute;
-    return async (context, args) => {
-        const namedBaseId = Number(args?.baseId);
-        const requested = mode === 'explicit' ? namedBaseId
-            : mode === 'optional' && Number.isSafeInteger(namedBaseId) && namedBaseId > 0 ? namedBaseId
-                : context.baseDocId;
-        const baseDocId = Number.isSafeInteger(requested) && requested > 0 ? requested : 0;
-        if (!baseDocId) throw new Error(mode === 'explicit' ? 'baseId is required' : 'This endpoint is not bound to a base.');
-        return execute({ ...context, baseDocId }, args || {});
-    };
+function bindToolContext(context: ToolContext, args: ToolArgs, mode?: ToolBindBase): ToolContext {
+    if (!mode || mode === 'none') return context;
+    const namedBaseId = Number(args?.baseId);
+    const requested = mode === 'explicit' ? namedBaseId
+        : mode === 'optional' && Number.isSafeInteger(namedBaseId) && namedBaseId > 0 ? namedBaseId
+            : context.baseDocId;
+    const baseDocId = Number.isSafeInteger(requested) && requested > 0 ? requested : 0;
+    if (!baseDocId) throw new Error(mode === 'explicit' ? 'baseId is required' : 'This endpoint is not bound to a base.');
+    return { ...context, baseDocId };
 }
 
 function parseChecker(args: unknown[]) {
@@ -487,29 +477,18 @@ async function resolveAccess(context: ToolContext): Promise<ToolAccess | undefin
     }
 }
 
-function assertAccess(tool: StoredTool, access: ToolAccess | undefined, checkPermissions = true): void {
-    if (checkPermissions && tool.priv !== undefined && !hasPriv(access, tool.priv)) {
-        const flags = Array.isArray(tool.priv) ? tool.priv : [tool.priv];
-        throw new PrivilegeError(...flags);
-    }
-    if (checkPermissions && tool.perm !== undefined && !hasPerm(access, tool.perm)) {
-        const flags = Array.isArray(tool.perm) ? tool.perm : [tool.perm];
-        throw new PermissionError(...flags);
-    }
+function assertAccess(tool: StoredTool, access: ToolAccess | undefined): void {
     const missingAgentPermissions = agentPermissionsForTool(tool).filter((permission) => !access?.agentPermissions?.has(permission));
     if (missingAgentPermissions.length) {
         throw new Error(`Agent role is missing permission(s): ${missingAgentPermissions.join(', ')}`);
     }
 }
 
-export class ToolService extends Service {
+class ToolCatalog {
     private readonly sources = new Map<string, StoredSource>();
     private readonly owners = new Map<string, string>();
-    private readonly executors = new Map<string, ExecutorClass>();
 
-    constructor(ctx: Context) {
-        super(ctx, 'tools');
-    }
+    constructor(private readonly ctx: Context) { }
 
 
 
@@ -519,58 +498,48 @@ export class ToolService extends Service {
 
 
 
-    Tool(addonId: string, name: string, execute: ToolExecute, ...permPrivChecker: Array<number | bigint | Function | Schema | ToolRegisterOptions>): Disposable;
-    Tool(addonId: string, name: string, definition: ToolDefinition, ...permPrivChecker: Array<number | bigint | Function | Schema | ToolRegisterOptions>): Disposable;
-    Tool(
-        addonId: string,
-        name: string,
-        executeOrDefinition: ToolExecute | ToolDefinition,
-        ...permPrivChecker: Array<number | bigint | Function | Schema | ToolRegisterOptions>
-    ): Disposable {
+    register(registration: {
+        addonId: string;
+        name: string;
+        execute: unknown;
+        checkerArgs: unknown[];
+    }): void {
+        const { addonId, name } = registration;
         if (typeof addonId !== 'string' || addonId.trim().length === 0) {
             throw new Error(`tool ${String(name)} must be registered with an addonId.`);
         }
         if (typeof name !== 'string' || name.trim().length === 0) throw new Error('tool name is required.');
-        const parsed = parseChecker(permPrivChecker);
-        const fromDefinition = typeof executeOrDefinition === 'function' ? undefined : executeOrDefinition;
-        const execute = typeof executeOrDefinition === 'function' ? executeOrDefinition : executeOrDefinition.execute;
-        const options = parsed.options ?? fromDefinition ?? {};
-        const schema = parsed.schema ?? options.schema ?? fromDefinition?.schema;
-        const description = options.description ?? fromDefinition?.description ?? schemaDescription(schema);
-        const inputSchema = options.inputSchema ?? fromDefinition?.inputSchema ?? (schema ? schemaToJsonSchema(schema) : undefined);
-        const mutating = options.mutating ?? fromDefinition?.mutating === true;
-        const explicitAgentPermissions = options.agentPermissions ?? fromDefinition?.agentPermissions;
-        const agentPermissions = resolveAgentPermissions(addonId, mutating, explicitAgentPermissions);
-        const executorClass = options.executorClass ?? fromDefinition?.executorClass;
-        const executorChecker = isExecutorChecker(fromDefinition?.executorChecker)
-            ? fromDefinition.executorChecker
-            : isExecutorChecker(options.executorChecker) ? options.executorChecker : undefined;
+        const parsed = parseChecker(registration.checkerArgs);
+        const options = parsed.options ?? {};
+        const schema = parsed.schema ?? options.schema;
+        const description = options.description ?? schemaDescription(schema);
+        const inputSchema = options.inputSchema ?? (schema ? schemaToJsonSchema(schema) : undefined);
+        const mutating = options.mutating === true;
+        const agentPermissions = resolveAgentPermissions(addonId, mutating, options.agentPermissions);
         if (!description) throw new Error(`tool ${name} is missing a description.`);
         if (!inputSchema) throw new Error(`tool ${name} is missing an inputSchema.`);
-        if (agentPermissions?.some((permission) => typeof permission !== 'string' || permission.trim().length === 0)) {
+        if (agentPermissions.some((permission) => typeof permission !== 'string' || permission.trim().length === 0)) {
             throw new Error(`tool ${name} has an invalid Agent permission requirement.`);
         }
-        const source = options.source ?? fromDefinition?.source ?? addonId;
+        const source = options.source ?? addonId;
         const stored: StoredTool = {
             addonId,
             name,
             description,
             inputSchema,
             mutating,
-            agentPermissions: [...agentPermissions],
-            ...(executorClass ? { executorClass } : {}),
-            execute: wrapBindBase(execute, options.bindBase ?? fromDefinition?.bindBase),
+            agentPermissions,
             config: options,
             ...(schema ? { schema } : {}),
             ...(parsed.priv !== undefined ? { priv: parsed.priv } : {}),
             ...(parsed.perm !== undefined ? { perm: parsed.perm } : {}),
-            ...(parsed.checker ? { checker: parsed.checker } : {}),
-            ...(executorChecker ? { executorChecker } : {}),
         };
-        return this.ctx.effect(() => {
-            this.addTool(source, stored, options);
-            return () => this.removeTool(source, name);
-        });
+        this.addTool(source, stored, options);
+    }
+
+    unregister(name: string): void {
+        const source = this.owners.get(name);
+        if (source) this.removeTool(source, name);
     }
 
     available(name: string): boolean {
@@ -592,11 +561,6 @@ export class ToolService extends Service {
         if (options.instructions && !entry.instructions) entry.instructions = options.instructions;
         entry.tools.push(tool);
         this.owners.set(tool.name, source);
-        if (tool.executorClass) {
-            const name = tool.executorClass.name.replace(/Executor$/, '');
-            this.executors.set(name, tool.executorClass);
-            void (this.ctx.parallel as any)(`executor/register/${name}`, tool.executorClass);
-        }
     }
 
     private removeTool(source: string, name: string): void {
@@ -606,12 +570,6 @@ export class ToolService extends Service {
         entry.tools = entry.tools.filter((tool) => tool.name !== name);
         this.owners.delete(name);
         if (!entry.tools.length) this.sources.delete(source);
-        if (removed?.executorClass) {
-            const executorName = removed.executorClass.name.replace(/Executor$/, '');
-            const stillRegistered = [...this.sources.values()].some((item) =>
-                item.tools.some((tool) => tool.executorClass === removed.executorClass));
-            if (!stillRegistered) this.executors.delete(executorName);
-        }
     }
 
     private lookup(name: string): { source: StoredSource; tool: StoredTool } | undefined {
@@ -708,13 +666,6 @@ export class ToolService extends Service {
         };
     }
 
-    withExecutorClass(name: string, callback: (ExecutorClass: ExecutorClass) => unknown): void {
-        name = name.replace(/Executor$/, '');
-        const executorClass = this.executors.get(name);
-        if (executorClass) callback(executorClass);
-        (this.ctx.on as any)(`executor/register/${name}`, callback);
-    }
-
     has(id: string): boolean {
         return this.owners.has(id) || this.sources.has(id);
     }
@@ -743,19 +694,27 @@ export class ToolService extends Service {
             throw new Error(`Addon "${found.tool.addonId}" is not mounted in this session.`);
         }
         const access = await resolveAccess(context);
-        assertAccess(found.tool, access, !found.tool.executorChecker);
-        if (found.tool.executorChecker) {
-            found.tool.executorChecker.call({
-                checkPerm: (...perms: bigint[]) => checkAccessPerm(access, ...perms),
-                checkPriv: (...privs: number[]) => checkAccessPriv(access, ...privs),
-            }, context);
-        } else {
-            found.tool.checker?.(context);
-        }
-        const startedAt = Date.now();
-        const parsedArgs = found.tool.schema ? validateToolArgs(found.tool.schema, args || {}) : (args || {});
-        const result = await found.tool.execute(context, parsedArgs);
-        toolLogger.info('tool %s from %s ok in %dms', name, found.source.source, Date.now() - startedAt);
+        assertAccess(found.tool, access);
+        const server = this.ctx.get('server') as {
+            executeTool(
+                name: string,
+                context: unknown,
+                args: unknown,
+                checkerContext: unknown,
+                prepare?: (context: unknown, args: unknown) => { context: unknown; args: unknown },
+            ): Promise<unknown>;
+        } | undefined;
+        if (!server) throw new Error('Ejunz WebService is unavailable.');
+        const result = await server.executeTool(name, context, args || {}, {
+            checkPerm: (...perms: bigint[]) => checkAccessPerm(access, ...perms),
+            checkPriv: (...privs: number[]) => checkAccessPriv(access, ...privs),
+        }, (toolContext, toolArgs) => {
+            const parsedArgs = found.tool.schema ? validateToolArgs(found.tool.schema, (toolArgs || {}) as ToolArgs) : (toolArgs || {});
+            return {
+                context: bindToolContext(toolContext as ToolContext, parsedArgs as ToolArgs, found.tool.config?.bindBase),
+                args: parsedArgs,
+            };
+        });
         if (found.tool.mutating) {
             this.ctx.emit('tool/called', {
                 name,
@@ -772,13 +731,13 @@ export class ToolService extends Service {
 
 declare module 'ejun/src/context' {
     interface Context {
-        tools: ToolService;
+        tools: ToolCatalog;
     }
 }
 
 declare module 'cordis' {
     interface Context {
-        tools: ToolService;
+        tools: ToolCatalog;
     }
 }
 
@@ -816,9 +775,9 @@ export function createProvider(
 ): Provider {
     const services = ctx as any;
     const get = (name: string) => (typeof services.get === 'function' ? services.get(name) : services[name]);
-    const registry = () => {
+    const toolCatalog = () => {
         const tools = get('tools');
-        if (!tools) throw new Error('the host tool registry is unavailable');
+        if (!tools) throw new Error('the host tool catalog is unavailable');
         return tools;
     };
     const access = (): ToolAccess | undefined => (
@@ -840,13 +799,13 @@ export function createProvider(
     });
     return {
         scope: Object.freeze({ ...scope }),
-        catalog: (source?: string) => registry().catalog(source, undefined, scope.domainId, access(), scope.mountedAddons),
+        catalog: (source?: string) => toolCatalog().catalog(source, undefined, scope.domainId, access(), scope.mountedAddons),
         async call(name, args, signal) {
             if (signal.aborted) throw signal.reason ?? new Error('provider call aborted');
             const startedAt = Date.now();
             providerLogger.info('[provider] call start name=%s domain=%s baseDocId=%d owner=%d', name, scope.domainId, scope.baseDocId ?? 0, scope.owner);
             try {
-                const result = await registry().execute(name, args, toolContext());
+                const result = await toolCatalog().execute(name, args, toolContext());
                 if (signal.aborted) throw signal.reason ?? new Error('provider call aborted');
                 providerLogger.info('[provider] call done name=%s durationMs=%d', name, Date.now() - startedAt);
                 return result;
@@ -860,7 +819,10 @@ export function createProvider(
 
 
 async function applyTools(ctx: Context) {
-    await ctx.plugin(ToolService);
+    const tools = new ToolCatalog(ctx);
+    ctx.provide('tools', tools);
+    (ctx.on as any)('tool/register', (registration: any) => tools.register(registration));
+    (ctx.on as any)('tool/unregister', (registration: any) => tools.unregister(registration.name));
     const toolsDir = resolve(__dirname, '../tools');
     for (const name of await fs.readdir(toolsDir)) {
         if (!name.endsWith('.ts') || name.endsWith('.d.ts')) continue;
@@ -868,8 +830,6 @@ async function applyTools(ctx: Context) {
         if (typeof require(file).apply !== 'function') continue;
         await ctx.loader.reloadPlugin(file, '');
     }
-    const tools = ctx.get('tools') as ToolService | undefined;
-    if (!tools) throw new Error('Ejunz tool registry is unavailable.');
     const declared = new Set(listAgentAddons().map((addon) => addon.addonId));
     const missing = tools.addonIds().filter((addonId) => !declared.has(addonId));
     if (missing.length) throw new Error(`Tool registrations reference undeclared add-ons: ${missing.join(', ')}.`);

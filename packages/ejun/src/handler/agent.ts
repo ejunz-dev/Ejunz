@@ -18,7 +18,7 @@ interface RpcEnvelope {
     domainId?: string;
     groupId?: number | null;
 }
-const { requireBridgeToken, baseSessionScope, toolRegistry, scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, teamRpc, agentRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled, agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, baseTutorEnsure, baseTutorList, baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems, runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount, sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink, logger, RUNTIME_HELLO_TIMEOUT_MS, addLink, rememberRuntime, reportRuntime, agentDataAdapter, AgentStorageModel, AgentLinkModel, mountedAddonsForSession, permissionsForSession, createProvider, SystemModel, randomUUID, WebSocket, parseRuntimeFrame, createSocketLink, followLinks, runtimeLinks, runtimeFacts, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels } = service;
+const { requireBridgeToken, baseSessionScope, toolCatalog, scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, teamRpc, agentRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled, agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, baseTutorEnsure, baseTutorList, baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems, runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount, sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink, logger, RUNTIME_HELLO_TIMEOUT_MS, addLink, rememberRuntime, reportRuntime, agentDataAdapter, AgentStorageModel, AgentLinkModel, mountedAddonsForSession, permissionsForSession, createProvider, SystemModel, randomUUID, WebSocket, parseRuntimeFrame, createSocketLink, followLinks, runtimeLinks, runtimeFacts, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels } = service;
 const dataOk = (value: unknown): Record<string, unknown> => ({ ok: true, value });
 const dataError = (message: string): Record<string, unknown> => ({ ok: false, error: { message } });
 
@@ -245,7 +245,7 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                 const agentPermissions = resolved.session
                     ? await permissionsForSession(resolved.session, mountedAddons)
                     : permissionsForAgentAcl(undefined);
-                const tools = toolRegistry();
+                const tools = toolCatalog();
                 const context = {
                     domainId: scope?.domain || '',
                     baseDocId: scope?.baseId || 0,
@@ -279,7 +279,7 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                 if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('args must be an object');
                 const mountedAddons = await mountedAddonsForSession(resolved.session);
                 const agentPermissions = await permissionsForSession(resolved.session, mountedAddons);
-                const registration = toolRegistry().get(name);
+                const registration = toolCatalog().get(name);
                 if (!registration || !mountedAddons.has(registration.addonId)) {
                     throw new Error(`Addon for tool ${name} is not mounted in this session.`);
                 }

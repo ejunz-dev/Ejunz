@@ -86,7 +86,6 @@ export * from '@ejunz/framework/decorators';
 export * from '@ejunz/framework/validator';
 export * as StorageService from './service/storage';
 export { EventMap } from './service/bus';
-export { ToolService } from './service/server';
 export { registerAgentAddon, listAgentAddons } from './service/addons';
 export type { AgentAddonDescriptor, AgentAddonPermission } from './service/addons';
 export { registerAgentContextPlugin } from './service/agent-context-plugins';

@@ -1480,11 +1480,11 @@ async function baseSessionScope(sessionId: string, optional = false) {
 }
 
 /**
- * The host's tool registry, resolved through the service store rather than a service
+ * The host's tool catalog, resolved through the service store rather than a service
  * property: a property read is checked against the reading fiber's inject list, while
  * `get` reaches the registry whichever scope the handler runs in.
  */
-function toolRegistry(): {
+function toolCatalog(): {
     list(source?: string, domainId?: string, access?: { priv?: number; perm?: bigint; scope?: bigint }, mountedAddons?: ReadonlySet<string>): { name: string; description: string; inputSchema: Record<string, unknown>; addonId: string; source: string; mutating: boolean }[];
     listForCatalog(domainId?: string): { name: string; description: string; inputSchema: Record<string, unknown>; addonId: string; source: string; mutating: boolean }[];
     permissionBitsForAddon(addonId: string, domainId: string, access: { priv?: number; perm?: bigint; scope?: bigint }): { perm: bigint[]; priv: number[] };
@@ -1493,7 +1493,7 @@ function toolRegistry(): {
 } {
     const ejunzContext = (global as any).app || (global as any).Ejunz;
     const tools = typeof ejunzContext?.get === 'function' ? ejunzContext.get('tools') : ejunzContext?.tools;
-    if (!tools) throw new Error('Ejunz tool registry is unavailable');
+    if (!tools) throw new Error('Ejunz tool catalog is unavailable');
     return tools;
 }
 
@@ -1910,7 +1910,7 @@ async function permissionInjectionsForSession(
     const UserModel = (global as any).Ejunz?.model?.user;
     const user = UserModel ? await UserModel.getById(session.domainId, session.userId) : null;
     const access = { priv: user?.priv, perm: user?.perm, scope: user?.scope };
-    const tools = toolRegistry();
+    const tools = toolCatalog();
     return [...activeAddons].flatMap((addonId) => {
         const bits = tools.permissionBitsForAddon(addonId, session.domainId, access);
         const permissions = [
@@ -1953,7 +1953,7 @@ async function agentAddonsList(envelope: RpcEnvelope, scope: AgentScope): Promis
     const settings = await agentDataAdapter.getDomainSettings(scope.domainId);
     const installed = installedAgentAddonIds(settings);
     const toolsByAddon = new Map<string, { name: string; description: string }[]>();
-    for (const { addonId, name, description } of toolRegistry().listForCatalog(scope.domainId)) {
+    for (const { addonId, name, description } of toolCatalog().listForCatalog(scope.domainId)) {
         const tools = toolsByAddon.get(addonId) ?? [];
         tools.push({ name, description });
         toolsByAddon.set(addonId, tools);
@@ -1971,7 +1971,7 @@ async function agentAddonsMarketList(envelope: RpcEnvelope, scope: AgentScope): 
     const settings = await agentDataAdapter.getDomainSettings(scope.domainId);
     const installed = installedAgentAddonIds(settings);
     const toolsByAddon = new Map<string, { name: string; description: string }[]>();
-    for (const { addonId, name, description } of toolRegistry().listForCatalog(scope.domainId)) {
+    for (const { addonId, name, description } of toolCatalog().listForCatalog(scope.domainId)) {
         const tools = toolsByAddon.get(addonId) ?? [];
         tools.push({ name, description });
         toolsByAddon.set(addonId, tools);
@@ -3576,7 +3576,7 @@ export const agentDataAdapter = new MongoAgentDataAdapter();
 
 export const agentRuntimeHandlerContext = {
     modelReady: () => modelReady,
-    requireBridgeToken, baseSessionScope, toolRegistry,
+    requireBridgeToken, baseSessionScope, toolCatalog,
     scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, upstreamValue,
     teamRpc, agentRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled,
     agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, syncSessionAddonsForTeam, syncSessionTeamContextForTeam, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,
