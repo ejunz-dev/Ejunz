@@ -274,6 +274,12 @@ export interface ExecutorLifecycle {
     error?: (error: unknown) => Promise<void>;
 }
 
+export interface ExecutorCallContext {
+    name: string;
+    context: unknown;
+    args: unknown;
+}
+
 export abstract class Executor<C = unknown, A = unknown, R = unknown> {
     constructor(public ctx: C, public args: A) { }
 
@@ -418,6 +424,7 @@ export class WebService<C extends CordisContext = CordisContext> extends Service
     private serverLayers = [];
     private handlerLayers = [];
     private wsLayers = [];
+    private executorLayers = [];
     private captureAllRoutes = Object.create(null);
     private customDefaultContext: C;
     private activeHandlers: Map<Handler<C>, { start: number, name: string }> = new Map();
@@ -931,30 +938,43 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
         const executorName = registration.executorClass?.name || registration.execute?.name || 'callback';
         const startedAt = Date.now();
         let status = 'ok';
+        const call: ExecutorCallContext = { name, context, args };
         try {
-            registration.checker.call(checkerContext, context);
-            const invocation = prepare ? prepare(context, args) : { context, args };
-            if (registration.executorClass) {
-                const ExecutorClass = registration.executorClass as ExecutorClass<unknown, unknown, unknown>;
-                const executor = new ExecutorClass(invocation.context, invocation.args);
-                const executorName = ExecutorClass.name.replace(/Executor$/, '');
-                return await executor.run({
-                    create: async () => {
-                        await (this.ctx.parallel as any)('executor/create', executor, name);
-                        await (this.ctx.parallel as any)(`executor/create/${executorName}`, executor, name);
+            return await executeMiddlewareStack(call, [
+                ...this.executorLayers,
+                {
+                    name: 'execute',
+                    func: async (tool: ExecutorCallContext) => {
+                        registration.checker.call(checkerContext, tool.context);
+                        const invocation = prepare
+                            ? prepare(tool.context, tool.args)
+                            : { context: tool.context, args: tool.args };
+                        tool.context = invocation.context;
+                        tool.args = invocation.args;
+                        if (registration.executorClass) {
+                            const ExecutorClass = registration.executorClass as ExecutorClass<unknown, unknown, unknown>;
+                            const executor = new ExecutorClass(invocation.context, invocation.args);
+                            const executorName = ExecutorClass.name.replace(/Executor$/, '');
+                            return await executor.run({
+                                create: async () => {
+                                    await (this.ctx.parallel as any)('executor/create', executor, name);
+                                    await (this.ctx.parallel as any)(`executor/create/${executorName}`, executor, name);
+                                },
+                                hook: async (hook) => {
+                                    await (this.ctx.serial as any)(`executor/${hook}/${executorName}`, executor, name);
+                                    await (this.ctx.serial as any)(`executor/${hook}`, executor, name);
+                                },
+                                error: async (error) => {
+                                    await (this.ctx.serial as any)(`executor/error/${executorName}`, executor, error, name);
+                                    await (this.ctx.serial as any)('executor/error', executor, error, name);
+                                },
+                            });
+                        }
+                        if (typeof registration.execute !== 'function') throw new Error(`Tool ${name} is not executable.`);
+                        return await registration.execute(invocation.context, invocation.args);
                     },
-                    hook: async (hook) => {
-                        await (this.ctx.serial as any)(`executor/${hook}/${executorName}`, executor, name);
-                        await (this.ctx.serial as any)(`executor/${hook}`, executor, name);
-                    },
-                    error: async (error) => {
-                        await (this.ctx.serial as any)(`executor/error/${executorName}`, executor, error, name);
-                        await (this.ctx.serial as any)('executor/error', executor, error, name);
-                    },
-                });
-            }
-            if (typeof registration.execute !== 'function') throw new Error(`Tool ${name} is not executable.`);
-            return await registration.execute(invocation.context, invocation.args);
+                },
+            ]);
         } catch (error) {
             status = 'error';
             throw error;
@@ -993,7 +1013,7 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
         return this.register('conn', name, path, RouteHandler, ...permPrivChecker);
     }
 
-    private registerLayer(name: 'serverLayers' | 'handlerLayers' | 'wsLayers', layer: any) {
+    private registerLayer(name: 'serverLayers' | 'handlerLayers' | 'wsLayers' | 'executorLayers', layer: any) {
         this.ctx.effect(() => {
             this[name].push(layer);
             return () => {
@@ -1012,6 +1032,10 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
 
     public addWSLayer(name: string, func: any) {
         return this.registerLayer('wsLayers', { name, func });
+    }
+
+    public addExecutorLayer(name: string, func: any) {
+        return this.registerLayer('executorLayers', { name, func });
     }
 
     public addLayer(name: string, layer: any) {
