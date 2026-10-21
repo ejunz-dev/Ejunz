@@ -112,6 +112,11 @@
 'Thinking': Thinking
 'User': User
 'Context injection': Context injection
+'Permission injection': Permission injection
+'Permission injection · {0}': 'Permission injection · {0}'
+'{0} permission bits': '{0} permission bits'
+'Injected permission bits:': 'Injected permission bits:'
+'No permission bits are injected for this add-on.': 'No permission bits are injected for this add-on.'
 'Plugin mounted': Plugin mounted
 'Context compacted': Context compacted
 'Updated': Updated

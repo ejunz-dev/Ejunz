@@ -376,6 +376,22 @@ export default class ToolService extends Service {
         }));
     }
 
+    permissionBitsForAddon(addonId: string, domainId: string, access: ToolAccess): { perm: bigint[]; priv: number[] } {
+        const perm = new Set<bigint>();
+        const priv = new Set<number>();
+        for (const { tool } of this.visible(undefined, domainId, undefined, undefined, true)) {
+            if (tool.addonId !== addonId) continue;
+            const privFlags = tool.priv === undefined ? [] : Array.isArray(tool.priv) ? tool.priv : [tool.priv];
+            for (const flag of privFlags) if (flag !== 0 && hasPriv(access, flag)) priv.add(flag);
+            const permFlags = tool.perm === undefined ? [] : Array.isArray(tool.perm) ? tool.perm : [tool.perm];
+            for (const flag of permFlags) if (flag !== 0n && hasPerm(access, flag)) perm.add(flag);
+        }
+        return {
+            perm: [...perm].sort((left, right) => left < right ? -1 : left > right ? 1 : 0),
+            priv: [...priv].sort((left, right) => left - right),
+        };
+    }
+
     catalog(source?: string, overrides?: { name: string; description: string }[], domainId?: string, access?: ToolAccess, mountedAddons?: ReadonlySet<string>): ToolSpec[] {
         const tools: ToolSpec[] = this.list(source, domainId, access, mountedAddons).map(({ name, description, inputSchema }) => ({ name, description, inputSchema }));
         if (!overrides || !overrides.length) return tools;

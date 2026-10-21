@@ -33,6 +33,7 @@ export interface ChatMessage {
     contextForm?: string;
     contextFiles?: UploadedFileMeta[];
     addonMount?: { addonId: string; enabled: boolean; snapshot?: boolean };
+    permissionInjection?: SessionPermissionInjectionView;
     retry?: number;
     retryDelayMs?: number;
     retryState?: 'scheduled' | 'started' | 'cancelled';
@@ -68,6 +69,11 @@ export interface AgentAddonView {
     toolPrefixes?: readonly string[];
     contextSources?: readonly string[];
     tools?: { name: string; description: string }[];
+}
+
+export interface SessionPermissionInjectionView {
+    addonId: string;
+    permissions: readonly { kind: 'perm' | 'priv'; id: string; name: string; bit: string }[];
 }
 
 export interface SessionModels {

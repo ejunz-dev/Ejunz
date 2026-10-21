@@ -16,7 +16,7 @@ import { TurnStatusRow } from './TurnStatusRow';
 function addonForContextMessage(message: ChatMessage, addons: readonly AgentAddonView[]): AgentAddonView | undefined {
     if (message.role !== 'context' || !message.contextSource || typeof message.contextSource !== 'object') return undefined;
     const source = message.contextSource as Record<string, unknown>;
-    if (source.kind === 'agent-addon' && typeof source.addonId === 'string') {
+    if ((source.kind === 'agent-addon' || source.kind === 'agent-addon-permission-injection') && typeof source.addonId === 'string') {
         return addons.find((addon) => addon.addonId === source.addonId);
     }
     if (source.kind !== 'plugin') return undefined;
@@ -73,10 +73,13 @@ export function ChatMessageView({ message, addons, onOpenFile, onOpenDetails }: 
         const addon = addonForContextMessage(message, addons);
         const source = message.contextSource && typeof message.contextSource === 'object' ? message.contextSource as Record<string, unknown> : undefined;
         const isAddonMount = source?.kind === 'plugin' && source.plugin === 'ejunz-agent-plugin-lifecycle';
-        const label = message.contextRole === 'recall'
-            ? i18n('Context recall')
-            : addon ? `${addon.displayName} · ${isAddonMount ? i18n('Add-on mounted') : i18n('Context injection')}` : isAddonMount ? i18n('Add-on mounted') : i18n('Context injection');
-        return <ContextInjectionRow label={label} source={isAddonMount ? undefined : message.contextLabel} summary={message.contextSummary} text={message.text} contextSource={message.contextSource} contextForm={message.contextForm} />;
+        const isPermissionInjection = message.permissionInjection !== undefined;
+        const label = isPermissionInjection
+            ? i18n('Permission injection · {0}', addon?.displayName ?? message.permissionInjection?.addonId ?? '')
+            : message.contextRole === 'recall'
+                ? i18n('Context recall')
+                : addon ? `${addon.displayName} · ${isAddonMount ? i18n('Add-on mounted') : i18n('Context injection')}` : isAddonMount ? i18n('Add-on mounted') : i18n('Context injection');
+        return <ContextInjectionRow label={label} source={isAddonMount || isPermissionInjection ? undefined : message.contextLabel} summary={message.contextSummary} text={message.text} contextSource={message.contextSource} contextForm={message.contextForm} />;
     }
     if (message.eventType === 'turn/error' || message.eventType === 'turn/max-tokens') return <TurnStatusRow message={message} />;
     return <div className="eza-systemMessage">{message.text}</div>;

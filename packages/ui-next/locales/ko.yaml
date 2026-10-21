@@ -101,6 +101,11 @@
 'Uploaded {0} files': '파일 {0}개 업로드됨'
 'Thinking': '생각 중'
 'Context injection': '컨텍스트 주입'
+'Permission injection': 권한 주입
+'Permission injection · {0}': '권한 주입 · {0}'
+'{0} permission bits': '권한 비트 {0}개'
+'Injected permission bits:': '주입된 권한 비트:'
+'No permission bits are injected for this add-on.': '이 애드온에는 주입된 권한 비트가 없습니다.'
 'Plugin mounted': '플러그인 마운트됨'
 'Context compacted': '컨텍스트를 정리했습니다'
 'Tool': '도구'

@@ -93,6 +93,47 @@ describe('FixtureApiClient API additions', () => {
     expect(addonEvents[0]?.event.seq).toBeLessThan(userMessages.at(-1)?.event.seq ?? 0)
   })
 
+  it('records initial permission injection as a durable session event', async () => {
+    const client = new FixtureApiClient()
+    const permissionInjection = {
+      permissions: [{ kind: 'perm', id: 'PERM.AGENT_PERM_AGENT_LIST', name: 'List Agents', bit: `0x${(1n << 103n).toString(16)}` }],
+    }
+    const recorded = await client.sessions.prompt({
+      sessionId: alpha,
+      mode: 'queue',
+      content: [{ type: 'text', text: 'first prompt' }],
+      addonSnapshot: [{ addonId: 'agent', enabled: true, permissionInjection }],
+    })
+    const refreshedPermissionInjection = {
+      permissions: [{ kind: 'perm', id: 'PERM.AGENT_PERM_AGENT_UPDATE', name: 'Update an Agent', bit: `0x${(1n << 106n).toString(16)}` }],
+    }
+    const refreshed = await client.sessions.permissionInjection({
+      sessionId: alpha,
+      injections: [{ addonId: 'agent', ...refreshedPermissionInjection }],
+    })
+    const history = await client.sessions.history({ sessionId: alpha, maxMessages: 100 })
+
+    expect(recorded.result.ok).toBe(true)
+    expect(refreshed.result.ok).toBe(true)
+    if (!history.result.ok) throw new Error(history.result.error.message)
+    const events = history.result.value.events
+    const mount = events.find(entry => entry.event.type === 'session/addons')
+    const injections = events.filter(entry => entry.event.type === 'session/permission-injection')
+    const prompt = events.filter(entry => entry.event.type === 'user/message').at(-1)
+    expect(mount?.event).toMatchObject({ data: { snapshot: [{ addonId: 'agent', enabled: true }] } })
+    expect(injections).toHaveLength(2)
+    expect(injections[0]?.event).toMatchObject({
+      type: 'session/permission-injection',
+      data: { addonId: 'agent', ...permissionInjection },
+    })
+    expect(injections[1]?.event).toMatchObject({
+      type: 'session/permission-injection',
+      data: { addonId: 'agent', ...refreshedPermissionInjection },
+    })
+    expect(injections[0]?.event.seq).toBeLessThan(prompt?.event.seq ?? 0)
+    expect(injections[1]?.event.seq).toBeGreaterThan(injections[0]?.event.seq ?? 0)
+  })
+
   it('lets individual addon changes override an initial snapshot', async () => {
     const client = new FixtureApiClient()
     await client.sessions.prompt({

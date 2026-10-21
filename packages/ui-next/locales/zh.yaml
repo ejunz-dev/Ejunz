@@ -112,6 +112,11 @@
 'Thinking': 思考中
 'User': 用户
 'Context injection': 注入上下文
+'Permission injection': 权限注入
+'Permission injection · {0}': '权限注入 · {0}'
+'{0} permission bits': '{0} 个权限位'
+'Injected permission bits:': '注入权限位：'
+'No permission bits are injected for this add-on.': 此插件未注入权限位。
 'Plugin mounted': 插件已挂载
 'Context compacted': 上下文已整理
 'Updated': 已更新

@@ -2501,7 +2501,21 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
                 }
               }
               const snapshot = request.payload.addonSnapshot.filter(state => !recorded.has(state.addonId))
-              if (snapshot.length) agent.session.append('session/addons', { snapshot })
+              if (snapshot.length) {
+                agent.session.append('session/addons', { snapshot: snapshot.map(({ addonId, enabled }) => ({ addonId, enabled })) })
+              }
+              for (const state of request.payload.addonSnapshot) {
+                if (!state.enabled || !state.permissionInjection) continue
+                const injection = {
+                  addonId: state.addonId,
+                  ...state.permissionInjection,
+                }
+                const previous = [...agent.session.events].reverse().find(event =>
+                  event.type === 'session/permission-injection' && event.data.addonId === state.addonId,
+                )
+                if (previous?.type === 'session/permission-injection' && JSON.stringify(previous.data) === JSON.stringify(injection)) continue
+                agent.session.append('session/permission-injection', injection)
+              }
             }
             if (mode === 'steer') agent.steer(message)
             else agent.followup(message)
@@ -2556,7 +2570,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       },
 
       async addons(request) {
-        const { sessionId, addonId, enabled } = request.payload
+        const { sessionId, addonId, enabled, permissionInjection } = request.payload
         const found = await agentFor(sessionId)
         if ('error' in found) return err(request, found.error)
         try {
@@ -2570,19 +2584,52 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
               ? previous.data.enabled
               : previous.data.snapshot.find(state => state.addonId === addonId)?.enabled
             : undefined
+          const appendPermissionInjection = () => enabled && permissionInjection
+            ? found.agent.session.append('session/permission-injection', {
+                addonId,
+                ...permissionInjection,
+              })
+            : undefined
           if (previous && previousEnabled === enabled) {
+            const injection = appendPermissionInjection()
             await ctx.sessions.flush(found.agent.session)
             await refreshHostTools(found.agent.ctx)
-            return ok(request, { accepted: true as const, seq: previous.seq })
+            return ok(request, { accepted: true as const, seq: injection?.seq ?? previous.seq })
           }
           const event = found.agent.session.append('session/addons', { addonId, enabled })
+          const injection = appendPermissionInjection()
           await ctx.sessions.flush(found.agent.session)
           await refreshHostTools(found.agent.ctx)
-          return ok(request, { accepted: true as const, seq: event.seq })
+          return ok(request, { accepted: true as const, seq: injection?.seq ?? event.seq })
         } catch (error: unknown) {
           return err(request, {
             code: 'internal',
             message: 'addon state update failed',
+            details: { reason: String(error) },
+          })
+        }
+      },
+
+      async permissionInjection(request) {
+        const { sessionId, injections } = request.payload
+        const found = await agentFor(sessionId)
+        if ('error' in found) return err(request, found.error)
+        try {
+          let seq: number | undefined
+          for (const injection of injections) {
+            const previous = [...found.agent.session.events].reverse().find(event =>
+              event.type === 'session/permission-injection' && event.data.addonId === injection.addonId,
+            )
+            if (previous?.type === 'session/permission-injection'
+              && JSON.stringify(previous.data) === JSON.stringify(injection)) continue
+            seq = found.agent.session.append('session/permission-injection', injection).seq
+          }
+          if (seq !== undefined) await ctx.sessions.flush(found.agent.session)
+          return ok(request, { accepted: true as const, ...(seq === undefined ? {} : { seq }) })
+        } catch (error: unknown) {
+          return err(request, {
+            code: 'internal',
+            message: 'permission injection update failed',
             details: { reason: String(error) },
           })
         }

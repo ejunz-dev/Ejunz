@@ -1,5 +1,5 @@
 import { i18n } from '@/i18n';
-import type { ChatMessage, ChatSegment, QueueItem } from '../components/types';
+import type { SessionPermissionInjectionView, ChatMessage, ChatSegment, QueueItem } from '../components/types';
 import { FILE_INJECTION_PLUGIN, FILE_INJECTION_SECTION, parseFileInjection, type UploadedFileMeta } from './uploads';
 
 export type JsonObject = Record<string, unknown>;
@@ -170,6 +170,40 @@ export function eventMessage(event: SessionEvent): ChatMessage | null {
             : typeof data.pluginId === 'string' ? data.pluginId : '';
         if (!addonId || typeof data.enabled !== 'boolean') return null;
         return addonMountMessage(event, addonId, data.enabled, `session-addon-${event.seq}`);
+    }
+    if (event.type === 'session/permission-injection') {
+        const addonId = typeof data.addonId === 'string' ? data.addonId : '';
+        const permissions = (Array.isArray(data.permissions) ? data.permissions : [])
+            .filter((value): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value))
+            .filter((permission) => (permission.kind === 'perm' || permission.kind === 'priv')
+                && typeof permission.id === 'string'
+                && typeof permission.name === 'string'
+                && typeof permission.bit === 'string')
+            .map((permission) => ({
+                kind: permission.kind as 'perm' | 'priv',
+                id: String(permission.id),
+                name: String(permission.name),
+                bit: String(permission.bit),
+            }));
+        if (!addonId) return null;
+        const permissionInjection: SessionPermissionInjectionView = { addonId, permissions };
+        const text = permissions.length
+            ? `${i18n('Injected permission bits:')}\n${permissions.map((permission) => `- ${permission.name} (${permission.id}; ${permission.bit})`).join('\n')}`
+            : i18n('No permission bits are injected for this add-on.');
+        return {
+            key: `permission-injection-${event.seq}`,
+            role: 'context',
+            text,
+            contextLabel: i18n('Permission injection'),
+            contextRole: 'inject',
+            contextSummary: i18n('{0} permission bits', permissions.length),
+            contextSource: { kind: 'agent-addon-permission-injection', addonId, permissions },
+            contextForm: 'snapshot',
+            permissionInjection,
+            eventType: event.type,
+            time: event.time,
+            running: false,
+        };
     }
     if (event.type === 'user/message' || event.type === 'assistant/message') {
         const segments = contentSegments(messageContent(event.data));
@@ -428,21 +462,32 @@ export function fileInjectionsAfterUser(messages: ChatMessage[]): ChatMessage[] 
 
 export function placeInitialAddonMountsAfterFirstUser(messages: readonly ChatMessage[]): ChatMessage[] {
     const firstUser = messages.findIndex((message) => message.role === 'user');
-    if (firstUser < 0) return messages.filter((message) => message.role !== 'addon');
+    if (firstUser < 0) return messages.filter((message) => message.role !== 'addon' && !message.permissionInjection);
     const firstModelOutput = messages.findIndex((message, index) =>
         index > firstUser && (message.role === 'assistant' || message.role === 'tool'));
     const firstTurnEnd = firstModelOutput < 0 ? messages.length : firstModelOutput;
-    const initialMounts = new Map<string, ChatMessage>();
+    const initialRows = new Map<string, { mount?: ChatMessage; permission?: ChatMessage }>();
+    const moved = new Set<number>();
     messages.forEach((message, index) => {
-        if (message.role !== 'addon' || !message.addonMount) return;
-        if (message.addonMount.snapshot || index < firstUser || index < firstTurnEnd) {
-            initialMounts.set(message.addonMount.addonId, message);
+        if (message.role === 'addon' && message.addonMount
+            && (message.addonMount.snapshot || index < firstUser || index < firstTurnEnd)) {
+            const rows = initialRows.get(message.addonMount.addonId) ?? {};
+            rows.mount = message;
+            initialRows.set(message.addonMount.addonId, rows);
+            moved.add(index);
+            return;
+        }
+        if (message.permissionInjection && (index < firstUser || index < firstTurnEnd)) {
+            const rows = initialRows.get(message.permissionInjection.addonId) ?? {};
+            rows.permission = message;
+            initialRows.set(message.permissionInjection.addonId, rows);
+            moved.add(index);
         }
     });
-    const timeline = messages.filter((message, index) =>
-        message.role !== 'addon' || !message.addonMount || !(message.addonMount.snapshot || index < firstUser || index < firstTurnEnd));
+    const timeline = messages.filter((_, index) => !moved.has(index));
     const userIndex = timeline.findIndex((message) => message.role === 'user');
-    return [...timeline.slice(0, userIndex + 1), ...initialMounts.values(), ...timeline.slice(userIndex + 1)];
+    const initial = [...initialRows.values()].flatMap(({ mount, permission }) => [mount, permission].filter((message): message is ChatMessage => message !== undefined));
+    return [...timeline.slice(0, userIndex + 1), ...initial, ...timeline.slice(userIndex + 1)];
 }
 
 export function eventsToMessages(entries: HistoryEntry[]): ChatMessage[] {

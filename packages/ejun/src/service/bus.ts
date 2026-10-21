@@ -68,6 +68,7 @@ export interface AgentContextChange {
     agentId: string;
 }
 
+
 export interface EventMap {
     'app/listen': () => void;
     'app/started': () => void;

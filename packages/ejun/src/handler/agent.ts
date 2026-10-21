@@ -1,7 +1,7 @@
 import type { Context } from '../context';
 import { ConnectionHandler, Handler } from '@ejunz/framework';
 import { PERM, PRIV } from '../model/builtin';
-import GroupDefinitionModel, { AgentModel, AgentSessionModel, defaultAgentAcl, DEFAULT_AGENT_ROLE_ID, normalizeAgentAcl, permissionsForAgentAcl } from '../model/agent';
+import GroupDefinitionModel, { AgentModel, AgentSessionModel, defaultAgentAcl, normalizeAgentAcl, permissionsForAgentAcl } from '../model/agent';
 import type { AgentConfig, AgentTeamConfig, AgentTeamDoc } from '../model/agent';
 import type { AgentScope, RuntimeLink } from '../service/runtime';
 import type { AgentStorageDescriptor } from '../model/agent';
@@ -18,7 +18,7 @@ interface RpcEnvelope {
     domainId?: string;
     groupId?: number | null;
 }
-const { requireBridgeToken, baseSessionScope, toolRegistry, scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, teamRpc, agentRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled, agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, baseTutorEnsure, baseTutorList, baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems, runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount, sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink, logger, RUNTIME_HELLO_TIMEOUT_MS, addLink, rememberRuntime, reportRuntime, agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider, SystemModel, randomUUID, WebSocket, parseRuntimeFrame, createSocketLink, followLinks, runtimeLinks, runtimeFacts, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels } = service;
+const { requireBridgeToken, baseSessionScope, toolRegistry, scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, teamRpc, agentRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled, agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, baseTutorEnsure, baseTutorList, baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems, runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount, sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink, logger, RUNTIME_HELLO_TIMEOUT_MS, addLink, rememberRuntime, reportRuntime, agentDataAdapter, AgentStorageModel, AgentLinkModel, mountedAddonsForSession, permissionsForSession, createProvider, SystemModel, randomUUID, WebSocket, parseRuntimeFrame, createSocketLink, followLinks, runtimeLinks, runtimeFacts, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels } = service;
 const dataOk = (value: unknown): Record<string, unknown> => ({ ok: true, value });
 const dataError = (message: string): Record<string, unknown> => ({ ok: false, error: { message } });
 
@@ -151,37 +151,6 @@ async function saveAgentConfig(envelope: RpcEnvelope, scope: AgentScope, ctx: Co
     return rpcOk(envelope.rpcId, { agentId, config: updated.config ?? config, syncScheduled: true });
 }
 
-async function agentAclForScope(scope: AgentScope, teamId?: string) {
-    const teams = await AgentSessionModel.listTeams(scope.domainId, scope.userId, scope.groupId);
-    const root = typeof scope.groupId === 'number' ? teams.find((team) => team.isRootTeam) : undefined;
-    const selectedTeam = teamId ? teams.find((team) => team.teamId === teamId) : undefined;
-    return root?.config?.acl || selectedTeam?.config?.acl;
-}
-
-async function permissionsForSession(
-    session: { domainId: string; userId: number; sessionId: string; groupId?: number; teamId?: string; agentId?: string },
-    mountedAddons: ReadonlySet<string>,
-): Promise<Set<string>> {
-    const scope = { domainId: session.domainId, userId: session.userId, groupId: session.groupId };
-    const acl = await agentAclForScope(scope, session.teamId);
-    const agent = session.agentId ? await AgentModel.getAgent(session.domainId, session.userId, session.agentId, session.groupId) : null;
-    const roleId = agent?.settings?.roleId && acl?.roles.some((role) => role.roleId === agent.settings.roleId)
-        ? agent.settings.roleId
-        : DEFAULT_AGENT_ROLE_ID;
-    const permissions = permissionsForAgentAcl(acl, roleId);
-    for (const permissionId of [...permissions]) {
-        const addonId = permissionId.split(':', 1)[0];
-        if (!mountedAddons.has(addonId)) permissions.delete(permissionId);
-    }
-    if (roleId === 'root') {
-        for (const addon of listAgentAddons()) {
-            if (!mountedAddons.has(addon.addonId)) continue;
-            for (const permission of addon.permissions || []) permissions.add(addonAgentPermissionId(addon.addonId, permission.id));
-        }
-    }
-    return permissions;
-}
-
 async function syncAddonPermissionsToRootTeams(change: AgentAddonStateChange): Promise<void> {
     const addon = listAgentAddons().find((item) => item.addonId === change.addonId);
     if (!addon?.permissions?.length) return;
@@ -209,40 +178,6 @@ async function syncAddonPermissionsToRootTeams(change: AgentAddonStateChange): P
         if (!changed) continue;
         await AgentSessionModel.updateTeamConfig(change.domainId, root.userId, root.teamId, { ...(root.config || {}), acl: { ...acl, roles } }, root.groupId);
     }
-}
-
-async function mountedAddonsForSession(session: { domainId: string; userId: number; sessionId: string; groupId?: number; teamId?: string }): Promise<Set<string>> {
-    const addonIds = new Set(listAgentAddons().map((addon) => addon.addonId));
-    const states = new Map<string, boolean>();
-    const recordState = (addonId: unknown, enabled: unknown) => {
-        if (typeof addonId === 'string' && addonIds.has(addonId) && !states.has(addonId) && typeof enabled === 'boolean') {
-            states.set(addonId, enabled);
-        }
-    };
-    for (const entry of await AgentSessionModel.listAddonEvents(session.domainId, session.userId, session.sessionId)) {
-        const data = entry.data && typeof entry.data === 'object' ? entry.data as Record<string, unknown> : {};
-        if (entry.type === 'session/addons' && Array.isArray(data.snapshot)) {
-            for (const value of data.snapshot) {
-                const state = value && typeof value === 'object' ? value as Record<string, unknown> : {};
-                recordState(state.addonId, state.enabled);
-            }
-            continue;
-        }
-        const addonId = entry.type === 'session/addons'
-            ? data.addonId
-            : entry.type === 'session/plugins' ? data.pluginId : undefined;
-        recordState(addonId, data.enabled);
-    }
-    const domainEnabled = await enabledAgentAddonIds(session.domainId, session.groupId);
-    const teamConfig = session.teamId
-        ? (await AgentSessionModel.getTeam(session.domainId, session.userId, session.teamId, session.groupId))?.config
-        : undefined;
-    return new Set([...addonIds].filter((addonId) => {
-        const locallyEnabled = teamConfig?.addons === undefined
-            ? states.get(addonId) ?? domainEnabled.has(addonId)
-            : teamConfig.addons[addonId] === true;
-        return locallyEnabled && domainEnabled.has(addonId);
-    }));
 }
 
 function groupDefinitionView(agent: Record<string, unknown>) {

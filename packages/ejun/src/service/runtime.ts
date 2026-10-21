@@ -7,13 +7,14 @@ import type { Context } from '../context';
 import { Service } from '../context';
 import { Logger } from '../logger';
 import SystemModel from '../model/system';
+import { PERM, PERMS, PRIV } from '../model/builtin';
 import GroupDefinitionModel from '../model/agent';
 import { createProvider } from './provider';
 import { httpServer } from '@ejunz/framework';
-import { AgentModel, AgentSessionModel, AgentRuntimeModel, AgentLinkModel, AgentStorageModel } from '../model/agent';
+import { AgentModel, AgentSessionModel, AgentRuntimeModel, AgentLinkModel, AgentStorageModel, DEFAULT_AGENT_ROLE_ID, permissionsForAgentAcl } from '../model/agent';
 import { type AgentConfig, type AgentDoc, type AgentSettings, type AgentDisplayPrefs, type AgentDomainSettings, type AgentTeamConfig, type AgentTeamDoc, type AgentSessionDoc, type AgentSessionSummary, type AgentSessionType } from '../model/agent';
 import { type AgentRuntimeSummary } from '../model/agent';
-import { listAgentAddons } from './addons';
+import { addonAgentPermissionId, listAgentAddons } from './addons';
 import type { AgentAddonStateChange, AgentContextChange, AgentGroupContextChange, AgentTeamContextChange } from './bus';
 
 interface EjunContext {
@@ -1103,14 +1104,19 @@ async function syncSessionAddonsForTeam(scope: AgentScope, sessionId: string, te
         return addons.map((addon) => addon.addonId);
     }
 
+    const mountedAddons = new Set(addons.filter((addon) => agentAddonEnabled(settings, addon.addonId, scope.groupId)
+        && (localSelection === undefined || localSelection[addon.addonId] === true)).map((addon) => addon.addonId));
+    const permissionInjections = new Map((await permissionInjectionsForSession(session, mountedAddons)).map((injection) => [injection.addonId, injection.permissions]));
     const failedAddonIds: string[] = [];
     for (const addon of addons) {
         try {
+            const enabled = mountedAddons.has(addon.addonId);
+            const permissions = permissionInjections.get(addon.addonId);
             const result = await callUpstream('session.addons', {
                 sessionId,
                 addonId: addon.addonId,
-                enabled: agentAddonEnabled(settings, addon.addonId, scope.groupId)
-                    && (localSelection === undefined || localSelection[addon.addonId] === true),
+                enabled,
+                ...(enabled && permissions ? { permissionInjection: { permissions } } : {}),
             }, link);
             if (!result.body.result?.ok) throw new Error(result.body.error?.message || 'add-on state event failed');
         } catch (error) {
@@ -1481,6 +1487,7 @@ async function baseSessionScope(sessionId: string, optional = false) {
 function toolRegistry(): {
     list(source?: string, domainId?: string, access?: { priv?: number; perm?: bigint; scope?: bigint }, mountedAddons?: ReadonlySet<string>): { name: string; description: string; inputSchema: Record<string, unknown>; addonId: string; source: string; mutating: boolean }[];
     listForCatalog(domainId?: string): { name: string; description: string; inputSchema: Record<string, unknown>; addonId: string; source: string; mutating: boolean }[];
+    permissionBitsForAddon(addonId: string, domainId: string, access: { priv?: number; perm?: bigint; scope?: bigint }): { perm: bigint[]; priv: number[] };
     get(name: string): { addonId: string } | undefined;
     instructions(context: { domainId: string; baseDocId: number; sessionId?: string }, source?: string, mountedAddons?: ReadonlySet<string>): Promise<string[]>;
 } {
@@ -1803,8 +1810,10 @@ function agentAddonEnabled(settings: AgentDomainSettings, addonId: string, group
     return typeof override === 'boolean' ? override : addon.defaultEnabled !== false;
 }
 
+type PermissionBitView = { kind: 'perm' | 'priv'; id: string; name: string; bit: string };
+type AddonPermissionInjection = { permissions: PermissionBitView[] };
 const recordedAddonSnapshots = new Set<string>();
-const pendingAddonSnapshots = new Map<string, Promise<{ addonId: string; enabled: boolean }[] | undefined>>();
+const pendingAddonSnapshots = new Map<string, Promise<{ addonId: string; enabled: boolean; permissionInjection?: AddonPermissionInjection }[] | undefined>>();
 
 function rememberAddonSnapshot(sessionId: string): void {
     recordedAddonSnapshots.add(sessionId);
@@ -1814,41 +1823,122 @@ function rememberAddonSnapshot(sessionId: string): void {
     }
 }
 
-async function initialAddonSnapshotForPrompt(sessionId: string): Promise<{ addonId: string; enabled: boolean }[] | undefined> {
+type SessionAddonScope = Pick<AgentSessionDoc, 'domainId' | 'userId' | 'sessionId' | 'groupId' | 'teamId' | 'agentId'>;
+
+async function mountedAddonsForSession(session: SessionAddonScope): Promise<Set<string>> {
+    const addonIds = new Set(listAgentAddons().map((addon) => addon.addonId));
+    const states = new Map<string, boolean>();
+    const recordState = (addonId: unknown, enabled: unknown) => {
+        if (typeof addonId === 'string' && addonIds.has(addonId) && !states.has(addonId) && typeof enabled === 'boolean') {
+            states.set(addonId, enabled);
+        }
+    };
+    for (const entry of await AgentSessionModel.listAddonEvents(session.domainId, session.userId, session.sessionId)) {
+        const data = entry.data && typeof entry.data === 'object' ? entry.data as Record<string, unknown> : {};
+        if (entry.type === 'session/addons' && Array.isArray(data.snapshot)) {
+            for (const value of data.snapshot) {
+                const state = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+                recordState(state.addonId, state.enabled);
+            }
+            continue;
+        }
+        const addonId = entry.type === 'session/addons'
+            ? data.addonId
+            : entry.type === 'session/plugins' ? data.pluginId : undefined;
+        recordState(addonId, data.enabled);
+    }
+    const domainEnabled = await enabledAgentAddonIds(session.domainId, session.groupId);
+    const teamConfig = await teamConfigForTeam({ domainId: session.domainId, userId: session.userId, groupId: session.groupId }, session.teamId);
+    return new Set([...addonIds].filter((addonId) => {
+        const locallyEnabled = teamConfig?.addons === undefined
+            ? states.get(addonId) ?? domainEnabled.has(addonId)
+            : teamConfig.addons[addonId] === true;
+        return locallyEnabled && domainEnabled.has(addonId);
+    }));
+}
+
+async function effectivePermissionsForSession(session: SessionAddonScope, mountedAddons: ReadonlySet<string>, teamId = session.teamId): Promise<Set<string>> {
+    const teams = await AgentSessionModel.listTeams(session.domainId, session.userId, session.groupId);
+    const rootTeam = typeof session.groupId === 'number' ? teams.find((team) => team.isRootTeam) : undefined;
+    const selectedTeam = teamId ? teams.find((team) => team.teamId === teamId) : undefined;
+    const acl = rootTeam?.config?.acl || selectedTeam?.config?.acl;
+    const agent = session.agentId ? await AgentModel.getAgent(session.domainId, session.userId, session.agentId, session.groupId) : null;
+    const roleId = agent?.settings?.roleId && acl?.roles.some((role) => role.roleId === agent.settings.roleId)
+        ? agent.settings.roleId
+        : DEFAULT_AGENT_ROLE_ID;
+    const permissions = permissionsForAgentAcl(acl, roleId);
+    for (const permissionId of [...permissions]) {
+        const addonId = permissionId.split(':', 1)[0];
+        if (!mountedAddons.has(addonId)) permissions.delete(permissionId);
+    }
+    if (roleId === 'root') {
+        for (const addon of listAgentAddons()) {
+            if (!mountedAddons.has(addon.addonId)) continue;
+            for (const permission of addon.permissions || []) permissions.add(addonAgentPermissionId(addon.addonId, permission.id));
+        }
+    }
+    return permissions;
+}
+
+async function permissionsForSession(session: SessionAddonScope, mountedAddons: ReadonlySet<string>): Promise<Set<string>> {
+    return await effectivePermissionsForSession(session, mountedAddons);
+}
+
+function permissionBitView(kind: 'perm' | 'priv', bit: bigint | number): PermissionBitView {
+    if (kind === 'perm') {
+        const permission = PERMS.find((item) => item.key === bit);
+        const symbol = Object.entries(PERM).find(([name, value]) => value === bit && !/_(?:ALL|ADMIN)$/.test(name))?.[0];
+        const value = `0x${bit.toString(16)}`;
+        const id = symbol ? `PERM.${symbol}` : `PERM.${value}`;
+        return { kind, id, name: permission?.desc || symbol || id, bit: value };
+    }
+
+    const symbol = Object.entries(PRIV).find(([name, value]) => value === bit
+        && !['USER_PRIV_NONE', 'USER_PRIV_ALL', 'USER_PRIV_DEFAULT', 'USER_PRIV_NEVER'].includes(name))?.[0];
+    const words = symbol?.replace(/^USER_PRIV_/, '').toLowerCase().split('_') || [];
+    const name = words.map((word) => word ? word[0].toUpperCase() + word.slice(1) : '').join(' ') || 'User privilege';
+    const value = `0x${(Number(bit) >>> 0).toString(16)}`;
+    const id = symbol ? `PRIV.${symbol}` : `PRIV.${value}`;
+    return { kind, id, name, bit: value };
+}
+
+async function permissionInjectionsForSession(
+    session: SessionAddonScope,
+    mountedAddons?: ReadonlySet<string>,
+): Promise<{ addonId: string; permissions: PermissionBitView[] }[]> {
+    const activeAddons = mountedAddons ?? await mountedAddonsForSession(session);
+    const UserModel = (global as any).Ejunz?.model?.user;
+    const user = UserModel ? await UserModel.getById(session.domainId, session.userId) : null;
+    const access = { priv: user?.priv, perm: user?.perm, scope: user?.scope };
+    const tools = toolRegistry();
+    return [...activeAddons].flatMap((addonId) => {
+        const bits = tools.permissionBitsForAddon(addonId, session.domainId, access);
+        const permissions = [
+            ...bits.perm.map((bit) => permissionBitView('perm', bit)),
+            ...bits.priv.map((bit) => permissionBitView('priv', bit)),
+        ];
+        return permissions.length ? [{ addonId, permissions }] : [];
+    });
+}
+
+async function initialAddonSnapshotForPrompt(sessionId: string): Promise<{ addonId: string; enabled: boolean; permissionInjection?: AddonPermissionInjection }[] | undefined> {
     if (recordedAddonSnapshots.has(sessionId)) return undefined;
     const pending = pendingAddonSnapshots.get(sessionId);
     if (pending) return await pending;
     const preparation = (async () => {
         const session = await AgentSessionModel.getSessionAny(sessionId);
         if (!session) return undefined;
-        const events = await AgentSessionModel.listAddonEvents(session.domainId, session.userId, sessionId);
-        const recordedAddonIds = new Set<string>();
-        for (const entry of events) {
-            const data = entry.data && typeof entry.data === 'object' ? entry.data as Record<string, unknown> : {};
-            if (entry.type === 'session/addons' && Array.isArray(data.snapshot)) {
-                for (const value of data.snapshot) {
-                    if (value && typeof value === 'object' && typeof (value as Record<string, unknown>).addonId === 'string') {
-                        recordedAddonIds.add((value as Record<string, unknown>).addonId as string);
-                    }
-                }
-                continue;
-            }
-            const addonId = entry.type === 'session/addons' ? data.addonId
-                : entry.type === 'session/plugins' ? data.pluginId : undefined;
-            if (typeof addonId === 'string') recordedAddonIds.add(addonId);
-        }
-        const addons = listAgentAddons().filter((addon) => !recordedAddonIds.has(addon.addonId));
+        const addons = listAgentAddons();
         if (addons.length === 0) {
             rememberAddonSnapshot(sessionId);
             return undefined;
         }
-        const settings = await agentDataAdapter.getDomainSettings(session.domainId);
-        const teamConfig = await teamConfigForTeam({ domainId: session.domainId, userId: session.userId, groupId: session.groupId }, session.teamId);
-        const localSelection = teamConfig?.addons;
+        const mountedAddons = await mountedAddonsForSession(session);
+        const permissionInjections = new Map((await permissionInjectionsForSession(session, mountedAddons)).map((injection) => [injection.addonId, injection]));
         return addons.map((addon) => ({
             addonId: addon.addonId,
-            enabled: agentAddonEnabled(settings, addon.addonId, session.groupId)
-                && (localSelection === undefined || localSelection[addon.addonId] === true),
+            enabled: mountedAddons.has(addon.addonId),
+            ...(permissionInjections.has(addon.addonId) ? { permissionInjection: { permissions: permissionInjections.get(addon.addonId)!.permissions } } : {}),
         }));
     })();
     pendingAddonSnapshots.set(sessionId, preparation);
@@ -1951,10 +2041,18 @@ async function recordAddonStateForSessions(change: AgentAddonStateChange): Promi
             try {
                 const teamConfig = await teamConfigForTeam({ domainId: session.domainId, userId: session.userId, groupId: session.groupId }, session.teamId);
                 const localSelection = teamConfig?.addons;
+                const enabled = change.enabled && (localSelection === undefined || localSelection[change.addonId] === true);
+                const mountedAddons = await mountedAddonsForSession(session);
+                if (enabled) mountedAddons.add(change.addonId);
+                else mountedAddons.delete(change.addonId);
+                const injection = enabled
+                    ? (await permissionInjectionsForSession(session, mountedAddons)).find((item) => item.addonId === change.addonId)
+                    : undefined;
                 const recorded = await callUpstream('session.addons', {
                     sessionId: session.sessionId,
                     addonId: change.addonId,
-                    enabled: change.enabled && (localSelection === undefined || localSelection[change.addonId] === true),
+                    enabled,
+                    ...(injection ? { permissionInjection: { permissions: injection.permissions } } : {}),
                 }, link);
                 if (!recorded.body.result?.ok) {
                     logger.warn('[addons] session state event failed session=%s addon=%s error=%s', session.sessionId, change.addonId, recorded.body.error?.message || 'unknown error');
@@ -3485,7 +3583,7 @@ export const agentRuntimeHandlerContext = {
     baseTutorCreate, baseTutorHistory, baseTutorPrompt, linkStatus, linkApprove, runtimeStatusItems,
     runtimeRelabel, runtimeRemove, sessionCreate, sessionHistory, sessionMessageCount,
     sessionContextSave, sessionSetHost, HostUnreachableError, linkForSession, requireLink,
-    agentDataAdapter, AgentStorageModel, AgentLinkModel, createProvider,
+    agentDataAdapter, AgentStorageModel, AgentLinkModel, mountedAddonsForSession, permissionsForSession, createProvider,
     logger, WebSocket, randomUUID, parseRuntimeFrame, createSocketLink, addLink, rememberRuntime,
     reportRuntime, runtimeLinks, runtimeFacts, hostname, SystemModel, RUNTIME_HELLO_TIMEOUT_MS,
     followLinks, bridgeRuntimeId, mergeDomainProviders, mergeDomainModels, cloneSettingsSections,
