@@ -45,3 +45,5 @@ export interface ToolBaseSelectPayload {
     baseDocId: number;
     baseName?: string;
 }
+
+export type ToolInstructionsContext = Pick<ToolContext, 'domainId' | 'baseDocId' | 'sessionId'>;

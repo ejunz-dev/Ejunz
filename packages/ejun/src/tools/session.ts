@@ -4,9 +4,8 @@ import { BaseModel } from 'ejun/src/model/base';
 import { PRIV } from 'ejun/src/model/builtin';
 import * as document from 'ejun/src/model/document';
 import Schema from 'schemastery';
-import type { ToolArgs, ToolBaseSelectPayload, ToolContext } from '../lib/tool-types';
+import type { ToolArgs, ToolBaseSelectPayload, ToolContext, ToolInstructionsContext } from '../lib/tool-types';
 import { registerAgentAddon } from '../service/addons';
-import type { ToolInstructionsContext } from '../service/server';
 
 export const inject = ['server'];
 

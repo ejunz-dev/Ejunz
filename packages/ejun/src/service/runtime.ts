@@ -9,7 +9,8 @@ import { Logger } from '../logger';
 import SystemModel from '../model/system';
 import { PERM, PERMS, PRIV } from '../model/builtin';
 import GroupDefinitionModel from '../model/agent';
-import { createProvider, type ToolCatalog } from './server';
+import { createAgentToolView, type AgentToolView } from './tool';
+import { createProvider } from './provider';
 import { httpServer } from '@ejunz/framework';
 import { AgentModel, AgentSessionModel, AgentRuntimeModel, AgentLinkModel, AgentStorageModel, DEFAULT_AGENT_ROLE_ID, permissionsForAgentAcl } from '../model/agent';
 import { type AgentConfig, type AgentDoc, type AgentSettings, type AgentDisplayPrefs, type AgentDomainSettings, type AgentTeamConfig, type AgentTeamDoc, type AgentSessionDoc, type AgentSessionSummary, type AgentSessionType } from '../model/agent';
@@ -1480,15 +1481,13 @@ async function baseSessionScope(sessionId: string, optional = false) {
 }
 
 /**
- * The host's tool catalog, resolved through the service store rather than a service
- * property: a property read is checked against the reading fiber's inject list, while
- * `get` reaches the registry whichever scope the handler runs in.
+ * Build an Agent-facing view over the WebService's live tool registry.
  */
-function toolCatalog(): ToolCatalog {
+function agentTools(): AgentToolView {
     const ejunzContext = (global as any).app || (global as any).Ejunz;
-    const tools = typeof ejunzContext?.get === 'function' ? ejunzContext.get('tools') : ejunzContext?.tools;
-    if (!tools) throw new Error('Ejunz tool catalog is unavailable');
-    return tools as ToolCatalog;
+    const server = typeof ejunzContext?.get === 'function' ? ejunzContext.get('server') : ejunzContext?.server;
+    if (!server) throw new Error('Ejunz WebService is unavailable');
+    return createAgentToolView(server, ejunzContext);
 }
 
 /**
@@ -1904,7 +1903,7 @@ async function permissionInjectionsForSession(
     const UserModel = (global as any).Ejunz?.model?.user;
     const user = UserModel ? await UserModel.getById(session.domainId, session.userId) : null;
     const access = { priv: user?.priv, perm: user?.perm, scope: user?.scope };
-    const tools = toolCatalog();
+    const tools = agentTools();
     return [...activeAddons].flatMap((addonId) => {
         const bits = tools.permissionBitsForAddon(addonId, session.domainId, access);
         const permissions = [
@@ -1947,7 +1946,7 @@ async function agentAddonsList(envelope: RpcEnvelope, scope: AgentScope): Promis
     const settings = await agentDataAdapter.getDomainSettings(scope.domainId);
     const installed = installedAgentAddonIds(settings);
     const toolsByAddon = new Map<string, { name: string; description: string }[]>();
-    for (const { addonId, name, description } of toolCatalog().listForCatalog(scope.domainId)) {
+    for (const { addonId, name, description } of agentTools().listForCatalog(scope.domainId)) {
         const tools = toolsByAddon.get(addonId) ?? [];
         tools.push({ name, description });
         toolsByAddon.set(addonId, tools);
@@ -1965,7 +1964,7 @@ async function agentAddonsMarketList(envelope: RpcEnvelope, scope: AgentScope): 
     const settings = await agentDataAdapter.getDomainSettings(scope.domainId);
     const installed = installedAgentAddonIds(settings);
     const toolsByAddon = new Map<string, { name: string; description: string }[]>();
-    for (const { addonId, name, description } of toolCatalog().listForCatalog(scope.domainId)) {
+    for (const { addonId, name, description } of agentTools().listForCatalog(scope.domainId)) {
         const tools = toolsByAddon.get(addonId) ?? [];
         tools.push({ name, description });
         toolsByAddon.set(addonId, tools);
@@ -3570,7 +3569,7 @@ export const agentDataAdapter = new MongoAgentDataAdapter();
 
 export const agentRuntimeHandlerContext = {
     modelReady: () => modelReady,
-    requireBridgeToken, baseSessionScope, toolCatalog,
+    requireBridgeToken, baseSessionScope, agentTools,
     scopeOf, rpcOk, rpcError, serverRequestFrame, callUpstream, upstreamValue,
     teamRpc, agentRpc, domainSettingsRpc, domainCredentialsRpc, agentAddonsList, agentAddonsMarketList, setAgentAddonInstalled,
     agentAddonSet, isAgentAddonEnabled, enabledAgentAddonIds, syncSessionAddonsForTeam, syncSessionTeamContextForTeam, isAgentContextPluginEnabled, baseTutorEnsure, baseTutorList,

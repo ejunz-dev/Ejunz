@@ -90,14 +90,16 @@ export { registerAgentAddon, listAgentAddons } from './service/addons';
 export type { AgentAddonDescriptor, AgentAddonPermission } from './service/addons';
 export { registerAgentContextPlugin } from './service/agent-context-plugins';
 export type { AgentContextPluginDescriptor } from './service/agent-context-plugins';
-export { createProvider } from './service/server';
+export { createProvider } from './service/provider';
 export { schemaToJsonSchema } from './lib/tool-schema';
 export * from './lib/tool-limits';
-export type { Provider, ProviderScope } from './service/server';
+export type { Provider, ProviderScope } from './service/provider';
+export { createAgentToolView } from './service/tool';
+export type { AgentToolView } from './service/tool';
 export type {
     RegisteredTool, ToolAccess, ToolBindBase, ToolDeclaration, ToolDefinition, ToolExecute,
     ToolInstructionsContext, ToolRegisterOptions, ToolSource,
-} from './service/server';
+} from './service/tool';
 export type {
     SystemToolExecutionContext,
     ToolArgs,

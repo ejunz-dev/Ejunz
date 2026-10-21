@@ -50,7 +50,7 @@ export async function apply(ctx: Context) {
         ctx.loader.reloadPlugin(require.resolve('../service/mqtt'), 'mqtt'),
     ]);
     ctx = await new Promise((resolve) => {
-        ctx.inject(['server', 'tools'], (c) => {
+        ctx.inject(['server'], (c) => {
             resolve(c);
         });
     });
@@ -62,7 +62,7 @@ export async function apply(ctx: Context) {
     await model(pending, fail, ctx);
     await ctx.plugin(require('../service/monitor'));
     ctx = await new Promise((resolve) => {
-        ctx.inject(['worker', 'setting', 'tools'], (c) => {
+        ctx.inject(['worker', 'setting'], (c) => {
             resolve(c);
         });
     });
