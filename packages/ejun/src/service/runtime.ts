@@ -9,7 +9,7 @@ import { Logger } from '../logger';
 import SystemModel from '../model/system';
 import { PERM, PERMS, PRIV } from '../model/builtin';
 import GroupDefinitionModel from '../model/agent';
-import { createProvider } from './provider';
+import { createProvider } from './server';
 import { httpServer } from '@ejunz/framework';
 import { AgentModel, AgentSessionModel, AgentRuntimeModel, AgentLinkModel, AgentStorageModel, DEFAULT_AGENT_ROLE_ID, permissionsForAgentAcl } from '../model/agent';
 import { type AgentConfig, type AgentDoc, type AgentSettings, type AgentDisplayPrefs, type AgentDomainSettings, type AgentTeamConfig, type AgentTeamDoc, type AgentSessionDoc, type AgentSessionSummary, type AgentSessionType } from '../model/agent';

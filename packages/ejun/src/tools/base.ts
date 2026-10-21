@@ -6,7 +6,7 @@ import * as document from 'ejun/src/model/document';
 import Schema from 'schemastery';
 import { baseUrl } from '../lib/tool-shared';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
-import type {} from '../service/registry';
+import type {} from '../service/server';
 
 export const inject = ['server'];
 

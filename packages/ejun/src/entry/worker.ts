@@ -48,7 +48,6 @@ export async function apply(ctx: Context) {
         ctx.loader.reloadPlugin(require.resolve('../service/worker'), 'worker'),
         ctx.loader.reloadPlugin(require.resolve('../service/server'), 'server'),
         ctx.loader.reloadPlugin(require.resolve('../service/mqtt'), 'mqtt'),
-        ctx.loader.reloadPlugin(require.resolve('../service/tools'), 'tools'),
     ]);
     ctx = await new Promise((resolve) => {
         ctx.inject(['server', 'tools'], (c) => {

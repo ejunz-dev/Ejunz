@@ -6,7 +6,7 @@ import * as document from 'ejun/src/model/document';
 import Schema from 'schemastery';
 import type { ToolArgs, ToolBaseSelectPayload, ToolContext } from '../lib/tool-types';
 import { registerAgentAddon } from '../service/addons';
-import type { ToolInstructionsContext } from '../service/registry';
+import type { ToolInstructionsContext } from '../service/server';
 
 export const inject = ['server'];
 

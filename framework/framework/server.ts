@@ -266,6 +266,13 @@ export class Handler<C = CordisContext> extends HandlerCommon<C> {
     }
 }
 
+type ExecutorChecker = (context?: unknown) => void;
+const executorCheckers = new WeakSet<ExecutorChecker>();
+
+export function isExecutorChecker(checker: unknown): checker is ExecutorChecker {
+    return typeof checker === 'function' && executorCheckers.has(checker as ExecutorChecker);
+}
+
 export abstract class Executor<C = unknown, A = unknown, R = unknown> {
     constructor(public ctx: C, public args: A) { }
 
@@ -758,25 +765,16 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
         }
     }
 
-    private register(type: 'route' | 'conn', routeName: string, path: string, HandlerClass: any, ...permPrivChecker) {
-        if (!HandlerClass?.[kHandler] || !isClass(HandlerClass)) throw new Error('Invalid registration.');
-        const name = ((Object.hasOwn(HandlerClass, kHandler) && typeof HandlerClass[kHandler] === 'string')
-            ? HandlerClass[kHandler] : HandlerClass.name).replace(/Handler$/, '');
-        if (this.registrationCount[name] && this.registry[name] !== HandlerClass) {
-            logger.warn('Route with name %s already exists.', name);
-        }
-        this.registry[name] = HandlerClass;
-        this.registrationCount[name]++;
-
+    private register(type: 'route' | 'conn' | 'executor', routeName: string, path: string, RegisteredClass: any, ...permPrivChecker) {
         const Checker = (args) => {
-            let perm: bigint;
-            let priv: number;
-            let checker = () => { };
+            let perm: bigint | bigint[];
+            let priv: number | number[];
+            let checker: (context?: unknown) => void = () => { };
             for (const item of args) {
-                if (typeof item === 'object') {
-                    if (typeof item.call !== 'undefined') {
-                        checker = item;
-                    } else if (typeof item[0] === 'number') {
+                if (typeof item === 'function') {
+                    checker = item;
+                } else if (Array.isArray(item)) {
+                    if (typeof item[0] === 'number') {
                         priv = item;
                     } else if (typeof item[0] === 'bigint') {
                         perm = item;
@@ -787,12 +785,39 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
                     perm = item;
                 }
             }
-            return function check(this: Handler<C>) {
-                checker();
-                if (perm) this.checkPerm(perm);
-                if (priv) this.checkPriv(priv);
+            return function check(this: Pick<Handler<C>, 'checkPerm' | 'checkPriv'>, context?: unknown) {
+                checker(context);
+                if (perm) this.checkPerm(...(Array.isArray(perm) ? perm : [perm]));
+                if (priv) this.checkPriv(...(Array.isArray(priv) ? priv : [priv]));
             };
         };
+
+        if (type === 'executor') {
+            if (!isClass(RegisteredClass) || !(RegisteredClass.prototype instanceof Executor)) throw new Error('Invalid registration.');
+            const tools = this.ctx.get('tools') as {
+                Tool(addonId: string, name: string, execute: unknown, ...args: unknown[]): unknown;
+            } | undefined;
+            if (!tools) throw new Error('Tool service is unavailable.');
+            const ExecutorClass = RegisteredClass as ExecutorClass<unknown, unknown, unknown>;
+            const invoke = (context: unknown, toolArgs: unknown) => new ExecutorClass(context, toolArgs).run();
+            const executorChecker = Checker(permPrivChecker);
+            executorCheckers.add(executorChecker);
+            return tools.Tool(routeName, path, {
+                execute: invoke,
+                executorClass: ExecutorClass,
+                executorChecker,
+            }, ...permPrivChecker);
+        }
+
+        const HandlerClass = RegisteredClass;
+        if (!HandlerClass?.[kHandler] || !isClass(HandlerClass)) throw new Error('Invalid registration.');
+        const name = ((Object.hasOwn(HandlerClass, kHandler) && typeof HandlerClass[kHandler] === 'string')
+            ? HandlerClass[kHandler] : HandlerClass.name).replace(/Handler$/, '');
+        if (this.registrationCount[name] && this.registry[name] !== HandlerClass) {
+            logger.warn('Route with name %s already exists.', name);
+        }
+        this.registry[name] = HandlerClass;
+        this.registrationCount[name]++;
 
         // We hope to use parent context for handler (the context that calls register)
         // So that handler can use services injected before calling register
@@ -841,9 +866,7 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
         } | undefined;
         if (!tools) throw new Error('Tool service is unavailable.');
         if (typeof execute === 'function' && execute.prototype instanceof Executor) {
-            const ExecutorClass = execute as ExecutorClass<unknown, unknown, unknown>;
-            const invoke = (context: unknown, toolArgs: unknown) => new ExecutorClass(context, toolArgs).run();
-            return tools.Tool(addonId, name, { execute: invoke, executorClass: ExecutorClass }, ...args);
+            return this.register('executor', addonId, name, execute, ...args);
         }
         return tools.Tool(addonId, name, execute, ...args);
     }

@@ -12,7 +12,7 @@ import type { EmbeddingIndexMode } from './embedding';
 import type { EmbeddingService } from './embedding/service';
 import { buildParentMap, cardUrl, nodeUrl, pathLabelFor } from 'ejun/src/lib/tool-shared';
 import type { ToolArgs, ToolContext } from 'ejun/src/lib/tool-types';
-import type {} from 'ejun/src/service/registry';
+import type {} from 'ejun/src/service/server';
 
 export const inject = ['server'];
 

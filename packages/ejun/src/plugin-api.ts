@@ -86,19 +86,19 @@ export * from '@ejunz/framework/decorators';
 export * from '@ejunz/framework/validator';
 export * as StorageService from './service/storage';
 export { EventMap } from './service/bus';
-export { default as ToolService } from './service/registry';
+export { ToolService } from './service/server';
 export { registerAgentAddon, listAgentAddons } from './service/addons';
 export type { AgentAddonDescriptor, AgentAddonPermission } from './service/addons';
 export { registerAgentContextPlugin } from './service/agent-context-plugins';
 export type { AgentContextPluginDescriptor } from './service/agent-context-plugins';
-export { createProvider } from './service/provider';
+export { createProvider } from './service/server';
 export { schemaToJsonSchema } from './lib/tool-schema';
 export * from './lib/tool-limits';
-export type { Provider, ProviderScope } from './service/provider';
+export type { Provider, ProviderScope } from './service/server';
 export type {
     RegisteredTool, ToolAccess, ToolBindBase, ToolDeclaration, ToolDefinition, ToolExecute,
     ToolInstructionsContext, ToolRegisterOptions, ToolSource,
-} from './service/registry';
+} from './service/server';
 export type {
     SystemToolExecutionContext,
     ToolArgs,
