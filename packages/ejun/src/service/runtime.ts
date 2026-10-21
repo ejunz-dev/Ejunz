@@ -9,7 +9,7 @@ import { Logger } from '../logger';
 import SystemModel from '../model/system';
 import { PERM, PERMS, PRIV } from '../model/builtin';
 import GroupDefinitionModel from '../model/agent';
-import { createProvider } from './server';
+import { createProvider, type ToolCatalog } from './server';
 import { httpServer } from '@ejunz/framework';
 import { AgentModel, AgentSessionModel, AgentRuntimeModel, AgentLinkModel, AgentStorageModel, DEFAULT_AGENT_ROLE_ID, permissionsForAgentAcl } from '../model/agent';
 import { type AgentConfig, type AgentDoc, type AgentSettings, type AgentDisplayPrefs, type AgentDomainSettings, type AgentTeamConfig, type AgentTeamDoc, type AgentSessionDoc, type AgentSessionSummary, type AgentSessionType } from '../model/agent';
@@ -1484,17 +1484,11 @@ async function baseSessionScope(sessionId: string, optional = false) {
  * property: a property read is checked against the reading fiber's inject list, while
  * `get` reaches the registry whichever scope the handler runs in.
  */
-function toolCatalog(): {
-    list(source?: string, domainId?: string, access?: { priv?: number; perm?: bigint; scope?: bigint }, mountedAddons?: ReadonlySet<string>): { name: string; description: string; inputSchema: Record<string, unknown>; addonId: string; source: string; mutating: boolean }[];
-    listForCatalog(domainId?: string): { name: string; description: string; inputSchema: Record<string, unknown>; addonId: string; source: string; mutating: boolean }[];
-    permissionBitsForAddon(addonId: string, domainId: string, access: { priv?: number; perm?: bigint; scope?: bigint }): { perm: bigint[]; priv: number[] };
-    get(name: string): { addonId: string } | undefined;
-    instructions(context: { domainId: string; baseDocId: number; sessionId?: string }, source?: string, mountedAddons?: ReadonlySet<string>): Promise<string[]>;
-} {
+function toolCatalog(): ToolCatalog {
     const ejunzContext = (global as any).app || (global as any).Ejunz;
     const tools = typeof ejunzContext?.get === 'function' ? ejunzContext.get('tools') : ejunzContext?.tools;
     if (!tools) throw new Error('Ejunz tool catalog is unavailable');
-    return tools;
+    return tools as ToolCatalog;
 }
 
 /**
