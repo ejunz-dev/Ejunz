@@ -765,6 +765,7 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
             let checker: (context?: unknown) => void = () => { };
             for (const item of args) {
                 if (typeof item === 'function') {
+                    if (typeof item.uid === 'number' && typeof item.type === 'string' && item.meta) continue;
                     checker = item;
                 } else if (Array.isArray(item)) {
                     if (typeof item[0] === 'number') {
@@ -918,7 +919,7 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
             status = 'error';
             throw error;
         } finally {
-            if (process.env.DEV) logger.debug('TOOL %s (%s) %s %dms', name, executorName, status, Date.now() - startedAt);
+            if (process.env.DEV) logger.debug(`TOOL ${name} (${executorName}) ${status} ${Date.now() - startedAt}ms`);
         }
     }
 
