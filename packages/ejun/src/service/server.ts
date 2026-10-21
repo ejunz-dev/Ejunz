@@ -39,6 +39,8 @@ declare module '@ejunz/framework' {
     }
 
     export interface Executor<C = unknown, A = unknown, R = unknown> {
+        checkPerm(...permissions: bigint[]): void;
+        checkPriv(...privileges: number[]): void;
         requireAgentPermissions(...permissions: string[]): void;
     }
 }
@@ -148,6 +150,19 @@ export async function apply(ctx: Context) {
         });
 
         server.executorMixin({
+            checkPerm(...permissions: bigint[]) {
+                const { perm = 0n, scope = 0n, priv = 0 } = this.ctx as { perm?: bigint; scope?: bigint; priv?: number };
+                if (permissions.some((permission) => (perm & scope & permission) === permission)) return;
+                if ((priv & PRIV.USER_PRIV_USER_PROFILE) === PRIV.USER_PRIV_USER_PROFILE) {
+                    throw new PermissionError(...permissions);
+                }
+                throw new PrivilegeError(PRIV.USER_PRIV_USER_PROFILE);
+            },
+            checkPriv(...privileges: number[]) {
+                const { priv = 0 } = this.ctx as { priv?: number };
+                if (privileges.some((privilege) => (priv & privilege) === privilege)) return;
+                throw new PrivilegeError(...privileges);
+            },
             requireAgentPermissions(...permissions: string[]) {
                 const granted = (this.ctx as { agentPermissions?: ReadonlySet<string> }).agentPermissions;
                 const missing = permissions.filter((permission) => !granted?.has(permission));
