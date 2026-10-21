@@ -1090,6 +1090,21 @@ ${c.response.status} ${endTime - startTime}ms ${c.response.length}`);
         return this._applyMixin(ConnectionHandler, MixinClass);
     }
 
+    public applyExecutorMixin(
+        name: string,
+        MixinClass: Partial<Executor<any, any, any>> | ((s: Executor<any, any, any>) => Partial<Executor<any, any, any>>),
+    ) {
+        this.withExecutorClass(name, (ExecutorClass) => {
+            this._applyMixin(ExecutorClass, MixinClass);
+        });
+    }
+
+    public executorMixin(
+        MixinClass: Partial<Executor<any, any, any>> | ((s: Executor<any, any, any>) => Partial<Executor<any, any, any>>),
+    ) {
+        return this._applyMixin(Executor, MixinClass);
+    }
+
     public registerRenderer(name: string, func: Renderer) {
         if (this.renderers[name]) logger.warn('Renderer %s already exists.', name);
         this.ctx.effect(() => {
