@@ -82,17 +82,28 @@ async function request(
   } catch (error) {
     throw new Error(`Ejunz Agent bridge request failed for ${url}: ${formatThrown(error)}`, { cause: error })
   }
-  let payload: BridgeResponse
+  let rawPayload: unknown
   try {
-    payload = await response.json() as BridgeResponse
+    rawPayload = await response.json()
   } catch (error) {
     throw new Error(`Ejunz Agent bridge request failed for ${url}: non-JSON response (${response.status}): ${formatThrown(error)}`)
   }
+  if (typeof rawPayload === 'string') {
+    try {
+      rawPayload = JSON.parse(rawPayload)
+    } catch (error) {
+      throw new Error(`Ejunz Agent bridge request failed for ${url}: invalid JSON response envelope (${response.status}): ${formatThrown(error)}`)
+    }
+  }
+  if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload)) {
+    throw new Error(`Ejunz Agent bridge request failed for ${url}: unexpected response envelope (${response.status}, ${typeof rawPayload})`)
+  }
+  const payload = rawPayload as BridgeResponse
   if (!response.ok || payload.ok !== true) {
     const message = payload.error?.message
     if (message) throw new Error(message)
-    const keys = payload && typeof payload === 'object' ? Object.keys(payload).join(', ') : typeof payload
-    const errorValue = payload && typeof payload === 'object' ? (payload as { error?: unknown }).error : undefined
+    const keys = Object.keys(payload).join(', ')
+    const errorValue = (payload as { error?: unknown }).error
     const errorKeys = errorValue && typeof errorValue === 'object' ? Object.keys(errorValue).join(', ') : undefined
     throw new Error(
       `Ejunz Agent bridge request failed: ${response.status} (unexpected response envelope: ${keys}${errorKeys ? `; error fields: ${errorKeys}` : ''})`,
