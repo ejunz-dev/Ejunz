@@ -6,6 +6,7 @@ import { delegateAgentRuntimeTool } from '../lib/agent-runtime-tool';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import { registerAgentAddon } from '../service/addons';
 import type {} from '../service/server';
+import { AGENT_RUNTIME_EXTRA_TOOLS } from './agent-runtime-catalog';
 
 export const inject = ['server'];
 
@@ -82,22 +83,25 @@ export const ExitPlanModeSchema = Schema.object({
 }).description('Use only in plan mode. Present your complete plan as markdown, starting with a # heading. The user may approve and leave plan mode or keep planning and return feedback; revise and present the plan again when asked.');
 
 function runtimeToolExecutor(toolName: string) {
-    return class RuntimeToolExecutor extends Executor<ToolContext, ToolArgs> {
+    const executorName = `AgentRuntimeTool_${toolName.replace(/[^a-zA-Z0-9_$]/g, '_')}`;
+    const executor = class extends Executor<ToolContext, ToolArgs> {
         async execute() {
             return delegateAgentRuntimeTool(toolName);
         }
     };
+    Object.defineProperty(executor, 'name', { value: executorName });
+    return executor;
 }
 
 export function apply(ctx: Context): void {
     const unregisterAddon = registerAgentAddon({
         addonId: ADDON_ID,
         displayName: 'Agent Runtime Tools',
-        description: 'Use the native Agent tools available in this session, including interaction, jobs, goals, skills, scheduling, session search, code navigation, delegation, workflows, and extensions.',
+        description: 'Use native Agent tools for interaction, tasks, jobs, goals, skills, web access, scheduling, session search, code navigation, subagents, workflows, and optional Cordis extensions.',
         toolPrefixes: [
             'todo_', 'ask_user_question', 'job_', 'get_goal', 'create_goal', 'update_goal', 'skill', 'exit_plan_mode',
             'web_fetch', 'schedule_', 'session_', 'lsp', 'send_message', 'interrupt_agent', 'list_agents',
-            'subagent', 'report', 'workflow', 'ralph', 'cordis_', 'run_code', 'mcp__',
+            'subagent', 'report', 'structured_output', 'workflow', 'ralph', 'cordis_', 'mcp__',
         ],
         defaultEnabled: true,
     });
@@ -113,4 +117,11 @@ export function apply(ctx: Context): void {
     ctx.Tool(ADDON_ID, 'update_goal', runtimeToolExecutor('update_goal'), UpdateGoalSchema, SESSION_TOOL, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Tool(ADDON_ID, 'skill', runtimeToolExecutor('skill'), SkillSchema, SESSION_TOOL, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Tool(ADDON_ID, 'exit_plan_mode', runtimeToolExecutor('exit_plan_mode'), ExitPlanModeSchema, SESSION_TOOL, PRIV.USER_PRIV_USER_PROFILE);
+    for (const tool of AGENT_RUNTIME_EXTRA_TOOLS) {
+        ctx.Tool(ADDON_ID, tool.name, runtimeToolExecutor(tool.name), {
+            ...SESSION_TOOL,
+            description: tool.description,
+            inputSchema: tool.inputSchema,
+        }, PRIV.USER_PRIV_USER_PROFILE);
+    }
 }

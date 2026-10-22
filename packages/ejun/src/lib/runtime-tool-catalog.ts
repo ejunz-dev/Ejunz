@@ -14,6 +14,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function stableJson(value: unknown): string {
+    if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+    if (isRecord(value)) {
+        return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
+    }
+    return JSON.stringify(value) ?? 'undefined';
+}
+
+/** Check whether an Ejun-owned descriptor matches the current native declaration. */
+export function matchesRuntimeToolCapability(
+    hostTool: RuntimeToolCapability,
+    runtimeTool: RuntimeToolCapability,
+): boolean {
+    return hostTool.name === runtimeTool.name
+        && hostTool.description === runtimeTool.description
+        && stableJson(hostTool.inputSchema) === stableJson(runtimeTool.inputSchema);
+}
+
 /** Validate the Agent runtime's per-scope tool capabilities crossing the host API. */
 export function parseRuntimeToolCapabilities(value: unknown): RuntimeToolCapability[] {
     if (value === undefined) return [];

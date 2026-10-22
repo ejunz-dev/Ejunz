@@ -8,7 +8,7 @@ import type { AgentStorageDescriptor } from '../model/agent';
 import type { RuntimeHelloFrame, RuntimeInboundFrame, RuntimeLinkPollFrame, RuntimeStream } from '../service/runtime';
 import { agentRuntimeHandlerContext as service } from '../service/runtime';
 import { delegateAgentRuntimeTool } from '../lib/agent-runtime-tool';
-import { parseRuntimeToolCapabilities } from '../lib/runtime-tool-catalog';
+import { matchesRuntimeToolCapability, parseRuntimeToolCapabilities } from '../lib/runtime-tool-catalog';
 import { addonAgentPermissionId, agentPermissionCatalog, listAgentAddons } from '../service/addons';
 import type { AgentAddonStateChange } from '../service/bus';
 import { checkAccessPriv } from '../service/tool';
@@ -262,16 +262,26 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                     const user = UserModel ? await UserModel.getById(scope.domain, scope.owner) : null;
                     if (user) access = { priv: user.priv, perm: user.perm, scope: user.scope, agentPermissions };
                 }
-                const runtimeNames = new Set(runtimeTools.map((tool) => tool.name));
-                const hostTools = tools.list(undefined, scope?.domain, access, mountedAddons)
-                    .filter((tool) => tool.addonId !== 'agent-runtime' || runtimeNames.has(tool.name));
-                const hostNames = new Set(hostTools.map((tool) => tool.name));
+                const runtimeByName = new Map(runtimeTools.map((tool) => [tool.name, tool]));
                 const canExposeRuntimeTools = mountedAddons.has('agent-runtime')
                     && access.priv !== undefined
                     && (access.priv & PRIV.USER_PRIV_USER_PROFILE) === PRIV.USER_PRIV_USER_PROFILE;
+                const hostTools = tools.list(undefined, scope?.domain, access, mountedAddons)
+                    .filter((tool) => {
+                        if (tool.addonId !== 'agent-runtime') return true;
+                        const runtimeTool = runtimeByName.get(tool.name);
+                        return runtimeTool !== undefined && matchesRuntimeToolCapability(tool, runtimeTool);
+                    });
+                const hostNames = new Set(hostTools.map((tool) => tool.name));
                 const delegatedTools = canExposeRuntimeTools
                     ? runtimeTools
-                        .filter((tool) => !hostNames.has(tool.name) && tools.get(tool.name) === undefined)
+                        .filter((tool) => {
+                            if (hostNames.has(tool.name)) return false;
+                            const registration = tools.get(tool.name);
+                            if (registration === undefined) return true;
+                            return registration.addonId === 'agent-runtime'
+                                && !matchesRuntimeToolCapability(registration, tool);
+                        })
                         .map((tool) => ({ ...tool, runtimeDelegation: true as const }))
                     : [];
                 const addonGuidance = listAgentAddons()
@@ -298,7 +308,10 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                 const agentPermissions = await permissionsForSession(resolved.session, mountedAddons);
                 const tools = agentTools();
                 const registration = tools.get(name);
-                if (!registration && body.runtimeDelegation === true) {
+                if (body.runtimeDelegation === true) {
+                    if (registration && registration.addonId !== 'agent-runtime') {
+                        throw new Error(`Tool ${name} is owned by a different host add-on.`);
+                    }
                     if (!mountedAddons.has('agent-runtime')) throw new Error('Agent runtime tools are not mounted in this session.');
                     const UserModel = (global as any).Ejunz?.model?.user;
                     const user = UserModel ? await UserModel.getById(scope.domain, scope.owner) : null;
