@@ -382,7 +382,7 @@ export interface ChatMessage {
     content: string;
 }
 
-export interface EdgeTool {
+export interface McpTool {
     name: string;
     description: string;
     inputSchema: {
@@ -395,20 +395,18 @@ const ClientLogger = new AppLogger('mcp');
 
 export class McpClient {
     /** domainId for listing domain market tools per domain */
-    async getTools(domainId?: string): Promise<EdgeTool[]> {
+    async getTools(domainId?: string): Promise<McpTool[]> {
         try {
             const ctx = (global as any).app || (global as any).Ejunz;
-            // [Edge disabled] const edgeP = (async () => { try { return ctx ? await ctx.serial('mcp/tools/list/edge') : []; } catch { return []; } })();
             const localP = (async () => {
                 try { return ctx && domainId ? await ctx.serial('mcp/tools/list/local', { domainId }) : []; } catch { return []; }
             })();
-            // [Edge disabled] const [edgeTools, localTools] = await Promise.all([edgeP, localP]);
             const localTools = await localP;
-            ClientLogger.info('Tool sources: local only (Edge disabled)', { localCount: (localTools || []).length });
-            const merged: Record<string, EdgeTool> = Object.create(null);
-            for (const t of ([] as EdgeTool[]).concat(/* edgeTools || [], */ localTools || [])) merged[t.name] = t;
+            ClientLogger.info('Tool sources: local only', { localCount: (localTools || []).length });
+            const merged: Record<string, McpTool> = Object.create(null);
+            for (const t of (localTools || []) as McpTool[]) merged[t.name] = t;
             const list = Object.values(merged);
-            ClientLogger.info('Got tool list (merged):', { toolCount: list.length });
+            ClientLogger.info('Got tool list:', { toolCount: list.length });
             return list;
         } catch (e) {
             ClientLogger.error('Failed to get tool list', e);
@@ -462,23 +460,11 @@ export class McpClient {
                 }
             }
 
-            // [Edge adapter disabled] First try to call via edge (if available)
-            // try {
-            //     const edgeTools = await ctx.serial('mcp/tools/list/edge').catch(() => []);
-            //     ...
-            // } catch (e) { ... }
-
-            // [Edge adapter disabled] Search for tool in Edge/Tool model
-            // if (domainId) {
-            //     const edges = await EdgeModel.getByDomain(domainId);
-            //     for (const edge of connectedEdges) { ... }
-            // }
-
             // Local MCP tools (default system + market MCP)
             try {
                 if (domainId) {
                     const localTools = await ctx.serial('mcp/tools/list/local', { domainId }).catch(() => []);
-                    const inLocal = (localTools || []).some((t: EdgeTool) => t.name === name);
+                    const inLocal = (localTools || []).some((t: McpTool) => t.name === name);
                     if (inLocal) {
                         ClientLogger.info('[tool] callTool: name=%s -> branch=local', name);
                         return await ctx.serial('mcp/tool/call/local', {
