@@ -408,7 +408,6 @@ export async function callToolViaWorker(
         baseDocId?: number;
         owner?: number;
         toolType?: string;
-        token?: string;
         mcpId?: number;
     } = {},
 ): Promise<any> {
@@ -423,7 +422,6 @@ export async function callToolViaWorker(
         baseDocId: toolContext.baseDocId,
         owner: toolContext.owner,
         toolType: toolContext.toolType,
-        token: toolContext.token,
         mcpId: toolContext.mcpId,
         priority,
     });
@@ -460,17 +458,16 @@ export class ToolCallInternalHandler extends Handler {
     @post('baseDocId', Types.Int, true)
     @post('owner', Types.Int, true)
     @post('toolType', Types.String, true)
-    @post('token', Types.String, true)
     @post('mcpId', Types.Int, true)
-    async post(domainId: string, toolName: string, args: any, baseDocId?: number, owner?: number, toolType?: string, token?: string, mcpId?: number) {
+    async post(domainId: string, toolName: string, args: any, baseDocId?: number, owner?: number, toolType?: string, mcpId?: number) {
         const mcpClient = new (require('../model/agent').McpClient)();
         try {
             const callArgs = toolType === 'plugin_mcp' && mcpId ? { ...(args || {}), __mcpId: mcpId } : args;
             logger.info(
-                'Internal worker tool call: tool=%s type=%s hasToken=%s baseDocId=%s owner=%s mcpId=%s',
-                toolName, toolType || '', !!token, baseDocId || '', owner || '', mcpId || '',
+                'Internal worker tool call: tool=%s type=%s baseDocId=%s owner=%s mcpId=%s',
+                toolName, toolType || '', baseDocId || '', owner || '', mcpId || '',
             );
-            const result = await mcpClient.callTool(toolName, callArgs, domainId, undefined, token, toolType, baseDocId, owner);
+            const result = await mcpClient.callTool(toolName, callArgs, domainId, undefined, toolType, baseDocId, owner);
             this.response.body = { result };
         } catch (error: any) {
             this.response.body = {

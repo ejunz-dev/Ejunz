@@ -27,9 +27,6 @@ import SystemModel from './system';
 import user from './user';
 import * as document from './document';
 import db from '../service/db';
-import EdgeModel from '../../../../plugins/edge/model/edge';
-import ToolModel from '../../../../plugins/edge/model/tool';
-import { EdgeServerConnectionHandler } from '../../../../plugins/edge/handler/edge';
 import _ from 'lodash';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 
@@ -424,7 +421,6 @@ export class McpClient {
         args: any,
         domainId?: string,
         serverId?: number,
-        token?: string,
         toolType?: string,
         baseDocId?: number,
         toolCallerUid?: number,
@@ -464,17 +460,6 @@ export class McpClient {
                     ClientLogger.error('Repo internal MCP tool call failed: %s', (e as Error).message);
                     throw e;
                 }
-            }
-
-            if (token) {
-                const connection = EdgeServerConnectionHandler.getConnection(token);
-                if (!connection) {
-                    const err = new Error(`Assigned inbound MCP is offline for tool: ${name}`);
-                    (err as any).code = 'MCP_OFFLINE';
-                    throw err;
-                }
-                ClientLogger.info('[tool] callTool: name=%s -> branch=edge token=%s', name, token);
-                return await connection.callTool(name, args || {});
             }
 
             // [Edge adapter disabled] First try to call via edge (if available)
