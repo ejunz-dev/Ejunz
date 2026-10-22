@@ -9,12 +9,14 @@
  * @module
  */
 import type { Context } from '@ejunz/cordis'
-import type { ContentBlock } from '@ejunz/llm'
-import type { JsonValue, ToolDefinition } from '@ejunz/tools'
 import { HostToolClientService } from './client.ts'
-import type { HostArguments, HostCallContext, HostCatalog, HostToolClient, HostToolSpec } from './types.ts'
+import { registerHostTools } from './runtime-delegation.ts'
+import type { ToolRegistry } from './runtime-delegation.ts'
+import type { HostCatalog, HostToolClient } from './types.ts'
 export { createHostToolBridge, createHostToolClient } from './bridge.ts'
 export type { HostToolBridge } from './bridge.ts'
+export { registerHostTools } from './runtime-delegation.ts'
+export type { RegisterHostToolsOptions, ToolRegistry } from './runtime-delegation.ts'
 export { parseHostCatalog } from './catalog.ts'
 export type { HostArguments, HostCallContext, HostCatalog, HostToolClient, HostToolSpec, JsonValue } from './types.ts'
 export { HostToolClientService, attachHostToolClient } from './client.ts'
@@ -27,95 +29,6 @@ export const inject = ['tools']
  * never answers fails the load instead of blocking it.
  */
 const CATALOG_TIMEOUT_MS = 30_000
-
-/**
- * Render one host tool result.
- *
- * The result schema is unconstrained — `{}` — because the host's own result schemas are
- * the only accurate declaration of what it returns, and a copy here would drift from
- * them. The model receives the value as JSON text.
- * @param value - the lossless JSON value the host returned.
- * @returns the model-facing content for that value.
- */
-function renderResult(value: JsonValue): ContentBlock[] {
-  return [{ type: 'text', text: JSON.stringify(value ?? null) }]
-}
-
-/** The registration surface this package needs from the Agent tool registry. */
-export interface ToolRegistry {
-  /**
-   * Register one tool.
-   * @param definition - schema, execution, and presentation callbacks.
-   * @returns the exact disposer that unregisters the tool.
-   */
-  register(definition: ToolDefinition): () => void
-}
-
-/** Options for {@link registerHostTools}. */
-export interface RegisterHostToolsOptions {
-  /**
-   * Registry the tools register into. The registry resolves its layer from the context it
-   * was read through, so a registry read from an Agent scope publishes these tools to that
-   * Agent alone.
-   */
-  readonly registry: ToolRegistry
-  /** Client that executes the declared tools. */
-  readonly client: HostToolClient
-  /** Tools to register, as the host declared them. */
-  readonly catalog: HostCatalog
-}
-
-/**
- * Bind one declared tool to the client that executes it.
- * @param spec - the tool as the host declared it.
- * @param client - client that executes the declared tools.
- * @returns the definition the registry registers.
- */
-function toolDefinition(spec: HostToolSpec, client: HostToolClient): ToolDefinition {
-  return {
-    name: spec.name,
-    description: spec.description,
-    parameters: spec.inputSchema,
-    output: {
-      schema: {},
-      render: (_args, value) => renderResult(value),
-    },
-    execute: async (args, exec) => {
-      const input = typeof args === 'object' && args !== null && !Array.isArray(args)
-        ? args as HostArguments
-        : {}
-      if (exec.agent === undefined) throw new Error(`tool ${spec.name} requires an Agent session`)
-      const context: HostCallContext = { sessionId: exec.agent.session.id }
-      return await client.call(spec.name, input, context, exec.signal)
-    },
-  }
-}
-
-/**
- * Register a host-declared tool set in one registry.
- *
- * The caller supplies the catalog and the registry, so the registered names, descriptions,
- * and parameter schemas are exactly what the host declared, and the tools land in whatever
- * scope that registry was read through. Reading the registry from an Agent's own scope
- * therefore keeps the tools on that Agent: they are invisible to every other Agent in the
- * process and follow that Agent's disposal.
- * @param options - registry, client, and the declared tools.
- * @returns a disposer that removes every tool this call registered.
- */
-export function registerHostTools(options: RegisterHostToolsOptions): () => void {
-  const disposers: (() => void)[] = []
-  try {
-    for (const spec of options.catalog.tools) {
-      disposers.push(options.registry.register(toolDefinition(spec, options.client)))
-    }
-  } catch (error) {
-    for (const dispose of [...disposers].reverse()) dispose()
-    throw error
-  }
-  return () => {
-    for (const dispose of [...disposers].reverse()) dispose()
-  }
-}
 
 /** Options for {@link installHostTools}. */
 export interface InstallHostToolsOptions {
@@ -141,9 +54,11 @@ interface HostToolInstallation {
 const installations = new WeakMap<Context, HostToolInstallation>()
 
 function installCatalog(agentCtx: Context, client: HostToolClient, catalog: HostCatalog): () => void {
+  const agent = agentCtx.agent
+  if (agent === undefined) throw new Error('tool-host: host tools require an Agent scope')
   const registry = agentCtx.get('tools') as ToolRegistry | undefined
   if (registry === undefined) throw new Error('tool-host: the tool registry is unavailable in this Agent scope')
-  const disposeTools = registerHostTools({ registry, client, catalog })
+  const disposeTools = registerHostTools({ registry, client, catalog, scope: agent })
   try {
     const guidance = catalog.guidance
     const disposeContext = guidance !== undefined && guidance.length > 0

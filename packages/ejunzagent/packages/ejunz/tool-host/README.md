@@ -17,6 +17,8 @@ A client declares what it can execute and executes it:
 - `catalog(signal, { sessionId })` declares the tools to install: each one's `name`, `description`, and `inputSchema`, plus optional `guidance` describing the set and the scope its calls act for. Reading with a session declares what that session's domain publishes; reading without one declares the set every session shares.
 - `call(name, args, { sessionId }, signal)` executes one declared tool by the name it was registered under.
 
+A host may return a private `{"type":"ejunz/runtime-tool-call","toolName":"..."}` result to ask the adapter to execute the same-named native tool in the current Agent runtime with the original call arguments. The adapter captures that native definition before registering the scoped host tool, rejects a different name or missing native implementation, and preserves the native output/presentation contract. This delegation envelope is consumed internally and is never returned to the model. Ordinary host results continue through the host tool's result renderer.
+
 For the standalone Agent process, the CLI installs a root bridge from `EJUNZ_AGENT_DATA_ORIGIN` and `EJUNZ_AGENT_DATA_TOKEN`. The Agent factory installs the set in each Agent's `setup`, before that Agent is published, so an Agent never reaches its first turn without the tools its domain publishes. A composition that cannot reach the provided installer service builds the bridge from those same environment variables and installs with its own client.
 
 The Ejunz host resolves the session through its domain- and user-isolated Agent model, then creates its own provider from its own Cordis context:
@@ -46,7 +48,7 @@ One tool per entry of the host-provided catalog for this session's domain, under
 
 #### Token effect
 
-Every declared tool occupies one entry of the request's `tools` array, and the host's description and parameter schema are sent verbatim, so a deployment's own catalog bounds the cost. This package adds no schema text of its own, and a result is the host's lossless JSON value rendered as text.
+Every declared tool occupies one entry of the request's `tools` array, and the host's description and parameter schema are sent verbatim, so a deployment's own catalog bounds the cost. This package adds no schema text of its own. Ordinary host results are rendered from the host's lossless JSON value; delegated native results use the captured native tool's output contract.
 
 #### KV Cache effect
 
