@@ -2,7 +2,6 @@ import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PRIV } from 'ejun/src/model/builtin';
 import Schema from 'schemastery';
-import { delegateAgentRuntimeTool } from '../lib/agent-runtime-tool';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import type {} from '../service/server';
 
@@ -99,31 +98,31 @@ const LspSchema = Schema.object({
 );
 
 class ScheduleCreateExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('schedule_create'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'schedule_create' }; }
 }
 class ScheduleListExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('schedule_list'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'schedule_list' }; }
 }
 class ScheduleDeleteExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('schedule_delete'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'schedule_delete' }; }
 }
 class SessionSearchExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('session_search'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'session_search' }; }
 }
 class SessionEventSearchExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('session_event_search'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'session_event_search' }; }
 }
 class SessionTraceExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('session_trace'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'session_trace' }; }
 }
 class SessionEventTraceExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('session_event_trace'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'session_event_trace' }; }
 }
 class SessionEventReadExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('session_event_read'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'session_event_read' }; }
 }
 class LspExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('lsp'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'lsp' }; }
 }
 
 export function apply(ctx: Context): void {

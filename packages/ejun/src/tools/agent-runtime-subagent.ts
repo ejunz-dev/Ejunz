@@ -2,7 +2,6 @@ import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PRIV } from 'ejun/src/model/builtin';
 import Schema from 'schemastery';
-import { delegateAgentRuntimeTool } from '../lib/agent-runtime-tool';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import type {} from '../service/server';
 
@@ -55,25 +54,25 @@ const StructuredOutputSchema = Schema.any().description(
 );
 
 class SendMessageExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('send_message'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'send_message' }; }
 }
 class InterruptAgentExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('interrupt_agent'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'interrupt_agent' }; }
 }
 class ListAgentsExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('list_agents'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'list_agents' }; }
 }
 class SubagentExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('subagent'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'subagent' }; }
 }
 class SubagentForkExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('subagent_fork'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'subagent_fork' }; }
 }
 class ReportExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('report'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'report' }; }
 }
 class StructuredOutputExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('structured_output'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'structured_output' }; }
 }
 
 export function apply(ctx: Context): void {

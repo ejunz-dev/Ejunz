@@ -2,7 +2,6 @@ import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PRIV } from 'ejun/src/model/builtin';
 import Schema from 'schemastery';
-import { delegateAgentRuntimeTool } from '../lib/agent-runtime-tool';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import { registerAgentAddon } from '../service/addons';
 import type {} from '../service/server';
@@ -81,61 +80,61 @@ export const ExitPlanModeSchema = Schema.object({
 
 class TodoWriteExecutor extends Executor<ToolContext, ToolArgs> {
     async execute() {
-        return delegateAgentRuntimeTool('todo_write');
+        return { type: 'ejunz/runtime-tool-call', toolName: 'todo_write' };
     }
 }
 
 class AskUserQuestionExecutor extends Executor<ToolContext, ToolArgs> {
     async execute() {
-        return delegateAgentRuntimeTool('ask_user_question');
+        return { type: 'ejunz/runtime-tool-call', toolName: 'ask_user_question' };
     }
 }
 
 class JobOutputExecutor extends Executor<ToolContext, ToolArgs> {
     async execute() {
-        return delegateAgentRuntimeTool('job_output');
+        return { type: 'ejunz/runtime-tool-call', toolName: 'job_output' };
     }
 }
 
 class JobListExecutor extends Executor<ToolContext, ToolArgs> {
     async execute() {
-        return delegateAgentRuntimeTool('job_list');
+        return { type: 'ejunz/runtime-tool-call', toolName: 'job_list' };
     }
 }
 
 class JobKillExecutor extends Executor<ToolContext, ToolArgs> {
     async execute() {
-        return delegateAgentRuntimeTool('job_kill');
+        return { type: 'ejunz/runtime-tool-call', toolName: 'job_kill' };
     }
 }
 
 class GetGoalExecutor extends Executor<ToolContext, ToolArgs> {
     async execute() {
-        return delegateAgentRuntimeTool('get_goal');
+        return { type: 'ejunz/runtime-tool-call', toolName: 'get_goal' };
     }
 }
 
 class CreateGoalExecutor extends Executor<ToolContext, ToolArgs> {
     async execute() {
-        return delegateAgentRuntimeTool('create_goal');
+        return { type: 'ejunz/runtime-tool-call', toolName: 'create_goal' };
     }
 }
 
 class UpdateGoalExecutor extends Executor<ToolContext, ToolArgs> {
     async execute() {
-        return delegateAgentRuntimeTool('update_goal');
+        return { type: 'ejunz/runtime-tool-call', toolName: 'update_goal' };
     }
 }
 
 class SkillExecutor extends Executor<ToolContext, ToolArgs> {
     async execute() {
-        return delegateAgentRuntimeTool('skill');
+        return { type: 'ejunz/runtime-tool-call', toolName: 'skill' };
     }
 }
 
 class ExitPlanModeExecutor extends Executor<ToolContext, ToolArgs> {
     async execute() {
-        return delegateAgentRuntimeTool('exit_plan_mode');
+        return { type: 'ejunz/runtime-tool-call', toolName: 'exit_plan_mode' };
     }
 }
 

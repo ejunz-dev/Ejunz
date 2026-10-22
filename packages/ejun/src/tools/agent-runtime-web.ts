@@ -2,7 +2,6 @@ import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PRIV } from 'ejun/src/model/builtin';
 import Schema from 'schemastery';
-import { delegateAgentRuntimeTool } from '../lib/agent-runtime-tool';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import type {} from '../service/server';
 
@@ -14,7 +13,7 @@ const WebFetchSchema = Schema.object({
 
 class WebFetchExecutor extends Executor<ToolContext, ToolArgs> {
     async execute() {
-        return delegateAgentRuntimeTool('web_fetch');
+        return { type: 'ejunz/runtime-tool-call', toolName: 'web_fetch' };
     }
 }
 

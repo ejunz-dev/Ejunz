@@ -7,7 +7,6 @@ import type { AgentScope, RuntimeLink } from '../service/runtime';
 import type { AgentStorageDescriptor } from '../model/agent';
 import type { RuntimeHelloFrame, RuntimeInboundFrame, RuntimeLinkPollFrame, RuntimeStream } from '../service/runtime';
 import { agentRuntimeHandlerContext as service } from '../service/runtime';
-import { delegateAgentRuntimeTool } from '../lib/agent-runtime-tool';
 import { matchesRuntimeToolCapability, parseRuntimeToolCapabilities } from '../lib/runtime-tool-catalog';
 import { addonAgentPermissionId, agentPermissionCatalog, listAgentAddons } from '../service/addons';
 import type { AgentAddonStateChange } from '../service/bus';
@@ -317,7 +316,7 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                     const user = UserModel ? await UserModel.getById(scope.domain, scope.owner) : null;
                     if (!user) throw new Error('Agent owner is unavailable.');
                     checkAccessPriv({ priv: user.priv }, PRIV.USER_PRIV_USER_PROFILE);
-                    this.response.body = JSON.stringify(dataOk(delegateAgentRuntimeTool(name)));
+                    this.response.body = JSON.stringify(dataOk({ type: 'ejunz/runtime-tool-call', toolName: name }));
                     return;
                 }
                 if (!registration || !mountedAddons.has(registration.addonId)) {

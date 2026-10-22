@@ -2,7 +2,6 @@ import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PRIV } from 'ejun/src/model/builtin';
 import Schema from 'schemastery';
-import { delegateAgentRuntimeTool } from '../lib/agent-runtime-tool';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import type {} from '../service/server';
 
@@ -36,10 +35,10 @@ const WorkflowSchema = Schema.object({
 );
 
 class RalphExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('ralph'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'ralph' }; }
 }
 class WorkflowExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('workflow'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'workflow' }; }
 }
 
 export function apply(ctx: Context): void {

@@ -2,7 +2,6 @@ import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PRIV } from 'ejun/src/model/builtin';
 import Schema from 'schemastery';
-import { delegateAgentRuntimeTool } from '../lib/agent-runtime-tool';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import type {} from '../service/server';
 
@@ -70,25 +69,25 @@ const CordisUndefineSchema = Schema.object({
 );
 
 class CordisInspectListExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('cordis_inspect_list'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'cordis_inspect_list' }; }
 }
 class CordisInspectQueryExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('cordis_inspect_query'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'cordis_inspect_query' }; }
 }
 class CordisInspectSelfExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('cordis_inspect_self'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'cordis_inspect_self' }; }
 }
 class CordisDefineExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('cordis_define'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'cordis_define' }; }
 }
 class CordisRunExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('cordis_run'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'cordis_run' }; }
 }
 class CordisStopExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('cordis_stop'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'cordis_stop' }; }
 }
 class CordisUndefineExecutor extends Executor<ToolContext, ToolArgs> {
-    async execute() { return delegateAgentRuntimeTool('cordis_undefine'); }
+    async execute() { return { type: 'ejunz/runtime-tool-call', toolName: 'cordis_undefine' }; }
 }
 
 export function apply(ctx: Context): void {
