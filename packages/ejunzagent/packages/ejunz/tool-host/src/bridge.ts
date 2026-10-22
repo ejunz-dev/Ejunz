@@ -89,7 +89,14 @@ async function request(
     throw new Error(`Ejunz Agent bridge request failed for ${url}: non-JSON response (${response.status}): ${formatThrown(error)}`)
   }
   if (!response.ok || payload.ok !== true) {
-    throw new Error(payload.error?.message || `Ejunz Agent bridge request failed: ${response.status}`)
+    const message = payload.error?.message
+    if (message) throw new Error(message)
+    const keys = payload && typeof payload === 'object' ? Object.keys(payload).join(', ') : typeof payload
+    const errorValue = payload && typeof payload === 'object' ? (payload as { error?: unknown }).error : undefined
+    const errorKeys = errorValue && typeof errorValue === 'object' ? Object.keys(errorValue).join(', ') : undefined
+    throw new Error(
+      `Ejunz Agent bridge request failed: ${response.status} (unexpected response envelope: ${keys}${errorKeys ? `; error fields: ${errorKeys}` : ''})`,
+    )
   }
   return payload.value
 }
