@@ -6,12 +6,11 @@ import { delegateAgentRuntimeTool } from '../lib/agent-runtime-tool';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import { registerAgentAddon } from '../service/addons';
 import type {} from '../service/server';
-import { AGENT_RUNTIME_EXTRA_TOOLS } from './agent-runtime-catalog';
 
 export const inject = ['server'];
 
-const ADDON_ID = 'agent-runtime';
-const SESSION_TOOL = { source: 'session' as const, bindBase: 'none' as const };
+export const ADDON_ID = 'agent-runtime';
+export const SESSION_TOOL = { source: 'session' as const, bindBase: 'none' as const };
 
 export const TodoWriteSchema = Schema.object({
     todos: Schema.array(Schema.object({
@@ -82,7 +81,7 @@ export const ExitPlanModeSchema = Schema.object({
     plan: Schema.string().required().description('The complete plan as markdown, starting with a # heading that names it.'),
 }).description('Use only in plan mode. Present your complete plan as markdown, starting with a # heading. The user may approve and leave plan mode or keep planning and return feedback; revise and present the plan again when asked.');
 
-function runtimeToolExecutor(toolName: string) {
+export function runtimeToolExecutor(toolName: string) {
     const executorName = `AgentRuntimeTool_${toolName.replace(/[^a-zA-Z0-9_$]/g, '_')}`;
     const executor = class extends Executor<ToolContext, ToolArgs> {
         async execute() {
@@ -117,11 +116,4 @@ export function apply(ctx: Context): void {
     ctx.Tool(ADDON_ID, 'update_goal', runtimeToolExecutor('update_goal'), UpdateGoalSchema, SESSION_TOOL, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Tool(ADDON_ID, 'skill', runtimeToolExecutor('skill'), SkillSchema, SESSION_TOOL, PRIV.USER_PRIV_USER_PROFILE);
     ctx.Tool(ADDON_ID, 'exit_plan_mode', runtimeToolExecutor('exit_plan_mode'), ExitPlanModeSchema, SESSION_TOOL, PRIV.USER_PRIV_USER_PROFILE);
-    for (const tool of AGENT_RUNTIME_EXTRA_TOOLS) {
-        ctx.Tool(ADDON_ID, tool.name, runtimeToolExecutor(tool.name), {
-            ...SESSION_TOOL,
-            description: tool.description,
-            inputSchema: tool.inputSchema,
-        }, PRIV.USER_PRIV_USER_PROFILE);
-    }
 }
