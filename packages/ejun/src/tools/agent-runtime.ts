@@ -9,8 +9,6 @@ import type {} from '../service/server';
 
 export const inject = ['server'];
 
-export const ADDON_ID = 'agent-runtime';
-export const SESSION_TOOL = { source: 'session' as const, bindBase: 'none' as const };
 
 export const TodoWriteSchema = Schema.object({
     todos: Schema.array(Schema.object({
@@ -81,20 +79,69 @@ export const ExitPlanModeSchema = Schema.object({
     plan: Schema.string().required().description('The complete plan as markdown, starting with a # heading that names it.'),
 }).description('Use only in plan mode. Present your complete plan as markdown, starting with a # heading. The user may approve and leave plan mode or keep planning and return feedback; revise and present the plan again when asked.');
 
-export function runtimeToolExecutor(toolName: string) {
-    const executorName = `AgentRuntimeTool_${toolName.replace(/[^a-zA-Z0-9_$]/g, '_')}`;
-    const executor = class extends Executor<ToolContext, ToolArgs> {
-        async execute() {
-            return delegateAgentRuntimeTool(toolName);
-        }
-    };
-    Object.defineProperty(executor, 'name', { value: executorName });
-    return executor;
+class TodoWriteExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('todo_write');
+    }
+}
+
+class AskUserQuestionExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('ask_user_question');
+    }
+}
+
+class JobOutputExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('job_output');
+    }
+}
+
+class JobListExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('job_list');
+    }
+}
+
+class JobKillExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('job_kill');
+    }
+}
+
+class GetGoalExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('get_goal');
+    }
+}
+
+class CreateGoalExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('create_goal');
+    }
+}
+
+class UpdateGoalExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('update_goal');
+    }
+}
+
+class SkillExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('skill');
+    }
+}
+
+class ExitPlanModeExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('exit_plan_mode');
+    }
 }
 
 export function apply(ctx: Context): void {
     const unregisterAddon = registerAgentAddon({
-        addonId: ADDON_ID,
+        addonId: 'agent-runtime',
         displayName: 'Agent Runtime Tools',
         description: 'Use native Agent tools for interaction, tasks, jobs, goals, skills, web access, scheduling, session search, code navigation, subagents, workflows, and optional Cordis extensions.',
         toolPrefixes: [
@@ -106,14 +153,14 @@ export function apply(ctx: Context): void {
     });
     ctx.effect(() => unregisterAddon);
 
-    ctx.Tool(ADDON_ID, 'todo_write', runtimeToolExecutor('todo_write'), TodoWriteSchema, SESSION_TOOL, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'ask_user_question', runtimeToolExecutor('ask_user_question'), AskUserQuestionSchema, SESSION_TOOL, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'job_output', runtimeToolExecutor('job_output'), JobOutputSchema, SESSION_TOOL, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'job_list', runtimeToolExecutor('job_list'), JobListSchema, SESSION_TOOL, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'job_kill', runtimeToolExecutor('job_kill'), JobKillSchema, SESSION_TOOL, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'get_goal', runtimeToolExecutor('get_goal'), GetGoalSchema, SESSION_TOOL, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'create_goal', runtimeToolExecutor('create_goal'), CreateGoalSchema, SESSION_TOOL, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'update_goal', runtimeToolExecutor('update_goal'), UpdateGoalSchema, SESSION_TOOL, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'skill', runtimeToolExecutor('skill'), SkillSchema, SESSION_TOOL, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'exit_plan_mode', runtimeToolExecutor('exit_plan_mode'), ExitPlanModeSchema, SESSION_TOOL, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'todo_write', TodoWriteExecutor, TodoWriteSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'ask_user_question', AskUserQuestionExecutor, AskUserQuestionSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'job_output', JobOutputExecutor, JobOutputSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'job_list', JobListExecutor, JobListSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'job_kill', JobKillExecutor, JobKillSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'get_goal', GetGoalExecutor, GetGoalSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'create_goal', CreateGoalExecutor, CreateGoalSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'update_goal', UpdateGoalExecutor, UpdateGoalSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'skill', SkillExecutor, SkillSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'exit_plan_mode', ExitPlanModeExecutor, ExitPlanModeSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
 }

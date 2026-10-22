@@ -1,7 +1,9 @@
+import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
-import type {} from '../service/server';
 import { PRIV } from 'ejun/src/model/builtin';
-import { ADDON_ID, SESSION_TOOL, runtimeToolExecutor } from './agent-runtime';
+import { delegateAgentRuntimeTool } from '../lib/agent-runtime-tool';
+import type { ToolArgs, ToolContext } from '../lib/tool-types';
+import type {} from '../service/server';
 
 export const inject = ['server'];
 
@@ -242,39 +244,88 @@ const CordisUndefineInputSchema: Record<string, unknown> = {
   ]
 };
 
+class CordisInspectListExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('cordis_inspect_list');
+    }
+}
+
+class CordisInspectQueryExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('cordis_inspect_query');
+    }
+}
+
+class CordisInspectSelfExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('cordis_inspect_self');
+    }
+}
+
+class CordisDefineExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('cordis_define');
+    }
+}
+
+class CordisRunExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('cordis_run');
+    }
+}
+
+class CordisStopExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('cordis_stop');
+    }
+}
+
+class CordisUndefineExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('cordis_undefine');
+    }
+}
+
 export function apply(ctx: Context): void {
-    ctx.Tool(ADDON_ID, 'cordis_inspect_list', runtimeToolExecutor('cordis_inspect_list'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'cordis_inspect_list', CordisInspectListExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: CordisInspectListDescription,
         inputSchema: CordisInspectListInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'cordis_inspect_query', runtimeToolExecutor('cordis_inspect_query'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'cordis_inspect_query', CordisInspectQueryExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: CordisInspectQueryDescription,
         inputSchema: CordisInspectQueryInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'cordis_inspect_self', runtimeToolExecutor('cordis_inspect_self'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'cordis_inspect_self', CordisInspectSelfExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: CordisInspectSelfDescription,
         inputSchema: CordisInspectSelfInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'cordis_define', runtimeToolExecutor('cordis_define'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'cordis_define', CordisDefineExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: CordisDefineDescription,
         inputSchema: CordisDefineInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'cordis_run', runtimeToolExecutor('cordis_run'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'cordis_run', CordisRunExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: CordisRunDescription,
         inputSchema: CordisRunInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'cordis_stop', runtimeToolExecutor('cordis_stop'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'cordis_stop', CordisStopExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: CordisStopDescription,
         inputSchema: CordisStopInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'cordis_undefine', runtimeToolExecutor('cordis_undefine'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'cordis_undefine', CordisUndefineExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: CordisUndefineDescription,
         inputSchema: CordisUndefineInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);

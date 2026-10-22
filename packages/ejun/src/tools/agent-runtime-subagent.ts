@@ -1,7 +1,9 @@
+import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
-import type {} from '../service/server';
 import { PRIV } from 'ejun/src/model/builtin';
-import { ADDON_ID, SESSION_TOOL, runtimeToolExecutor } from './agent-runtime';
+import { delegateAgentRuntimeTool } from '../lib/agent-runtime-tool';
+import type { ToolArgs, ToolContext } from '../lib/tool-types';
+import type {} from '../service/server';
 
 export const inject = ['server'];
 
@@ -161,39 +163,88 @@ const StructuredOutputInputSchema: Record<string, unknown> = {
   additionalProperties: true
 };
 
+class SendMessageExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('send_message');
+    }
+}
+
+class InterruptAgentExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('interrupt_agent');
+    }
+}
+
+class ListAgentsExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('list_agents');
+    }
+}
+
+class SubagentExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('subagent');
+    }
+}
+
+class SubagentForkExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('subagent_fork');
+    }
+}
+
+class ReportExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('report');
+    }
+}
+
+class StructuredOutputExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('structured_output');
+    }
+}
+
 export function apply(ctx: Context): void {
-    ctx.Tool(ADDON_ID, 'send_message', runtimeToolExecutor('send_message'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'send_message', SendMessageExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: SendMessageDescription,
         inputSchema: SendMessageInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'interrupt_agent', runtimeToolExecutor('interrupt_agent'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'interrupt_agent', InterruptAgentExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: InterruptAgentDescription,
         inputSchema: InterruptAgentInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'list_agents', runtimeToolExecutor('list_agents'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'list_agents', ListAgentsExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: ListAgentsDescription,
         inputSchema: ListAgentsInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'subagent', runtimeToolExecutor('subagent'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'subagent', SubagentExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: SubagentDescription,
         inputSchema: SubagentInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'subagent_fork', runtimeToolExecutor('subagent_fork'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'subagent_fork', SubagentForkExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: SubagentForkDescription,
         inputSchema: SubagentForkInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'report', runtimeToolExecutor('report'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'report', ReportExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: ReportDescription,
         inputSchema: ReportInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'structured_output', runtimeToolExecutor('structured_output'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'structured_output', StructuredOutputExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: StructuredOutputDescription,
         inputSchema: StructuredOutputInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);

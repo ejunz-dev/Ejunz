@@ -1,7 +1,9 @@
+import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
-import type {} from '../service/server';
 import { PRIV } from 'ejun/src/model/builtin';
-import { ADDON_ID, SESSION_TOOL, runtimeToolExecutor } from './agent-runtime';
+import { delegateAgentRuntimeTool } from '../lib/agent-runtime-tool';
+import type { ToolArgs, ToolContext } from '../lib/tool-types';
+import type {} from '../service/server';
 
 export const inject = ['server'];
 
@@ -19,9 +21,16 @@ const WebFetchInputSchema: Record<string, unknown> = {
   ]
 };
 
+class WebFetchExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('web_fetch');
+    }
+}
+
 export function apply(ctx: Context): void {
-    ctx.Tool(ADDON_ID, 'web_fetch', runtimeToolExecutor('web_fetch'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'web_fetch', WebFetchExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: WebFetchDescription,
         inputSchema: WebFetchInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);

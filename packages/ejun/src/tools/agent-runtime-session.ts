@@ -1,7 +1,9 @@
+import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
-import type {} from '../service/server';
 import { PRIV } from 'ejun/src/model/builtin';
-import { ADDON_ID, SESSION_TOOL, runtimeToolExecutor } from './agent-runtime';
+import { delegateAgentRuntimeTool } from '../lib/agent-runtime-tool';
+import type { ToolArgs, ToolContext } from '../lib/tool-types';
+import type {} from '../service/server';
 
 export const inject = ['server'];
 
@@ -333,49 +335,112 @@ const LspInputSchema: Record<string, unknown> = {
   ]
 };
 
+class ScheduleCreateExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('schedule_create');
+    }
+}
+
+class ScheduleListExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('schedule_list');
+    }
+}
+
+class ScheduleDeleteExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('schedule_delete');
+    }
+}
+
+class SessionSearchExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('session_search');
+    }
+}
+
+class SessionEventSearchExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('session_event_search');
+    }
+}
+
+class SessionTraceExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('session_trace');
+    }
+}
+
+class SessionEventTraceExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('session_event_trace');
+    }
+}
+
+class SessionEventReadExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('session_event_read');
+    }
+}
+
+class LspExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('lsp');
+    }
+}
+
 export function apply(ctx: Context): void {
-    ctx.Tool(ADDON_ID, 'schedule_create', runtimeToolExecutor('schedule_create'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'schedule_create', ScheduleCreateExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: ScheduleCreateDescription,
         inputSchema: ScheduleCreateInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'schedule_list', runtimeToolExecutor('schedule_list'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'schedule_list', ScheduleListExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: ScheduleListDescription,
         inputSchema: ScheduleListInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'schedule_delete', runtimeToolExecutor('schedule_delete'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'schedule_delete', ScheduleDeleteExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: ScheduleDeleteDescription,
         inputSchema: ScheduleDeleteInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'session_search', runtimeToolExecutor('session_search'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'session_search', SessionSearchExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: SessionSearchDescription,
         inputSchema: SessionSearchInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'session_event_search', runtimeToolExecutor('session_event_search'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'session_event_search', SessionEventSearchExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: SessionEventSearchDescription,
         inputSchema: SessionEventSearchInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'session_trace', runtimeToolExecutor('session_trace'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'session_trace', SessionTraceExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: SessionTraceDescription,
         inputSchema: SessionTraceInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'session_event_trace', runtimeToolExecutor('session_event_trace'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'session_event_trace', SessionEventTraceExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: SessionEventTraceDescription,
         inputSchema: SessionEventTraceInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'session_event_read', runtimeToolExecutor('session_event_read'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'session_event_read', SessionEventReadExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: SessionEventReadDescription,
         inputSchema: SessionEventReadInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'lsp', runtimeToolExecutor('lsp'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'lsp', LspExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: LspDescription,
         inputSchema: LspInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);

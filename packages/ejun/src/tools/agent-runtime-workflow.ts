@@ -1,7 +1,9 @@
+import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
-import type {} from '../service/server';
 import { PRIV } from 'ejun/src/model/builtin';
-import { ADDON_ID, SESSION_TOOL, runtimeToolExecutor } from './agent-runtime';
+import { delegateAgentRuntimeTool } from '../lib/agent-runtime-tool';
+import type { ToolArgs, ToolContext } from '../lib/tool-types';
+import type {} from '../service/server';
 
 export const inject = ['server'];
 
@@ -106,14 +108,28 @@ const WorkflowInputSchema: Record<string, unknown> = {
   ]
 };
 
+class RalphExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('ralph');
+    }
+}
+
+class WorkflowExecutor extends Executor<ToolContext, ToolArgs> {
+    async execute() {
+        return delegateAgentRuntimeTool('workflow');
+    }
+}
+
 export function apply(ctx: Context): void {
-    ctx.Tool(ADDON_ID, 'ralph', runtimeToolExecutor('ralph'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'ralph', RalphExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: RalphDescription,
         inputSchema: RalphInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool(ADDON_ID, 'workflow', runtimeToolExecutor('workflow'), {
-        ...SESSION_TOOL,
+    ctx.Tool('agent-runtime', 'workflow', WorkflowExecutor, {
+        source: 'session',
+        bindBase: 'none',
         description: WorkflowDescription,
         inputSchema: WorkflowInputSchema,
     }, PRIV.USER_PRIV_USER_PROFILE);
