@@ -8,7 +8,6 @@ import { pick } from 'lodash';
 import { Filter, ObjectId } from 'mongodb';
 import type { Readable } from 'stream';
 import { Logger, size, streamToBuffer } from '@ejunz/utils/lib/utils';
-import { Logger as AppLogger } from '../logger';
 import { randomstring } from '@ejunz/utils';
 import { Context } from '../context';
 import { FileUploadError, ProblemNotFoundError } from '../error';
@@ -374,125 +373,6 @@ export async function apply(ctx: Context): Promise<void> {
 
 global.Ejunz.model.groupDefinition = GroupDefinitionModel;
 export default GroupDefinitionModel;
-
-// --- MCP client logic migrated from client.ts ---
-
-export interface ChatMessage {
-    role: 'user' | 'assistant' | 'tool';
-    content: string;
-}
-
-export interface McpTool {
-    name: string;
-    description: string;
-    inputSchema: {
-        type: string;
-        properties?: Record<string, any>;
-    };
-}
-
-const ClientLogger = new AppLogger('mcp');
-
-export class McpClient {
-    /** domainId for listing domain market tools per domain */
-    async getTools(domainId?: string): Promise<McpTool[]> {
-        try {
-            const ctx = (global as any).app || (global as any).Ejunz;
-            const localP = (async () => {
-                try { return ctx && domainId ? await ctx.serial('mcp/tools/list/local', { domainId }) : []; } catch { return []; }
-            })();
-            const localTools = await localP;
-            ClientLogger.info('Tool sources: local only', { localCount: (localTools || []).length });
-            const merged: Record<string, McpTool> = Object.create(null);
-            for (const t of (localTools || []) as McpTool[]) merged[t.name] = t;
-            const list = Object.values(merged);
-            ClientLogger.info('Got tool list:', { toolCount: list.length });
-            return list;
-        } catch (e) {
-            ClientLogger.error('Failed to get tool list', e);
-            return [];
-        }
-    }
-
-    async callTool(
-        name: string,
-        args: any,
-        domainId?: string,
-        serverId?: number,
-        toolType?: string,
-        baseDocId?: number,
-        toolCallerUid?: number,
-    ): Promise<any> {
-        try {
-            ClientLogger.info('[tool] callTool: name=%s toolType=%s', name, toolType ?? 'undefined');
-            const ctx = (global as any).app || (global as any).Ejunz;
-            if (!ctx) {
-                throw new Error('Context not available');
-            }
-
-            // Check if it's a repo internal MCP tool (format: repo_{rpid}_{operation}...)
-
-            // Supported operations:
-            // - Single operation words: commit, push, ask, pull
-            // - Operation + underscore + type: query_doc, create_doc, edit_block, delete_block, create_branch, search_doc, search_block, sync_branch
-            // - Others: update_structure, query_structure, query_branches
-            if (name.match(/^repo_\d+_(query|create|edit|delete|update|pull|push|commit|search|ask|create_branch|sync_branch)/)) {
-                try {
-                    ClientLogger.info('[tool] callTool: name=%s -> branch=repo', name);
-                    // Try to get agentId and agentName from context (if called from agent)
-                    const agentId = (args as any).__agentId;
-                    const agentName = (args as any).__agentName;
-                    const cleanArgs = { ...args };
-                    delete (cleanArgs as any).__agentId;
-                    delete (cleanArgs as any).__agentName;
-
-                    const result = await ctx.serial('mcp/tool/call/repo', {
-                        name,
-                        args: cleanArgs,
-                        domainId,
-                        agentId,
-                        agentName,
-                    });
-                    return result;
-                } catch (e) {
-                    ClientLogger.error('Repo internal MCP tool call failed: %s', (e as Error).message);
-                    throw e;
-                }
-            }
-
-            // Local MCP tools (default system + market MCP)
-            try {
-                if (domainId) {
-                    const localTools = await ctx.serial('mcp/tools/list/local', { domainId }).catch(() => []);
-                    const inLocal = (localTools || []).some((t: McpTool) => t.name === name);
-                    if (inLocal) {
-                        ClientLogger.info('[tool] callTool: name=%s -> branch=local', name);
-                        return await ctx.serial('mcp/tool/call/local', {
-                            name,
-                            args,
-                            domainId,
-                            baseDocId,
-                            owner: toolCallerUid,
-                        });
-                    }
-                }
-            } catch (e) {
-                if ((e as Error).message?.startsWith('Tool not found:')) throw e;
-                ClientLogger.debug('Local tools not available: %s', (e as Error).message);
-            }
-
-            // No catalog-only execution: must be on domain market (or built-in loaders); otherwise error
-            ClientLogger.warn('[tool] callTool: name=%s -> not in assigned tools (market/local)', name);
-            const err = new Error(`Tool not added: ${name}. Please add it from the tool market for this domain.`);
-            (err as any).code = 'TOOL_NOT_ADDED';
-            throw err;
-        } catch (e) {
-            ClientLogger.error(`Failed to call tool: ${name}`, e);
-            throw e;
-        }
-    }
-}
-
 
 /** Resolve agent collections lazily after the database service is ready. */
 function agentCollection(name: string): any {

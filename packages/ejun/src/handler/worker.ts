@@ -1,5 +1,4 @@
 import { hostname } from 'os';
-import { ObjectId } from 'mongodb';
 import { Context } from '../context';
 import {
     BadRequestError,
@@ -14,16 +13,16 @@ import {
 } from '../model/workerStatus';
 import bus from '../service/bus';
 import {
-    ConnectionHandler, Handler, post, subscribe, Types,
+    ConnectionHandler, subscribe,
 } from '../service/server';
 
 const logger = new Logger('worker');
 
 const WORKER_PROTOCOL = 'ejunz-worker-v1';
-const DEFAULT_TASK_TYPES = ['tool_call', 'mcp_tool_call'];
+const DEFAULT_TASK_TYPES = ['mcp_tool_call'];
 const ALLOWED_TASK_TYPES = DEFAULT_TASK_TYPES;
 
-type EjunzWorkerTaskType = 'tool_call' | 'mcp_tool_call';
+type EjunzWorkerTaskType = 'mcp_tool_call';
 
 type WorkerMeta = {
     workerId: string;
@@ -39,14 +38,12 @@ function taskWithoutId(t: Task): Omit<Task, '_id'> & { type: string } {
 }
 
 function taskTypeFromDbTask(t: Task): EjunzWorkerTaskType | null {
-    if (t.type === 'tool_call') return 'tool_call';
     if (t.type === 'mcp' && (t as any).subType === 'tool_call') return 'mcp_tool_call';
     return null;
 }
 
 function buildTaskQuery(taskTypes: string[], minPriority?: number) {
     const clauses: any[] = [];
-    if (taskTypes.includes('tool_call')) clauses.push({ type: 'tool_call' });
     if (taskTypes.includes('mcp_tool_call')) clauses.push({ type: 'mcp', subType: 'tool_call' });
     const query: any = clauses.length === 1 ? { ...clauses[0] } : { $or: clauses.length ? clauses : [{ type: '__never__' }] };
     if (Number.isFinite(minPriority)) query.priority = { $gt: minPriority };
@@ -113,40 +110,6 @@ abstract class EjunzTaskCallbackContext {
 
     then(onfulfilled?: (value: any) => void, onrejected?: (reason: any) => void) {
         return this.finishPromise.then(onfulfilled, onrejected);
-    }
-}
-
-class ToolCallTaskCallbackContext extends EjunzTaskCallbackContext {
-    async start() {}
-
-    async accepted() {}
-
-    async complete(body: any = {}) {
-        await this.enqueue(async () => {
-            const result = body?.result !== undefined ? body.result : body?.data;
-            (bus.broadcast as any)('toolcall/complete', this.dbTask._id, result);
-        });
-        this.finish(null);
-    }
-
-    async error(body: any = {}) {
-        await this.enqueue(async () => {
-            const err = body?.error || body;
-            (bus.broadcast as any)('toolcall/complete', this.dbTask._id, {
-                error: true,
-                message: err?.message || String(err || 'Tool call failed'),
-                code: err?.code || 'WORKER_TOOL_CALL_ERROR',
-            });
-        });
-        this.finish(null);
-    }
-
-    async reset() {
-        if (this.completed) return;
-        await this.enqueue(async () => {
-            await task.add(taskWithoutId(this.dbTask));
-        });
-        this.finish(null);
     }
 }
 
@@ -272,7 +235,6 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
     }
 
     private createCallbackContext(t: Task, taskType: EjunzWorkerTaskType) {
-        if (taskType === 'tool_call') return new ToolCallTaskCallbackContext(this.ctx, t, taskType, this.workerMeta.bind(this));
         return new McpToolCallCallbackContext(this.ctx, t, taskType, this.workerMeta.bind(this));
     }
 
@@ -380,8 +342,6 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
         if (msg.key === 'task.accepted') await cb.accepted(msg);
         else if (msg.key === 'task.complete') await cb.complete(msg);
         else if (msg.key === 'task.error') await cb.error(msg);
-        else if (msg.key === 'tool_call.complete') await cb.complete(msg);
-        else if (msg.key === 'tool_call.error') await cb.error(msg);
         else if (msg.key === 'mcp_tool_call.complete') await cb.complete(msg);
         else if (msg.key === 'mcp_tool_call.error') await cb.error(msg);
     }
@@ -395,92 +355,6 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
     }
 }
 
-export async function callToolViaWorker(
-    ctx: Context,
-    toolName: string,
-    args: any,
-    domainId: string,
-    agentId?: string,
-    uid?: number,
-    taskRecordId?: ObjectId,
-    priority: number = 0,
-    toolContext: {
-        baseDocId?: number;
-        owner?: number;
-        toolType?: string;
-        mcpId?: number;
-    } = {},
-): Promise<any> {
-    const taskId = await task.add({
-        type: 'tool_call',
-        taskRecordId,
-        toolName,
-        args,
-        domainId,
-        agentId,
-        uid,
-        baseDocId: toolContext.baseDocId,
-        owner: toolContext.owner,
-        toolType: toolContext.toolType,
-        mcpId: toolContext.mcpId,
-        priority,
-    });
-
-    return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            dispose();
-            const err = new Error(`Tool call timeout: ${toolName}`);
-            (err as any).code = 'TIMEOUT';
-            reject(err);
-        }, 30000);
-
-        const handler = (completedTaskId: ObjectId, result: any) => {
-            if (completedTaskId.toString() === taskId.toString()) {
-                clearTimeout(timeout);
-                dispose();
-                if (result?.error) {
-                    const err = new Error(result.message || 'Tool call failed');
-                    (err as any).code = result.code || 'WORKER_TOOL_CALL_ERROR';
-                    reject(err);
-                } else resolve(result);
-            }
-        };
-        const dispose = (bus as any).on('toolcall/complete', handler);
-    });
-}
-
-export class ToolCallInternalHandler extends Handler {
-    noCheckPermView = true;
-    notUsage = true;
-
-    @post('toolName', Types.String, true)
-    @post('args', Types.Any, true)
-    @post('baseDocId', Types.Int, true)
-    @post('owner', Types.Int, true)
-    @post('toolType', Types.String, true)
-    @post('mcpId', Types.Int, true)
-    async post(domainId: string, toolName: string, args: any, baseDocId?: number, owner?: number, toolType?: string, mcpId?: number) {
-        const mcpClient = new (require('../model/agent').McpClient)();
-        try {
-            const callArgs = toolType === 'plugin_mcp' && mcpId ? { ...(args || {}), __mcpId: mcpId } : args;
-            logger.info(
-                'Internal worker tool call: tool=%s type=%s baseDocId=%s owner=%s mcpId=%s',
-                toolName, toolType || '', baseDocId || '', owner || '', mcpId || '',
-            );
-            const result = await mcpClient.callTool(toolName, callArgs, domainId, undefined, toolType, baseDocId, owner);
-            this.response.body = { result };
-        } catch (error: any) {
-            this.response.body = {
-                error: {
-                    message: error.message || String(error),
-                    code: error.code || 'UNKNOWN_ERROR',
-                },
-            };
-        }
-    }
-}
-
 export async function apply(ctx: Context) {
     ctx.Connection('worker_conn', '/worker/conn', EjunzWorkerConnectionHandler, builtin.PRIV.USER_PRIV_WORKER);
-    ctx.Route('toolcall_internal', '/toolcall/internal', ToolCallInternalHandler, builtin.PRIV.USER_PRIV_WORKER);
 }

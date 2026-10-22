@@ -2,7 +2,6 @@ import Schema from 'schemastery';
 import type { Context } from 'ejun/src/context';
 import { Handler, post, Types } from 'ejun/src/service/server';
 import { BadRequestError, NotFoundError } from 'ejun/src/error';
-import { callToolViaWorker } from 'ejun/src/handler/worker';
 import { PRIV } from 'ejun/src/model/builtin';
 import type { CardDoc } from 'ejun/src/interface';
 import { BaseModel } from 'ejun/src/model/base';
@@ -269,13 +268,9 @@ class BaseSemanticSearchHandler extends Handler {
         if (!query || !query.trim()) throw new BadRequestError('Query is required');
         const base = await BaseModel.get(domainId, docId);
         if (!base) throw new NotFoundError('Base not found');
-        const result = await callToolViaWorker(this.ctx, 'semantic_search', {
+        const result = await search({ domainId, baseDocId: docId, owner: this.user._id }, {
             query: query.trim(),
             limit: Math.min(limit || 10, 50),
-        }, domainId, undefined, this.user._id, undefined, 0, {
-            baseDocId: docId,
-            owner: this.user._id,
-            toolType: 'system',
         });
         this.response.body = { results: result?.results || [] };
     }
