@@ -152,14 +152,14 @@ export function apply(ctx: Context): void {
     });
     ctx.effect(() => unregisterAddon);
 
-    ctx.Tool('agent-runtime', 'todo_write', TodoWriteExecutor, TodoWriteSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('agent-runtime', 'ask_user_question', AskUserQuestionExecutor, AskUserQuestionSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('agent-runtime', 'job_output', JobOutputExecutor, JobOutputSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('agent-runtime', 'job_list', JobListExecutor, JobListSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('agent-runtime', 'job_kill', JobKillExecutor, JobKillSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('agent-runtime', 'get_goal', GetGoalExecutor, GetGoalSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('agent-runtime', 'create_goal', CreateGoalExecutor, CreateGoalSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('agent-runtime', 'update_goal', UpdateGoalExecutor, UpdateGoalSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('agent-runtime', 'skill', SkillExecutor, SkillSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
-    ctx.Tool('agent-runtime', 'exit_plan_mode', ExitPlanModeExecutor, ExitPlanModeSchema, { source: 'session', bindBase: 'none' }, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'todo_write', TodoWriteExecutor, TodoWriteSchema, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'ask_user_question', AskUserQuestionExecutor, AskUserQuestionSchema, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'job_output', JobOutputExecutor, JobOutputSchema, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'job_list', JobListExecutor, JobListSchema, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'job_kill', JobKillExecutor, JobKillSchema, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'get_goal', GetGoalExecutor, GetGoalSchema, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'create_goal', CreateGoalExecutor, CreateGoalSchema, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'update_goal', UpdateGoalExecutor, UpdateGoalSchema, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'skill', SkillExecutor, SkillSchema, PRIV.USER_PRIV_USER_PROFILE);
+    ctx.Tool('agent-runtime', 'exit_plan_mode', ExitPlanModeExecutor, ExitPlanModeSchema, PRIV.USER_PRIV_USER_PROFILE);
 }
