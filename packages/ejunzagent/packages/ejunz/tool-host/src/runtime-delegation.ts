@@ -32,6 +32,9 @@ export function createHostToolDefinition(
   client: HostToolClient,
   runtimeTool?: ToolDefinition,
 ): ToolDefinition {
+  if (spec.runtimeDelegation === true && runtimeTool === undefined) {
+    throw new Error(`native runtime tool ${spec.name} is not installed for this Agent`)
+  }
   return {
     ...(runtimeTool ?? {}),
     name: spec.name,
@@ -46,9 +49,17 @@ export function createHostToolDefinition(
         ? args as HostArguments
         : {}
       if (exec.agent === undefined) throw new Error(`tool ${spec.name} requires an Agent session`)
-      const result = await client.call(spec.name, input, { sessionId: exec.agent.session.id }, exec.signal)
+      const result = await client.call(spec.name, input, {
+        sessionId: exec.agent.session.id,
+        ...(spec.runtimeDelegation === true ? { runtimeDelegation: true } : {}),
+      }, exec.signal)
       const delegated = parseRuntimeToolCall(result)
-      if (delegated === undefined) return result
+      if (delegated === undefined) {
+        if (spec.runtimeDelegation === true) {
+          throw new Error(`host tool ${spec.name} did not authorize runtime delegation`)
+        }
+        return result
+      }
       if (delegated.toolName !== spec.name) {
         throw new Error(`host tool ${spec.name} cannot delegate to runtime tool ${delegated.toolName}`)
       }

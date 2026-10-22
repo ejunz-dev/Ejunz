@@ -26,7 +26,7 @@ export interface HostToolBridge {
    * @param signal - aborts the request.
    * @returns the tool result.
    */
-  call(sessionId: string, name: string, args: HostArguments, signal: AbortSignal): Promise<JsonValue>
+  call(sessionId: string, name: string, args: HostArguments, signal: AbortSignal, runtimeDelegation?: boolean): Promise<JsonValue>
   /**
    * Read the LLM runtime configuration for one session's domain.
    *
@@ -103,11 +103,19 @@ async function request(
 export function createHostToolBridge(origin: string, token: string): HostToolBridge {
   return {
     async catalog(signal, context) {
-      const body = context === undefined ? {} : { sessionId: context.sessionId }
+      const body = context === undefined ? {} : {
+        sessionId: context.sessionId,
+        ...(context.runtimeTools === undefined ? {} : { runtimeTools: context.runtimeTools }),
+      }
       return parseHostCatalog(await request(origin, token, '/api/ejunz-agent/data/tools/catalog', body, signal))
     },
-    async call(sessionId, name, args, signal) {
-      const value = await request(origin, token, '/api/ejunz-agent/data/tools/call', { sessionId, name, args }, signal)
+    async call(sessionId, name, args, signal, runtimeDelegation) {
+      const value = await request(origin, token, '/api/ejunz-agent/data/tools/call', {
+        sessionId,
+        name,
+        args,
+        ...(runtimeDelegation === true ? { runtimeDelegation: true } : {}),
+      }, signal)
       return value as JsonValue
     },
     async runtime(sessionId, signal) {
@@ -131,6 +139,6 @@ export function createHostToolBridge(origin: string, token: string): HostToolBri
 export function createHostToolClient(bridge: HostToolBridge): HostToolClient {
   return {
     catalog: (signal, context) => bridge.catalog(signal, context),
-    call: (name, args, context, signal) => bridge.call(context.sessionId, name, args, signal),
+    call: (name, args, context, signal) => bridge.call(context.sessionId, name, args, signal, context.runtimeDelegation),
   }
 }

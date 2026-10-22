@@ -93,8 +93,12 @@ export function apply(ctx: Context): void {
     const unregisterAddon = registerAgentAddon({
         addonId: ADDON_ID,
         displayName: 'Agent Runtime Tools',
-        description: 'Use session todos, ask the user, manage background jobs and long-term goals, load skills, and review plans.',
-        toolPrefixes: ['todo_', 'ask_user_question', 'job_', 'get_goal', 'create_goal', 'update_goal', 'skill', 'exit_plan_mode'],
+        description: 'Use the native Agent tools available in this session, including interaction, jobs, goals, skills, scheduling, session search, code navigation, delegation, workflows, and extensions.',
+        toolPrefixes: [
+            'todo_', 'ask_user_question', 'job_', 'get_goal', 'create_goal', 'update_goal', 'skill', 'exit_plan_mode',
+            'web_fetch', 'schedule_', 'session_', 'lsp', 'send_message', 'interrupt_agent', 'list_agents',
+            'subagent', 'report', 'workflow', 'ralph', 'cordis_', 'run_code', 'mcp__',
+        ],
         defaultEnabled: true,
     });
     ctx.effect(() => unregisterAddon);

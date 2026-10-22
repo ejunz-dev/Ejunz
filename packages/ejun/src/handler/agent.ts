@@ -7,8 +7,11 @@ import type { AgentScope, RuntimeLink } from '../service/runtime';
 import type { AgentStorageDescriptor } from '../model/agent';
 import type { RuntimeHelloFrame, RuntimeInboundFrame, RuntimeLinkPollFrame, RuntimeStream } from '../service/runtime';
 import { agentRuntimeHandlerContext as service } from '../service/runtime';
+import { delegateAgentRuntimeTool } from '../lib/agent-runtime-tool';
+import { parseRuntimeToolCapabilities } from '../lib/runtime-tool-catalog';
 import { addonAgentPermissionId, agentPermissionCatalog, listAgentAddons } from '../service/addons';
 import type { AgentAddonStateChange } from '../service/bus';
+import { checkAccessPriv } from '../service/tool';
 
 interface RpcEnvelope {
     type?: string;
@@ -235,6 +238,8 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                 this.response.body = JSON.stringify(dataOk(scope ?? null));
             } else if (method === 'tools/catalog') {
                 const sessionId = String(body.sessionId || '');
+                const runtimeTools = parseRuntimeToolCapabilities(body.runtimeTools);
+                if (!sessionId && runtimeTools.length) throw new Error('runtime tools require an Agent session');
                 const resolved = sessionId ? await baseSessionScope(sessionId, true) : { session: undefined, scope: undefined };
                 const scope = resolved.scope ?? (resolved.session
                     ? { domain: resolved.session.domainId, baseId: 0, owner: resolved.session.userId }
@@ -257,6 +262,18 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                     const user = UserModel ? await UserModel.getById(scope.domain, scope.owner) : null;
                     if (user) access = { priv: user.priv, perm: user.perm, scope: user.scope, agentPermissions };
                 }
+                const runtimeNames = new Set(runtimeTools.map((tool) => tool.name));
+                const hostTools = tools.list(undefined, scope?.domain, access, mountedAddons)
+                    .filter((tool) => tool.addonId !== 'agent-runtime' || runtimeNames.has(tool.name));
+                const hostNames = new Set(hostTools.map((tool) => tool.name));
+                const canExposeRuntimeTools = mountedAddons.has('agent-runtime')
+                    && access.priv !== undefined
+                    && (access.priv & PRIV.USER_PRIV_USER_PROFILE) === PRIV.USER_PRIV_USER_PROFILE;
+                const delegatedTools = canExposeRuntimeTools
+                    ? runtimeTools
+                        .filter((tool) => !hostNames.has(tool.name) && tools.get(tool.name) === undefined)
+                        .map((tool) => ({ ...tool, runtimeDelegation: true as const }))
+                    : [];
                 const addonGuidance = listAgentAddons()
                     .filter((addon) => mountedAddons.has(addon.addonId))
                     .sort((left, right) => left.addonId.localeCompare(right.addonId))
@@ -266,7 +283,7 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                     ...(await tools.instructions(context, undefined, mountedAddons)),
                 ].join('\n\n');
                 this.response.body = JSON.stringify(dataOk({
-                    tools: tools.list(undefined, scope?.domain, access, mountedAddons),
+                    tools: [...hostTools, ...delegatedTools],
                     guidance,
                 }));
             } else if (method === 'tools/call') {
@@ -279,7 +296,17 @@ export class EjunzAgentDataHandler extends Handler<Context> {
                 if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('args must be an object');
                 const mountedAddons = await mountedAddonsForSession(resolved.session);
                 const agentPermissions = await permissionsForSession(resolved.session, mountedAddons);
-                const registration = agentTools().get(name);
+                const tools = agentTools();
+                const registration = tools.get(name);
+                if (!registration && body.runtimeDelegation === true) {
+                    if (!mountedAddons.has('agent-runtime')) throw new Error('Agent runtime tools are not mounted in this session.');
+                    const UserModel = (global as any).Ejunz?.model?.user;
+                    const user = UserModel ? await UserModel.getById(scope.domain, scope.owner) : null;
+                    if (!user) throw new Error('Agent owner is unavailable.');
+                    checkAccessPriv({ priv: user.priv }, PRIV.USER_PRIV_USER_PROFILE);
+                    this.response.body = JSON.stringify(dataOk(delegateAgentRuntimeTool(name)));
+                    return;
+                }
                 if (!registration || !mountedAddons.has(registration.addonId)) {
                     throw new Error(`Addon for tool ${name} is not mounted in this session.`);
                 }

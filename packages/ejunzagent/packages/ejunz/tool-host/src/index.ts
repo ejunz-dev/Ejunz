@@ -86,25 +86,38 @@ export async function refreshHostTools(agentCtx: Context): Promise<void> {
     const agent = agentCtx.agent
     if (agent === undefined) throw new Error('tool-host: host tools require an Agent scope')
     const sessionId = agent.session.id
-    const catalog = await installation.client.catalog(AbortSignal.timeout(CATALOG_TIMEOUT_MS), { sessionId })
     const previousCatalog = installation.catalog
-    if (previousCatalog !== undefined && JSON.stringify(previousCatalog) === JSON.stringify(catalog)) return
     const disposePrevious = installation.dispose
     disposePrevious?.()
+    delete installation.dispose
     try {
+      const registry = agentCtx.get('tools') as (ToolRegistry & {
+        schemas(scope?: object): { name: string; description: string; parameters: Record<string, unknown> }[]
+      }) | undefined
+      if (registry === undefined) throw new Error('tool-host: the tool registry is unavailable in this Agent scope')
+      const runtimeTools = registry.schemas(agent).map(({ name, description, parameters }) => ({
+        name,
+        description,
+        inputSchema: parameters,
+      }))
+      const catalog = await installation.client.catalog(AbortSignal.timeout(CATALOG_TIMEOUT_MS), { sessionId, runtimeTools })
+      if (previousCatalog !== undefined && JSON.stringify(previousCatalog) === JSON.stringify(catalog)) {
+        installation.dispose = installCatalog(agentCtx, installation.client, previousCatalog)
+        return
+      }
       installation.dispose = installCatalog(agentCtx, installation.client, catalog)
       installation.catalog = catalog
+      agentCtx.logger.info(`tool-host: refreshed ${catalog.tools.length} host tool(s) for session ${sessionId}`)
     } catch (error) {
       if (previousCatalog !== undefined) {
         installation.dispose = installCatalog(agentCtx, installation.client, previousCatalog)
+        installation.catalog = previousCatalog
       } else {
         delete installation.dispose
+        delete installation.catalog
       }
-      if (previousCatalog === undefined) delete installation.catalog
-      else installation.catalog = previousCatalog
       throw error
     }
-    agentCtx.logger.info(`tool-host: refreshed ${catalog.tools.length} host tool(s) for session ${sessionId}`)
   })
   installation.queue = update.then(() => undefined, () => undefined)
   await update
