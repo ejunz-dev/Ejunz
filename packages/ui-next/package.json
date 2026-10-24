@@ -6,6 +6,75 @@
   "type": "module",
   "main": "index.ts",
   "types": "api.ts",
+  "exports": {
+    ".": {
+      "types": "./api.ts",
+      "import": "./index.ts",
+      "default": "./index.ts"
+    },
+    "./api": {
+      "types": "./api.ts",
+      "import": "./api.ts",
+      "default": "./api.ts"
+    },
+    "./renderer": {
+      "types": "./src/renderer.ts",
+      "import": "./src/renderer.ts",
+      "default": "./src/renderer.ts"
+    },
+    "./app": {
+      "types": "./src/app.tsx",
+      "import": "./src/app.tsx",
+      "default": "./src/app.tsx"
+    },
+    "./globals": {
+      "types": "./src/globals.ts",
+      "import": "./src/globals.ts",
+      "default": "./src/globals.ts"
+    },
+    "./context/page-data": {
+      "types": "./src/context/page-data.tsx",
+      "import": "./src/context/page-data.tsx",
+      "default": "./src/context/page-data.tsx"
+    },
+    "./registry/page": {
+      "types": "./src/registry/page.tsx",
+      "import": "./src/registry/page.tsx",
+      "default": "./src/registry/page.tsx"
+    },
+    "./registry/layout": {
+      "types": "./src/registry/layout.ts",
+      "import": "./src/registry/layout.ts",
+      "default": "./src/registry/layout.ts"
+    },
+    "./components/button": {
+      "types": "./src/components/button.tsx",
+      "import": "./src/components/button.tsx",
+      "default": "./src/components/button.tsx"
+    },
+    "./components/callout": {
+      "types": "./src/components/callout.tsx",
+      "import": "./src/components/callout.tsx",
+      "default": "./src/components/callout.tsx"
+    },
+    "./components/card": {
+      "types": "./src/components/card.tsx",
+      "import": "./src/components/card.tsx",
+      "default": "./src/components/card.tsx"
+    },
+    "./components/field": {
+      "types": "./src/components/field.tsx",
+      "import": "./src/components/field.tsx",
+      "default": "./src/components/field.tsx"
+    },
+    "./components/theme.css": "./src/components/theme.css",
+    "./components/ui.css": "./src/components/ui.css",
+    "./src/*": {
+      "types": "./src/*",
+      "import": "./src/*",
+      "default": "./src/*"
+    }
+  },
   "preferUnplugged": true,
   "ejunz": {
     "cli": false
@@ -18,12 +87,11 @@
     "locales/",
     "index.html",
     "public/",
-    "tsconfig.json",
     "vite.config.ts"
   ],
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {

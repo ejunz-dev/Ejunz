@@ -28,7 +28,7 @@ export type {
   PluginAPI, PluginDefinition,
   SlotName,
 } from './registry';
-export { defineSlot } from './registry';
+export { defineSlot, registerLayout, registerPage } from './registry';
 
 // Shared dependencies
 export { default as React, useEffect, useMemo, useState } from 'react';
