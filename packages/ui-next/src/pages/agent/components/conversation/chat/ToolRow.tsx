@@ -48,7 +48,7 @@ export function ToolRow({ message, addons, onOpenFile, onOpenDetails }: { messag
             onToggle={() => setExpanded((value) => !value)}
             collapsedContent={<><span className={css.sep} aria-hidden />{model.filePath && onOpenFile && model.errorSummary === undefined ? <button type="button" className={css.fileLink} onClick={(event) => { event.stopPropagation(); onOpenFile(model.filePath!); }}>{summary}</button> : <span className={`${css.summary}${model.errorSummary !== undefined ? ` ${css.errorSummary}` : ''}`}>{summary}</span>}</>}
         >
-            <div className={css.bodyWrap}><ToolViewCard variant={model.variant} input={model.input} output={model.output} meta={model.meta} error={model.state === 'error'} /><button type="button" className={css.inspectButton} onClick={(event) => { event.stopPropagation(); onOpenDetails?.(message); }}>{i18n('View details')}</button>{message.children?.length ? <div className="eza-toolChildren">{message.children.map((child) => <ToolRow key={child.key} message={child} addons={addons} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} />)}</div> : null}</div>
+            <div className={css.bodyWrap}><ToolViewCard variant={model.variant} input={model.input} output={model.output} meta={model.meta} error={model.state === 'error'} /><button type="button" className={css.inspectButton} onClick={(event) => { event.stopPropagation(); onOpenDetails?.(message); }}>{i18n('View details')}</button>{message.children?.length ? <div className="ea-toolChildren">{message.children.map((child) => <ToolRow key={child.key} message={child} addons={addons} onOpenFile={onOpenFile} onOpenDetails={onOpenDetails} />)}</div> : null}</div>
         </DisclosureRow>
     </div>;
 }

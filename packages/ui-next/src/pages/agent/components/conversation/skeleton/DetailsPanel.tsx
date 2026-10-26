@@ -12,9 +12,9 @@ interface DetailsPanelProps {
 }
 
 export function DetailsPanel({ title, agentPreset, running, models, tool, onClose }: DetailsPanelProps) {
-    return <aside className="eza-detailsPanel">
-        <div className="eza-detailsHeader"><strong>{tool ? i18n('Tool details') : i18n('Session details')}</strong><button type="button" onClick={onClose}>×</button></div>
-        {tool ? <ToolDetails message={tool} /> : <dl className="eza-detailsList">
+    return <aside className="ea-detailsPanel">
+        <div className="ea-detailsHeader"><strong>{tool ? i18n('Tool details') : i18n('Session details')}</strong><button type="button" onClick={onClose}>×</button></div>
+        {tool ? <ToolDetails message={tool} /> : <dl className="ea-detailsList">
             <dt>{i18n('Title')}</dt><dd>{title}</dd>
             <dt>{i18n('Status')}</dt><dd>{running ? i18n('Running') : i18n('Idle')}</dd>
             <dt>{i18n('Agent preset')}</dt><dd>{agentPreset || i18n('Default')}</dd>

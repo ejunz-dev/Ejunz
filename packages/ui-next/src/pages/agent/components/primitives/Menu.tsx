@@ -93,7 +93,7 @@ export function Menu({ open, anchor, items, selectedId, onSelect, onClose, align
         };
     }, [cancelClose, onClose, open]);
 
-    const darkTheme = typeof document !== 'undefined' && document.querySelector('.eza-app[data-ds-dark-theme], body[data-ds-dark-theme]') !== null;
+    const darkTheme = typeof document !== 'undefined' && document.querySelector('.ea-app[data-ds-dark-theme], body[data-ds-dark-theme]') !== null;
     const list = open ? <div ref={listRef} className={`${css.list}${dense ? ` ${css.denseList}` : ''}${compact ? ` ${css.compactList}` : ''}${portal ? ` ${css.portal}` : ''}${portal && darkTheme ? ` ${css.darkPortal}` : ''}${!portal && side === 'top' ? ` ${css.sideTop}` : ''}${!portal && align === 'end' ? ` ${css.alignEnd}` : ''}`} style={portal ? { ...(fixedPos ?? MEASURE_STYLE), position: 'fixed', zIndex: 1100 } : undefined} role="menu" onClick={(event) => { event.stopPropagation(); }}>
         <div className={css.viewport}>
             {items.map((entry) => isSeparator(entry)

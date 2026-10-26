@@ -4,7 +4,7 @@ import { ToolViewCard } from './toolviews/ToolViewCard';
 
 export function ToolDetails({ message }: { message: ChatMessage }) {
     const model = toolRowModel(message);
-    return <div className="eza-toolDetails">
+    return <div className="ea-toolDetails">
         <ToolViewCard variant={model.variant} input={model.input} output={model.output} meta={model.meta} error={model.state === 'error'} />
     </div>;
 }

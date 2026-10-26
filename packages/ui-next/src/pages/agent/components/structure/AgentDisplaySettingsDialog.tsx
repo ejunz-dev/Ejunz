@@ -76,9 +76,9 @@ export function AgentDisplaySettingsDialog({ open, settings, saving = false, onC
     if (!open) return null;
     return (
         <div className="bd-settings-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
-            <section className="bd-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="eza-display-settings-title">
+            <section className="bd-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="ea-display-settings-title">
                 <header className="bd-settings-dialog__header">
-                    <h2 id="eza-display-settings-title">◌ {i18n('Display settings')}</h2>
+                    <h2 id="ea-display-settings-title">◌ {i18n('Display settings')}</h2>
                     <button type="button" className="bd-settings-dialog__close" onClick={onClose} disabled={saving} aria-label={i18n('Close')}>×</button>
                 </header>
                 <p className="bd-settings-dialog__hint">{i18n('Choose which information to show on session cards.')}</p>

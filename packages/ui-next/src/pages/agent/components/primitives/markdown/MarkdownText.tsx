@@ -73,7 +73,7 @@ markdown.renderer.rules.fence = (tokens, index, options, env, self) => {
     const language = token.info.trim().split(/\s+/, 1)[0] ?? '';
     const label = markdown.utils.escapeHtml(language);
     const code = markdown.utils.escapeHtml(token.content);
-    return `<div class="eza-mdCode"><div class="eza-mdCodeBanner"><span>${label}</span></div><pre><code${language ? ` class="language-${label}"` : ''}>${code}</code></pre></div>`;
+    return `<div class="ea-mdCode"><div class="ea-mdCodeBanner"><span>${label}</span></div><pre><code${language ? ` class="language-${label}"` : ''}>${code}</code></pre></div>`;
 };
 
 const codeLanguages = ['javascript', 'typescript', 'tsx', 'jsx', 'python', 'json', 'bash', 'shellscript', 'html', 'css', 'markdown', 'yaml', 'sql'];
@@ -86,13 +86,13 @@ function getHighlighter() {
 }
 
 function installCopyButtons(root: HTMLDivElement): HTMLButtonElement[] {
-    return [...root.querySelectorAll<HTMLDivElement>('.eza-mdCode')].map((block) => {
+    return [...root.querySelectorAll<HTMLDivElement>('.ea-mdCode')].map((block) => {
         const pre = block.querySelector('pre');
-        const banner = block.querySelector('.eza-mdCodeBanner');
+        const banner = block.querySelector('.ea-mdCodeBanner');
         if (!pre || !banner) return null;
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'eza-codeCopy';
+        button.className = 'ea-codeCopy';
         button.textContent = i18n('Copy');
         button.addEventListener('click', () => {
             const value = pre.querySelector('code')?.textContent ?? pre.textContent ?? '';
@@ -144,12 +144,12 @@ export function MarkdownText({ text }: { text: string }) {
         void highlight();
         return () => {
             disposed = true;
-            root.querySelectorAll('.eza-codeCopy').forEach((button) => button.remove());
+            root.querySelectorAll('.ea-codeCopy').forEach((button) => button.remove());
         };
     }, [html]);
-    return <div ref={rootRef} className={`${css.markdown} eza-markdown`} dangerouslySetInnerHTML={{ __html: html }} />;
+    return <div ref={rootRef} className={`${css.markdown} ea-markdown`} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 export function PlainText({ text }: { text: string }) {
-    return <span className="eza-plainText">{text}</span>;
+    return <span className="ea-plainText">{text}</span>;
 }

@@ -51,11 +51,11 @@ export function ChatMessageView({ message, addons, onOpenFile, onOpenDetails }: 
         />;
     }
     if (message.role === 'user') {
-        return <div className={`${css.userRow} eza-message-user`}><div className={`${css.userStack} eza-userStack`}><div className={css.userLine}><div className={`${css.bubble} eza-bubble`}><PlainText text={message.text} /></div>{message.sendStatus && <span className={`${css.sendStatus} ${message.sendStatus === 'sending' ? css.sendStatusSending : css.sendStatusSent}`} role="status" aria-label={message.sendStatus === 'sending' ? i18n('Sending') : i18n('Delivered')} title={message.sendStatus === 'sending' ? i18n('Sending') : i18n('Delivered')}>{message.sendStatus === 'sending' ? <span className={css.sendSpinner} /> : '✓'}</span>}</div></div><MessageActions text={message.text} time={message.time} clock="start" /></div>;
+        return <div className={`${css.userRow} ea-message-user`}><div className={`${css.userStack} ea-userStack`}><div className={css.userLine}><div className={`${css.bubble} ea-bubble`}><PlainText text={message.text} /></div>{message.sendStatus && <span className={`${css.sendStatus} ${message.sendStatus === 'sending' ? css.sendStatusSending : css.sendStatusSent}`} role="status" aria-label={message.sendStatus === 'sending' ? i18n('Sending') : i18n('Delivered')} title={message.sendStatus === 'sending' ? i18n('Sending') : i18n('Delivered')}>{message.sendStatus === 'sending' ? <span className={css.sendSpinner} /> : '✓'}</span>}</div></div><MessageActions text={message.text} time={message.time} clock="start" /></div>;
     }
     if (message.role === 'assistant') {
         const segments = message.segments ?? [{ kind: 'text' as const, text: message.text }];
-        return <div className={`${assistantCss.root} eza-message-assistant`}><div className={assistantCss.body}>{segments.map((segment, index) => segment.kind === 'reasoning'
+        return <div className={`${assistantCss.root} ea-message-assistant`}><div className={assistantCss.body}>{segments.map((segment, index) => segment.kind === 'reasoning'
             ? <ReasoningBlock key={index} text={segment.text} running={message.running && index === segments.length - 1} />
             : <MarkdownText key={index} text={segment.text} />)}</div>{!message.running && <MessageActions text={message.text} time={message.time} clock="end" />}</div>;
     }
@@ -82,5 +82,5 @@ export function ChatMessageView({ message, addons, onOpenFile, onOpenDetails }: 
         return <ContextInjectionRow label={label} source={isAddonMount || isPermissionInjection ? undefined : message.contextLabel} summary={message.contextSummary} text={message.text} contextSource={message.contextSource} contextForm={message.contextForm} />;
     }
     if (message.eventType === 'turn/error' || message.eventType === 'turn/max-tokens') return <TurnStatusRow message={message} />;
-    return <div className="eza-systemMessage">{message.text}</div>;
+    return <div className="ea-systemMessage">{message.text}</div>;
 }

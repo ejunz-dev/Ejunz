@@ -54,7 +54,7 @@ export function TeamContextSettingsPanel({ team, editing, saving, onCloseEdit, o
     }, [editing, onCloseEdit, save]);
 
     return <>
-        <div className="bd-drawer__body eza-teamContextPreview">
+        <div className="bd-drawer__body ea-teamContextPreview">
             {context.trim()
                 ? <div className="bd-markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(context) }} />
                 : <p className="bd-muted">{i18n('This team has no context configured.')}</p>}

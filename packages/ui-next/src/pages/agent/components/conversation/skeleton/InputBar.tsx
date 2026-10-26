@@ -360,7 +360,7 @@ export function InputBar({ input, setInput, send, cancel, running, sending, atta
                 {commandVisible && <CommandMenu query={commandQuery} activeIndex={commandIndex} onSelect={selectCommand} onClose={() => setCommandOpen(false)} />}
             </div>
             {attachments.length > 0 && <div className={css.attachments}><AttachmentRail attachments={attachments} onRemove={onRemoveAttachment} /></div>}
-            <input ref={setFileInputRef} className="eza-fileInput" type="file" multiple onChange={(event) => { queueFiles(event.target.files ?? []); event.currentTarget.value = ''; }} />
+            <input ref={setFileInputRef} className="ea-fileInput" type="file" multiple onChange={(event) => { queueFiles(event.target.files ?? []); event.currentTarget.value = ''; }} />
             <div className={css.row}>
                 <div className={css.tools}>
                     <button type="button" className={css.add} aria-label={i18n('Commands')} aria-haspopup="listbox" aria-expanded={commandVisible} disabled={sending} onMouseDown={keepFocus} onClick={() => setCommandOpen((value) => !value)}><IconPlusOutline16 size={14} /></button>

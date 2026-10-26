@@ -44,12 +44,12 @@ const labels: Record<ToolRowVariant, string> = {
 };
 
 function TextBlock({ value, className = '' }: { value: string; className?: string }) {
-    return <pre className={`eza-toolViewOutput ${className}`}>{value}</pre>;
+    return <pre className={`ea-toolViewOutput ${className}`}>{value}</pre>;
 }
 
 function ReadView({ output, meta }: { output: string; meta?: ReadMeta | null }) {
     const lines = meta?.lines ?? output.split('\n').map((text, index) => ({ number: index + 1, text }));
-    return <ol className="eza-readView">{lines.map((line) => <li key={`${line.number}-${line.text}`}><span>{line.number}</span><code>{line.text || ' '}</code></li>)}</ol>;
+    return <ol className="ea-readView">{lines.map((line) => <li key={`${line.number}-${line.text}`}><span>{line.number}</span><code>{line.text || ' '}</code></li>)}</ol>;
 }
 
 function DiffView({ output, meta }: { output: string; meta?: DiffMeta | null }) {
@@ -62,26 +62,26 @@ function DiffView({ output, meta }: { output: string; meta?: DiffMeta | null }) 
         ]),
     ].join('\n')).join('\n') ?? output;
     const lines = text.split('\n');
-    return <pre className="eza-diffView">{lines.map((line, index) => <span key={`${index}-${line}`} className={line.startsWith('+') ? 'add' : line.startsWith('-') ? 'remove' : ''}>{line}{index < lines.length - 1 ? '\n' : ''}</span>)}</pre>;
+    return <pre className="ea-diffView">{lines.map((line, index) => <span key={`${index}-${line}`} className={line.startsWith('+') ? 'add' : line.startsWith('-') ? 'remove' : ''}>{line}{index < lines.length - 1 ? '\n' : ''}</span>)}</pre>;
 }
 
 function SearchView({ output, meta }: { output: string; meta?: SearchMeta | null }) {
     const lines = meta?.shape === 'paths'
         ? meta.paths ?? []
         : meta?.files?.flatMap((file) => file.matches.map((match) => `${file.path}:${match.lineNumber}: ${match.line}`)) ?? output.split('\n').filter(Boolean);
-    return <ul className="eza-searchView">{lines.map((line) => <li key={line}>{line}</li>)}</ul>;
+    return <ul className="ea-searchView">{lines.map((line) => <li key={line}>{line}</li>)}</ul>;
 }
 
 function WebView({ output, meta }: { output: string; meta?: WebMeta | null }) {
     const sources = meta?.kind === 'search' ? meta.sources ?? [] : [];
     if (sources.length > 0 || meta?.answer) {
-        return <div className="eza-webView">
+        return <div className="ea-webView">
             {meta?.answer && <p>{meta.answer}</p>}
             {sources.map((source) => <p key={source.url}><a href={source.url} target="_blank" rel="noreferrer">{source.title || source.url}</a>{source.snippet && <span>：{source.snippet}</span>}</p>)}
         </div>;
     }
-    if (meta?.kind === 'fetch' && meta.url) return <div className="eza-webView"><a href={meta.url} target="_blank" rel="noreferrer">{meta.url}</a>{meta.statusCode !== undefined && <span> · HTTP {meta.statusCode}</span>}<TextBlock value={output} /></div>;
-    return <div className="eza-webView">{output.split(/(https?:\/\/[^\s]+)/g).map((part, index) => /^https?:\/\//.test(part) ? <a key={index} href={part} target="_blank" rel="noreferrer">{part}</a> : <span key={index}>{part}</span>)}</div>;
+    if (meta?.kind === 'fetch' && meta.url) return <div className="ea-webView"><a href={meta.url} target="_blank" rel="noreferrer">{meta.url}</a>{meta.statusCode !== undefined && <span> · HTTP {meta.statusCode}</span>}<TextBlock value={output} /></div>;
+    return <div className="ea-webView">{output.split(/(https?:\/\/[^\s]+)/g).map((part, index) => /^https?:\/\//.test(part) ? <a key={index} href={part} target="_blank" rel="noreferrer">{part}</a> : <span key={index}>{part}</span>)}</div>;
 }
 
 function objectMeta(meta: unknown): Record<string, unknown> | null {
@@ -161,9 +161,9 @@ function structuredView(variant: ToolRowVariant, output: string, meta: unknown):
 export function ToolViewCard({ variant, input, output, meta, error }: ToolViewCardProps) {
     const structured = output && !error ? structuredView(variant, output, meta) : null;
     const showInput = input && (structured === null || variant === 'bash' || variant === 'code' || variant === 'others');
-    return <div className={`eza-toolView eza-toolView-${variant}`}>
-        <div className="eza-toolViewHeader"><span>{i18n(labels[variant])}</span><span>{error ? i18n('Failure') : output ? i18n('Done') : i18n('Running...')}</span></div>
-        {showInput && <pre className="eza-toolViewInput">{input}</pre>}
+    return <div className={`ea-toolView ea-toolView-${variant}`}>
+        <div className="ea-toolViewHeader"><span>{i18n(labels[variant])}</span><span>{error ? i18n('Failure') : output ? i18n('Done') : i18n('Running...')}</span></div>
+        {showInput && <pre className="ea-toolViewInput">{input}</pre>}
         {structured ?? (output && (error ? <TextBlock value={output} className="error" /> : variant === 'read' ? <ReadView output={output} /> : variant === 'edit' || variant === 'write' ? <DiffView output={output} /> : variant === 'search' ? <SearchView output={output} /> : variant === 'web' ? <WebView output={output} /> : variant === 'others' && output.includes('http') ? <WebView output={output} /> : <TextBlock value={output} />))}
     </div>;
 }

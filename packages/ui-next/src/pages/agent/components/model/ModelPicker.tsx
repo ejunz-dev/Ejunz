@@ -9,10 +9,10 @@ interface ModelPickerProps {
 }
 
 export function ModelPicker({ models, open, onToggle, onSelect }: ModelPickerProps) {
-    return <div className="eza-modelPicker">
-        <button type="button" className="eza-modelButton" onClick={onToggle}>{models.current.model || i18n('Choose a model')}</button>
-        {open && <div className="eza-modelMenu">
-            {models.groups.flatMap((group) => group.models.map((model) => <button key={`${group.id}:${model.id}`} type="button" className={`eza-modelOption${models.current.provider === group.id && models.current.model === model.id ? ' active' : ''}`} onClick={() => onSelect(group.id, model.id)}>
+    return <div className="ea-modelPicker">
+        <button type="button" className="ea-modelButton" onClick={onToggle}>{models.current.model || i18n('Choose a model')}</button>
+        {open && <div className="ea-modelMenu">
+            {models.groups.flatMap((group) => group.models.map((model) => <button key={`${group.id}:${model.id}`} type="button" className={`ea-modelOption${models.current.provider === group.id && models.current.model === model.id ? ' active' : ''}`} onClick={() => onSelect(group.id, model.id)}>
                 <span>{model.name}</span>
                 <small>{group.name}</small>
             </button>))}

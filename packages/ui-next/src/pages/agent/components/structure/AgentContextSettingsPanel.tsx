@@ -52,7 +52,7 @@ export function AgentContextSettingsPanel({ context = '', editing, saving, onClo
     }, [editing, onCloseEdit, save]);
 
     return <>
-        <div className="bd-drawer__body eza-teamContextPreview">
+        <div className="bd-drawer__body ea-teamContextPreview">
             {context.trim()
                 ? <div className="bd-markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(context) }} />
                 : <p className="bd-muted">{i18n('This Agent has no private context configured.')}</p>}

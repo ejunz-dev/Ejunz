@@ -66,7 +66,7 @@ function ResizeHandle({ onResize }: { onResize: (delta: number) => void }) {
         event.currentTarget.releasePointerCapture(event.pointerId);
         setDragging(false);
     };
-    return <div className="eza-sessionDrawerResize" data-dragging={dragging || undefined} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} />;
+    return <div className="ea-sessionDrawerResize" data-dragging={dragging || undefined} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} />;
 }
 
 export function SessionDrawer({ loading, loadingLabel = i18n('Loading...'), drawerWidth, view, title = i18n('Session history'), hideTabs = false, headerTabs, headerActions, onViewChange, onResize, onClose, children, overlay }: SessionDrawerProps) {
@@ -123,8 +123,8 @@ export function SessionDrawer({ loading, loadingLabel = i18n('Loading...'), draw
         swipeRef.current = null;
     };
     return <>
-        <button type="button" className="bd-backdrop bd-card-backdrop eza-sessionDrawerBackdrop" data-closing={closing || undefined} onClick={requestClose} aria-label={i18n('Close {0}', title)} />
-        <aside className="bd-drawer bd-card-drawer eza-sessionDrawer" data-closing={closing || undefined} style={{ '--eza-session-drawer-width': `${drawerWidth}px` } as CSSProperties} role="dialog" aria-modal="true" aria-label={title} onWheel={(event) => event.stopPropagation()} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerCancel}>
+        <button type="button" className="bd-backdrop bd-card-backdrop ea-sessionDrawerBackdrop" data-closing={closing || undefined} onClick={requestClose} aria-label={i18n('Close {0}', title)} />
+        <aside className="bd-drawer bd-card-drawer ea-sessionDrawer" data-closing={closing || undefined} style={{ '--ea-session-drawer-width': `${drawerWidth}px` } as CSSProperties} role="dialog" aria-modal="true" aria-label={title} onWheel={(event) => event.stopPropagation()} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerEnd} onPointerCancel={handlePointerCancel}>
             <ResizeHandle onResize={onResize} />
             <header className="bd-drawer__header">
                 {headerTabs ? <div className="bd-drawer__tabs" role="tablist" aria-label={title}>
@@ -140,8 +140,8 @@ export function SessionDrawer({ loading, loadingLabel = i18n('Loading...'), draw
                     <button type="button" className="bd-drawer__close" onClick={requestClose} aria-label={i18n('Close')}>×</button>
                 </div>
             </header>
-            <div className="bd-drawer__body eza-sessionDrawerBody">
-                {loading ? <div className="eza-sessionDrawerLoading" role="status" aria-label={i18n('Loading {0}', title)}><span />{loadingLabel}</div> : children}
+            <div className="bd-drawer__body ea-sessionDrawerBody">
+                {loading ? <div className="ea-sessionDrawerLoading" role="status" aria-label={i18n('Loading {0}', title)}><span />{loadingLabel}</div> : children}
             </div>
             {overlay}
         </aside>

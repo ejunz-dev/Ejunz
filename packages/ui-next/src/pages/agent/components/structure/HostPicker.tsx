@@ -54,34 +54,34 @@ export function HostPicker({ hosts, value, onPick, disabled, hint }: {
     }, [open]);
 
     const selectable = hosts.filter((host) => host.online !== false);
-    return <div className="eza-hostBar" ref={rootRef}>
+    return <div className="ea-hostBar" ref={rootRef}>
         <button
             type="button"
-            className="eza-hostBar__button"
+            className="ea-hostBar__button"
             aria-haspopup="listbox"
             aria-expanded={open}
             disabled={disabled === true}
             onClick={() => setOpen((previous) => !previous)}
         >
-            <span className="eza-hostBar__caption">{i18n('Host')}</span>
-            <span className="eza-hostBar__value">{value === '' ? i18n('Not selected') : label}</span>
-            {value !== '' && chosen?.online === false && <span className="eza-hostBar__offline">{i18n('Offline')}</span>}
-            <span className="eza-hostBar__caret" aria-hidden="true">▾</span>
+            <span className="ea-hostBar__caption">{i18n('Host')}</span>
+            <span className="ea-hostBar__value">{value === '' ? i18n('Not selected') : label}</span>
+            {value !== '' && chosen?.online === false && <span className="ea-hostBar__offline">{i18n('Offline')}</span>}
+            <span className="ea-hostBar__caret" aria-hidden="true">▾</span>
         </button>
-        {hint !== undefined && hint !== '' && <span className="eza-hostBar__hint">{hint}</span>}
-        {open && <div className="eza-hostBar__menu" role="listbox" aria-label={i18n('Choose a host')}>
-            {selectable.length === 0 && <p className="eza-hostBar__empty">{i18n('No hosts online')}</p>}
+        {hint !== undefined && hint !== '' && <span className="ea-hostBar__hint">{hint}</span>}
+        {open && <div className="ea-hostBar__menu" role="listbox" aria-label={i18n('Choose a host')}>
+            {selectable.length === 0 && <p className="ea-hostBar__empty">{i18n('No hosts online')}</p>}
             {selectable.map((host) => <button
                 key={host.runtimeId}
                 type="button"
                 role="option"
                 aria-selected={host.runtimeId === value}
-                className="eza-hostBar__option"
+                className="ea-hostBar__option"
                 data-active={host.runtimeId === value || undefined}
                 onClick={() => { setOpen(false); onPick(host.runtimeId); }}
             >
-                <span className="eza-hostBar__optionLabel">{host.label}</span>
-                <span className="eza-hostBar__optionCode">{host.runtimeId}</span>
+                <span className="ea-hostBar__optionLabel">{host.label}</span>
+                <span className="ea-hostBar__optionCode">{host.runtimeId}</span>
             </button>)}
         </div>}
     </div>;

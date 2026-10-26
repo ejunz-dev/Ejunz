@@ -2169,11 +2169,11 @@ export default function AgentPage() {
     }, [current, teams, rootTeamId, sessions]);
     if (guest) return null;
     if (booting) {
-        return <div className="eza-app" data-ds-dark-theme={dark || undefined}><div className="eza-boot"><div className="eza-bootCard"><EjunzLogo size={40} className="eza-heroLogo" /><div className="eza-bootSpinner" /><div className="eza-bootHint">{i18n('Connecting to Ejunz Agent...')}</div></div></div></div>;
+        return <div className="ea-app" data-ds-dark-theme={dark || undefined}><div className="ea-boot"><div className="ea-bootCard"><EjunzLogo size={40} className="ea-heroLogo" /><div className="ea-bootSpinner" /><div className="ea-bootHint">{i18n('Connecting to Ejunz Agent...')}</div></div></div></div>;
     }
 
     return (
-        <div className="eza-app" data-ds-dark-theme={dark || undefined}>
+        <div className="ea-app" data-ds-dark-theme={dark || undefined}>
             <DeepSeekOnboarding rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} />
             {newSessionConfigOpen && <InputConfigDialog
                 hosts={hosts}
@@ -2225,7 +2225,7 @@ export default function AgentPage() {
                 onSelect={setSettingsSection}
                 headerAction={<SettingsDocumentAction rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} />}
                 sections={[
-                    { id: 'general', label: i18n('General settings'), render: () => <div className="eza-settingsColumn">
+                    { id: 'general', label: i18n('General settings'), render: () => <div className="ea-settingsColumn">
                     <AgentPresetRow rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} />
                     <LanguageRow rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} />
                     <GeneralSection rpc={rpc as <T>(method: string, payload: unknown) => Promise<T>} onThemeChange={applyTheme} />
@@ -2288,7 +2288,7 @@ export default function AgentPage() {
                 onClose={() => { if (!dialogBusy) setDialog(null); }}
                 onConfirm={() => { void submitDialog(); }}
             />}
-            <div className="eza-pageShell bd-page">
+            <div className="ea-pageShell bd-page">
                 <AgentHeader
                     domainId={String(domainId || 'system')}
                     domainName={domainName}
@@ -2312,8 +2312,8 @@ export default function AgentPage() {
                     }}
                     editActive={editMode}
                 />
-                <div className="eza-pageBody">
-                    <main className="eza-mainSurface">
+                <div className="ea-pageBody">
+                    <main className="ea-mainSurface">
                         <TeamTree
                             sessions={sessionsWithAgentSettings}
                             agents={agents}
@@ -2443,7 +2443,7 @@ export default function AgentPage() {
                     onResize={(delta) => setSessionDrawerWidth((width) => Math.max(SESSION_DRAWER_MIN, width + delta))}
                     onClose={() => { setSelectedAgentSettingsId(null); setAgentContextEditing(false); }}
                 >
-                    <div className="eza-agentSettingsPanel">
+                    <div className="ea-agentSettingsPanel">
                         {agentSettingsSection === 'context' && <AgentContextSettingsPanel
                             context={selectedAgentSettings.config?.context}
                             editing={agentContextEditing}
@@ -2483,7 +2483,7 @@ export default function AgentPage() {
                             {creatingSession || !currentSession
                                 ? null
                                 : view === 'context'
-                                ? <div className="eza-sessionAgentSettingsNotice">
+                                ? <div className="ea-sessionAgentSettingsNotice">
                                     <p>{i18n('Runtime settings are managed by the Agent. Sessions no longer store their own model, Base, host, or preset.')}</p>
                                     {currentSession.agentId && <button type="button" onClick={() => openAgentSettings(currentSession.agentId!)}>{i18n('Open Agent settings')}</button>}
                                 </div>
@@ -2491,20 +2491,20 @@ export default function AgentPage() {
                                     blank={false}
                                     title={sessionTitle(currentSession)}
                                     renaming={renaming}
-                                    titleEditor={<input className="eza-titleEditor" autoFocus value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setRenaming(false); if (event.key === 'Enter') void renameSession(); }} />}
+                                    titleEditor={<input className="ea-titleEditor" autoFocus value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setRenaming(false); if (event.key === 'Enter') void renameSession(); }} />}
                                     actions={<AgentPresetLabel preset={currentSession.agentSettings?.agentPreset} options={agentPresetOptions} />}
                                     view={view === 'trajectory' ? 'trajectory' : 'chat'}
                                     onViewChange={setView}
                                     hideHeader
                                     chat={<ChatView messages={messages} addons={agentAddons} running={running} runningTurnStartTime={runningTurnStart} historyHasMore={historyHasMore} loadingOlder={loadingOlder} loadedMessages={loadedHistoryMessages} totalMessages={historyTotalMessages} historyPageSize={HISTORY_PAGE_SIZE} onLoadOlder={() => void loadOlder()} onOpenFile={openFile} onOpenDetails={(tool) => { setSelectedTool(tool); }} />}
                                     trajectory={<TrajectoryView messages={messages} history={history} session={currentSession} historyHasMore={historyHasMore} loadingOlder={loadingOlder} onLoadOlder={loadOlder} />}
-                                    composer={<div className="eza-composerLayer">
+                                    composer={<div className="ea-composerLayer">
                                         <InputBar input={input} setInput={setInput} send={send} cancel={cancel} running={running} sending={sending} attachments={attachments} onAddFiles={addAttachments} onRemoveAttachment={removeAttachment} models={composerModels} showModelPicker={false} projections={currentSession.projections?.values} modelMenuOpen={modelMenuOpen} setModelMenuOpen={setModelMenuOpen} selectModel={selectModel} notice={currentSessionError ?? loadError} placeholder={i18n('Type a message. Press Shift+Enter for a new line.')}>
                                             <TodoPanel value={currentSession.projections?.values?.todos} />
                                             {pendingQuestion && <QuestionPanel question={pendingQuestion} onAnswer={answerQuestion} />}
                                             {queue.length > 0 && <QueueDock items={queue} running={running} onAction={updateQueue} />}
                                         </InputBar>
-                                        {pendingApproval && <div className="eza-approvalOverlay"><ApprovalPanel approval={pendingApproval} onAnswer={answerApproval} /></div>}
+                                        {pendingApproval && <div className="ea-approvalOverlay"><ApprovalPanel approval={pendingApproval} onAnswer={answerApproval} /></div>}
                                     </div>}
                                 />}
                         </SessionDrawer>}

@@ -72,12 +72,12 @@ export default function AgentLinkPage() {
     const approvable = link !== null && !approved && !link.expired;
 
     return (
-        <div className="eza-app" data-ds-dark-theme={dark || undefined}>
-            <div className="eza-status">
-                <header className="eza-status__head">
+        <div className="ea-app" data-ds-dark-theme={dark || undefined}>
+            <div className="ea-status">
+                <header className="ea-status__head">
                     <div>
-                        <h1 className="eza-status__title">{i18n('Link an Agent runtime')}</h1>
-                        <p className="eza-status__desc">
+                        <h1 className="ea-status__title">{i18n('Link an Agent runtime')}</h1>
+                        <p className="ea-status__desc">
                             {i18n('An Agent runtime is requesting permission to run on this server. After approval, it will receive credentials and appear in the runtime status list.')}
                         </p>
                     </div>
@@ -87,16 +87,16 @@ export default function AgentLinkPage() {
 
                 {link ? (
                     <Card title={link.label}>
-                        <ul className="eza-status__list">
-                            <li className="eza-status__row">
-                                <div className="eza-status__main">
-                                    <div className="eza-status__facts">
+                        <ul className="ea-status__list">
+                            <li className="ea-status__row">
+                                <div className="ea-status__main">
+                                    <div className="ea-status__facts">
                                         <span>{i18n('Source: {0}:{1}', link.host, link.pid)}</span>
                                         <span>{i18n('Pairing code: {0}', link.code)}</span>
                                         <span>{approved ? i18n('Approved') : link.expired ? i18n('Expired') : expiryText(link.expiresAt)}</span>
                                     </div>
                                 </div>
-                                <div className="eza-status__actions">
+                                <div className="ea-status__actions">
                                     {approvable ? (
                                         <Button variant="primary" onClick={() => { void approve(); }} disabled={busy}>{i18n('Approve')}</Button>
                                     ) : (

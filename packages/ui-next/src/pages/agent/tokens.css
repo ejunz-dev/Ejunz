@@ -1,8 +1,8 @@
-/* Copied from @ejunz/client-ui-theme design-platform.css / base.css / scrollbar.css; selectors rescoped from body to .eza-app */
+/* Copied from @ejunz/client-ui-theme design-platform.css / base.css / scrollbar.css; selectors rescoped from body to .ea-app */
 /* Figma font-weight 510 (an SF Pro variable-font weight) always renders as
    font-weight: 500 in this UI — non-variable webfonts snap intermediate
    weights unpredictably across platforms. */
-.eza-app {
+.ea-app {
   --dsw-static-amber-100: rgb(254, 245, 231);
   --dsw-static-amber-400: rgb(247, 173, 49);
   --dsw-static-amber-500: rgb(245, 158, 11);
@@ -78,7 +78,7 @@
   --dsw-static-red-900: rgb(87, 12, 12);
 }
 
-.eza-app[data-ds-dark-theme] {
+.ea-app[data-ds-dark-theme] {
   --dsw-static-amber-100: rgb(254, 245, 231);
   --dsw-static-amber-400: rgb(247, 173, 49);
   --dsw-static-amber-500: rgb(245, 158, 11);
@@ -154,7 +154,7 @@
   --dsw-static-red-900: rgb(87, 12, 12);
 }
 
-.eza-app,
+.ea-app,
 body {
   --dsw-alias-bg-base: var(--dsw-static-neutral-bluish-00);
   --dsw-alias-bg-layer-1: var(--dsw-static-neutral-bluish-00);
@@ -247,7 +247,7 @@ body {
   --dsw-specific-tip: var(--dsw-static-neutral-bluish-60);
 }
 
-.eza-app[data-ds-dark-theme],
+.ea-app[data-ds-dark-theme],
 body[data-ds-dark-theme] {
   --dsw-alias-bg-base: var(--dsw-static-neutral-bluish-950);
   --dsw-alias-bg-layer-1: var(--dsw-static-neutral-bluish-875);
@@ -345,7 +345,7 @@ body[data-ds-dark-theme] {
  * --dsw-font-* variables resolve and motion rides the upstream curve. Code
  * font stack deliberately omits a bare `monospace` tail (Windows CJK falls
  * back to SimSun otherwise). */
-.eza-app {
+.ea-app {
   --dsw-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
     'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   --ds-font-family-code: 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas,
@@ -372,7 +372,7 @@ body[data-ds-dark-theme] {
  * rendering paths below read the indirection, so one rebind reaches whichever
  * path the engine took. */
 
-.eza-app {
+.ea-app {
   --ea-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l1);
   --ea-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l1);
   /* The WebKit bar's layout width, mirrored by the ::-webkit-scrollbar rule

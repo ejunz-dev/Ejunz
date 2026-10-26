@@ -162,47 +162,47 @@ export default function AgentListPage() {
     if (guest) return null;
 
     return (
-        <div className="eza-app" data-ds-dark-theme={dark || undefined}>
-            <main className="eza-agentCatalog">
-                <header className="eza-agentCatalog__header">
+        <div className="ea-app" data-ds-dark-theme={dark || undefined}>
+            <main className="ea-agentCatalog">
+                <header className="ea-agentCatalog__header">
                     <div>
                         <h1>{i18n('Groups')}</h1>
                         <p>{i18n('Manage Groups available in {0}.', domainName)}</p>
                     </div>
-                    <nav className="eza-agentCatalog__headerActions" aria-label={i18n('Group management actions')}>
-                        <a className="eza-agentCatalog__link" href={`${domainPrefix(String(domainId || 'system'))}/corp/chat`}>{i18n('Open chat workspace')}</a>
-                        <button type="button" className="eza-agentCatalog__primary" onClick={startCreate}>{i18n('New Group')}</button>
+                    <nav className="ea-agentCatalog__headerActions" aria-label={i18n('Group management actions')}>
+                        <a className="ea-agentCatalog__link" href={`${domainPrefix(String(domainId || 'system'))}/corp/chat`}>{i18n('Open chat workspace')}</a>
+                        <button type="button" className="ea-agentCatalog__primary" onClick={startCreate}>{i18n('New Group')}</button>
                     </nav>
                 </header>
 
-                {loadError && !editingDocId ? <p className="eza-agentCatalog__notice" role="alert">{loadError}</p> : null}
+                {loadError && !editingDocId ? <p className="ea-agentCatalog__notice" role="alert">{loadError}</p> : null}
 
-                <div className="eza-agentCatalog__layout" data-editing={editingDocId !== null || undefined} aria-busy={loading || saving || creating}>
-                    <section className="eza-agentCatalog__list" aria-label={i18n('Group list')}>
-                        <div className="eza-agentCatalog__listHeader">
+                <div className="ea-agentCatalog__layout" data-editing={editingDocId !== null || undefined} aria-busy={loading || saving || creating}>
+                    <section className="ea-agentCatalog__list" aria-label={i18n('Group list')}>
+                        <div className="ea-agentCatalog__listHeader">
                             <h2>{i18n('Configuration')}</h2>
                             <span>{loading ? i18n('Loading...') : i18n('{0} items', agents.length)}</span>
                         </div>
-                        {loading ? <p className="eza-agentCatalog__state">{i18n('Loading Groups...')}</p> : null}
+                        {loading ? <p className="ea-agentCatalog__state">{i18n('Loading Groups...')}</p> : null}
                         {!loading && agents.length === 0 ? (
-                            <div className="eza-agentCatalog__empty">
+                            <div className="ea-agentCatalog__empty">
                                 <strong>{i18n('No Groups yet')}</strong>
                                 <p>{i18n('Create a configuration to save its name and behavior description.')}</p>
                                 <button type="button" onClick={startCreate}>{i18n('Create your first Group')}</button>
                             </div>
                         ) : null}
-                        <ul className="eza-agentCatalog__items">
+                        <ul className="ea-agentCatalog__items">
                             {agents.map((agent) => (
                                 <li key={agent.groupId}>
-                                    <article className="eza-agentCatalog__item" data-selected={editingDocId === agent.groupId || undefined}>
-                                        <button type="button" className="eza-agentCatalog__itemMain" onClick={() => startEdit(agent)} aria-current={editingDocId === agent.groupId ? 'true' : undefined}>
-                                            <span className="eza-agentCatalog__itemTitle">{agent.title || i18n('Untitled Group')}</span>
-                                            <span className="eza-agentCatalog__itemMeta">#{agent.groupId} <span aria-hidden="true">·</span> {formatDate(agent.updateAt) || i18n('Not updated yet')}</span>
-                                            <span className="eza-agentCatalog__itemSummary">{summary(agent.content) || i18n('No behavior description added.')}</span>
+                                    <article className="ea-agentCatalog__item" data-selected={editingDocId === agent.groupId || undefined}>
+                                        <button type="button" className="ea-agentCatalog__itemMain" onClick={() => startEdit(agent)} aria-current={editingDocId === agent.groupId ? 'true' : undefined}>
+                                            <span className="ea-agentCatalog__itemTitle">{agent.title || i18n('Untitled Group')}</span>
+                                            <span className="ea-agentCatalog__itemMeta">#{agent.groupId} <span aria-hidden="true">·</span> {formatDate(agent.updateAt) || i18n('Not updated yet')}</span>
+                                            <span className="ea-agentCatalog__itemSummary">{summary(agent.content) || i18n('No behavior description added.')}</span>
                                         </button>
-                                        <div className="eza-agentCatalog__itemActions">
+                                        <div className="ea-agentCatalog__itemActions">
                                             <a href={`${domainPrefix(String(domainId || 'system'))}/corp/group/${agent.groupId}`}>{i18n('Open Group workspace')}</a>
-                                            <button type="button" className="eza-agentCatalog__delete" onClick={() => { setDeleting(agent); setDeleteError(null); }}>{i18n('Delete')}</button>
+                                            <button type="button" className="ea-agentCatalog__delete" onClick={() => { setDeleting(agent); setDeleteError(null); }}>{i18n('Delete')}</button>
                                         </div>
                                     </article>
                                 </li>
@@ -210,56 +210,56 @@ export default function AgentListPage() {
                         </ul>
                     </section>
 
-                    {editingDocId !== null && <section className="eza-agentCatalog__editor" aria-label={i18n('Edit Group')}>
-                        <div className="eza-agentCatalog__editorHeading">
+                    {editingDocId !== null && <section className="ea-agentCatalog__editor" aria-label={i18n('Edit Group')}>
+                        <div className="ea-agentCatalog__editorHeading">
                             <div>
                                 <h2>{i18n('Edit Group')}</h2>
                                 <p>{i18n('Configuration ID: {0}', editingDocId)}</p>
                             </div>
                         </div>
-                        <form className="eza-agentCatalog__form" onSubmit={(event) => { void saveAgent(event); }}>
-                            <label className="eza-agentCatalog__field">
+                        <form className="ea-agentCatalog__form" onSubmit={(event) => { void saveAgent(event); }}>
+                            <label className="ea-agentCatalog__field">
                                 <span>{i18n('Name')}</span>
                                 <input autoComplete="off" maxLength={256} value={title} onChange={(event) => setTitle(event.target.value)} placeholder={i18n('e.g. Research assistant')} required />
                             </label>
-                            <label className="eza-agentCatalog__field">
+                            <label className="ea-agentCatalog__field">
                                 <span>{i18n('Behavior description')}</span>
                                 <textarea value={content} onChange={(event) => setContent(event.target.value)} maxLength={100000} rows={15} placeholder={i18n('Describe this Group’s role, goals, and way of working.')} />
                                 <small>{i18n('Up to 100000 characters')}</small>
                             </label>
-                            {loadError ? <p className="eza-agentCatalog__notice" role="alert">{loadError}</p> : null}
-                            <div className="eza-agentCatalog__formActions">
-                                <button type="submit" className="eza-agentCatalog__primary" disabled={saving || !title.trim()}>{saving ? i18n('Saving...') : i18n('Save changes')}</button>
-                                <button type="button" className="eza-agentCatalog__secondary" onClick={() => setEditingDocId(null)} disabled={saving}>{i18n('Close editor')}</button>
+                            {loadError ? <p className="ea-agentCatalog__notice" role="alert">{loadError}</p> : null}
+                            <div className="ea-agentCatalog__formActions">
+                                <button type="submit" className="ea-agentCatalog__primary" disabled={saving || !title.trim()}>{saving ? i18n('Saving...') : i18n('Save changes')}</button>
+                                <button type="button" className="ea-agentCatalog__secondary" onClick={() => setEditingDocId(null)} disabled={saving}>{i18n('Close editor')}</button>
                             </div>
                         </form>
                     </section>}
                 </div>
             </main>
-            {createOpen && <div className="eza-agentCreateModal" role="presentation">
-                <button type="button" className="eza-agentCreateModal__mask" aria-label={i18n('Close new Group dialog')} disabled={creating} onClick={() => setCreateOpen(false)} />
-                <section className="eza-agentCreateModal__dialog" role="dialog" aria-modal="true" aria-labelledby="eza-agentCreateModal-title">
-                    <header className="eza-agentCreateModal__header">
+            {createOpen && <div className="ea-agentCreateModal" role="presentation">
+                <button type="button" className="ea-agentCreateModal__mask" aria-label={i18n('Close new Group dialog')} disabled={creating} onClick={() => setCreateOpen(false)} />
+                <section className="ea-agentCreateModal__dialog" role="dialog" aria-modal="true" aria-labelledby="ea-agentCreateModal-title">
+                    <header className="ea-agentCreateModal__header">
                         <div>
-                            <h2 id="eza-agentCreateModal-title">{i18n('New Group')}</h2>
+                            <h2 id="ea-agentCreateModal-title">{i18n('New Group')}</h2>
                             <p>{i18n('Enter a name and behavior description. You can open its workspace after creation.')}</p>
                         </div>
                         <button type="button" aria-label={i18n('Close')} disabled={creating} onClick={() => setCreateOpen(false)}>×</button>
                     </header>
-                    <form className="eza-agentCatalog__form" onSubmit={(event) => { void createAgent(event); }}>
-                        <label className="eza-agentCatalog__field">
+                    <form className="ea-agentCatalog__form" onSubmit={(event) => { void createAgent(event); }}>
+                        <label className="ea-agentCatalog__field">
                             <span>{i18n('Name')}</span>
                             <input autoFocus autoComplete="off" maxLength={256} value={createTitle} onChange={(event) => setCreateTitle(event.target.value)} placeholder={i18n('e.g. Research assistant')} required />
                         </label>
-                        <label className="eza-agentCatalog__field">
+                        <label className="ea-agentCatalog__field">
                             <span>{i18n('Behavior description')}</span>
                             <textarea value={createContent} onChange={(event) => setCreateContent(event.target.value)} maxLength={100000} rows={10} placeholder={i18n('Describe this Group’s role, goals, and way of working.')} />
                             <small>{i18n('Up to 100000 characters')}</small>
                         </label>
-                        {createError ? <p className="eza-agentCatalog__notice" role="alert">{createError}</p> : null}
-                        <div className="eza-agentCatalog__formActions">
-                            <button type="button" className="eza-agentCatalog__secondary" disabled={creating} onClick={() => setCreateOpen(false)}>{i18n('Cancel')}</button>
-                            <button type="submit" className="eza-agentCatalog__primary" disabled={creating || !createTitle.trim()}>{creating ? i18n('Creating...') : i18n('Create Group')}</button>
+                        {createError ? <p className="ea-agentCatalog__notice" role="alert">{createError}</p> : null}
+                        <div className="ea-agentCatalog__formActions">
+                            <button type="button" className="ea-agentCatalog__secondary" disabled={creating} onClick={() => setCreateOpen(false)}>{i18n('Cancel')}</button>
+                            <button type="submit" className="ea-agentCatalog__primary" disabled={creating || !createTitle.trim()}>{creating ? i18n('Creating...') : i18n('Create Group')}</button>
                         </div>
                     </form>
                 </section>

@@ -55,8 +55,8 @@ export function TeamAddonSettingsPanel({ team, addons, saving, onSave }: TeamAdd
         }
     };
 
-    return <div className="eza-teamAddonSettings">
-        <div className="bd-edit-dialog__body eza-teamAddonConfig">
+    return <div className="ea-teamAddonSettings">
+        <div className="bd-edit-dialog__body ea-teamAddonConfig">
             <div className="bd-edit-field">
                 <h3>{i18n('Add-ons')}</h3>
                 <p className="bd-muted">{i18n('Select multiple add-ons. Changes remain a draft until you save. If unset, Agent-wide settings are used.')}</p>
@@ -78,9 +78,9 @@ export function TeamAddonSettingsPanel({ team, addons, saving, onSave }: TeamAdd
                 {isDirty && <span className="bd-muted" role="status">{i18n('{0} add-ons selected. Not saved yet.', draftAddonIds.length)}</span>}
             </div>
         </div>
-        <footer className="bd-edit-dialog__footer eza-teamAddonFooter">
+        <footer className="bd-edit-dialog__footer ea-teamAddonFooter">
             <span className="bd-muted">{saving ? i18n('Saving...') : ''}</span>
-            <button type="button" className="eza-inputConfigCreate" disabled={!isDirty || saving} onClick={() => { void save(); }}>{i18n('Save configuration')}</button>
+            <button type="button" className="ea-inputConfigCreate" disabled={!isDirty || saving} onClick={() => { void save(); }}>{i18n('Save configuration')}</button>
         </footer>
     </div>;
 }

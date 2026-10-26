@@ -59,16 +59,16 @@ export function AgentSettingsPanel({
     };
     const onlineHosts = hosts.filter((host) => host.online !== false);
     const label = i18n(section === 'model' ? 'Model' : section === 'host' ? 'Host' : 'Context');
-    return <section className="eza-agentSettingsFields" aria-label={label}>
+    return <section className="ea-agentSettingsFields" aria-label={label}>
         {readOnly && readOnlyMessage ? <p className="bd-muted">{readOnlyMessage}</p> : null}
         {error && <div className="bd-edit-dialog__error" role="alert">{error}</div>}
         {section === 'model' ? <div className="bd-edit-field">
-            <div className="eza-agentSettingsModelHeader">
+            <div className="ea-agentSettingsModelHeader">
                 <h2>{i18n('Model')}</h2>
                 {modelActions}
             </div>
-            {models ? models.groups.map((group) => <div className="eza-agentSettingsGroup" key={group.id}>
-                <span className="eza-agentSettingsGroupName">{group.name}</span>
+            {models ? models.groups.map((group) => <div className="ea-agentSettingsGroup" key={group.id}>
+                <span className="ea-agentSettingsGroupName">{group.name}</span>
                 <div className="bd-edit-tags">
                     {group.models.map((item) => <button type="button" className={`bd-edit-tag${modelSelection?.provider === group.id && modelSelection.model === item.id ? ' is-selected' : ''}`} disabled={saving !== null || readOnly} key={`${group.id}:${item.id}`} onClick={() => void apply(`${group.id}:${item.id}`, () => { setModelSelection({ provider: group.id, model: item.id }); return onModel(group.id, item.id); })} title={item.description || item.name}>{item.name}</button>)}
                 </div>

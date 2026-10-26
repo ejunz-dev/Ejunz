@@ -13,19 +13,19 @@ export function AttachmentRail({ attachments, onRemove }: AttachmentRailProps) {
     )), [attachments]);
     useEffect(() => () => previews.forEach((url) => { if (url !== null) URL.revokeObjectURL(url); }), [previews]);
     if (!attachments.length) return null;
-    return <div className="eza-attachmentRail">
+    return <div className="ea-attachmentRail">
         {attachments.map((attachment, index) => {
             const preview = previews[index];
             const uploading = attachment.meta === undefined && attachment.error === undefined;
-            const className = `eza-attachmentThumb${preview === null ? ' eza-attachmentThumb--file' : ''}${attachment.error === undefined ? '' : ' is-error'}`;
+            const className = `ea-attachmentThumb${preview === null ? ' ea-attachmentThumb--file' : ''}${attachment.error === undefined ? '' : ' is-error'}`;
             return <div key={attachment.id} className={className} title={attachment.error ?? attachment.originalName}>
                 {preview === null
-                    ? <span className="eza-attachmentGlyph" aria-hidden>▤</span>
+                    ? <span className="ea-attachmentGlyph" aria-hidden>▤</span>
                     : <img src={preview} alt={attachment.originalName} />}
-                {preview === null && <span className="eza-attachmentName">{attachment.originalName}</span>}
-                {preview === null && <span className="eza-attachmentSize">{formatBytes(attachment.size)}</span>}
-                {attachment.error !== undefined && <span className="eza-attachmentError">{i18n('Upload failed')}</span>}
-                {uploading && <span className="eza-attachmentProgress" style={{ width: `${attachment.progress}%` }} />}
+                {preview === null && <span className="ea-attachmentName">{attachment.originalName}</span>}
+                {preview === null && <span className="ea-attachmentSize">{formatBytes(attachment.size)}</span>}
+                {attachment.error !== undefined && <span className="ea-attachmentError">{i18n('Upload failed')}</span>}
+                {uploading && <span className="ea-attachmentProgress" style={{ width: `${attachment.progress}%` }} />}
                 <button type="button" aria-label={i18n('Remove {0}', attachment.originalName)} onClick={() => onRemove(attachment.id)}>×</button>
             </div>;
         })}

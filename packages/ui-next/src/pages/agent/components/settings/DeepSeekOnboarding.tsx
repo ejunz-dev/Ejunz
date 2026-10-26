@@ -117,8 +117,8 @@ export function DeepSeekOnboarding({ rpc }: DeepSeekOnboardingProps) {
     };
 
     return <div className={css.overlay} role="presentation">
-        <div className={css.dialog} role="dialog" aria-modal="true" aria-labelledby="eza-deepseek-title">
-            <h2 className={css.title} id="eza-deepseek-title">{i18n('Add an API key to get started')}</h2>
+        <div className={css.dialog} role="dialog" aria-modal="true" aria-labelledby="ea-deepseek-title">
+            <h2 className={css.title} id="ea-deepseek-title">{i18n('Add an API key to get started')}</h2>
             <div className={css.body}>
                 <p className={css.description}>{i18n('Configure the official DeepSeek models to start using the agent.')}</p>
                 <label className={css.field}><span>{i18n('API key')}</span><input className={css.input} type="password" autoComplete="off" autoFocus value={key} placeholder={i18n('Enter API key')} disabled={busy} onChange={(event) => { setKey(event.target.value); setError(null); }} /></label>

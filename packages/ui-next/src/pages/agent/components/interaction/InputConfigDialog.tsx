@@ -97,15 +97,15 @@ export function InputConfigDialog({
         placeholder={quickSessionOnly ? i18n('Enter a message') : selectedAgentId ? i18n('Enter the first message') : i18n('Enter the first message, or create only an agent')}
     />;
     return <div className="bd-edit-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !sending) onClose(); }}>
-        <section className="bd-edit-dialog eza-inputConfigDialog" role="dialog" aria-modal="true" aria-labelledby="eza-input-config-title" onMouseDown={(event) => event.stopPropagation()}>
+        <section className="bd-edit-dialog ea-inputConfigDialog" role="dialog" aria-modal="true" aria-labelledby="ea-input-config-title" onMouseDown={(event) => event.stopPropagation()}>
             <header className="bd-edit-dialog__header">
-                <div className="eza-inputConfigTitle">
-                    {nameEditing ? <input className="eza-titleEditor" autoFocus value={sessionName} disabled={sending} onChange={(event) => setSessionName(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === 'Enter') setNameEditing(false); }} /> : <h2 id="eza-input-config-title">{sessionName}</h2>}
-                    <button type="button" className="eza-inputConfigTitleEdit" disabled={sending} onClick={() => setNameEditing((value) => !value)} aria-label={i18n(nameEditing ? 'Done editing {0}' : 'Edit {0}', nameLabel)}>{nameEditing ? '✓' : '✎'}</button>
+                <div className="ea-inputConfigTitle">
+                    {nameEditing ? <input className="ea-titleEditor" autoFocus value={sessionName} disabled={sending} onChange={(event) => setSessionName(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === 'Enter') setNameEditing(false); }} /> : <h2 id="ea-input-config-title">{sessionName}</h2>}
+                    <button type="button" className="ea-inputConfigTitleEdit" disabled={sending} onClick={() => setNameEditing((value) => !value)} aria-label={i18n(nameEditing ? 'Done editing {0}' : 'Edit {0}', nameLabel)}>{nameEditing ? '✓' : '✎'}</button>
                 </div>
                 <button type="button" className="bd-drawer__close" onClick={onClose} disabled={sending} aria-label={i18n('Close')}>×</button>
             </header>
-            {loading ? <div className="eza-inputConfigLoading" role="status"><span className="eza-sessionSettingsLoadingSpinner" aria-hidden="true" />{i18n('Loading latest settings...')}</div> : quickSessionOnly ? <div className="eza-inputConfigHero">
+            {loading ? <div className="ea-inputConfigLoading" role="status"><span className="ea-sessionSettingsLoadingSpinner" aria-hidden="true" />{i18n('Loading latest settings...')}</div> : quickSessionOnly ? <div className="ea-inputConfigHero">
                 {composer}
             </div> : <>
             <div className="bd-edit-dialog__body">
@@ -130,13 +130,13 @@ export function InputConfigDialog({
                     <div className="bd-edit-field">
                         <h3>{i18n('Model')}</h3>
                         {models ? models.groups.map((group) => (
-                            <div className="eza-agentSettingsGroup" key={group.id}>
-                                <span className="eza-agentSettingsGroupName">{group.name}</span>
+                            <div className="ea-agentSettingsGroup" key={group.id}>
+                                <span className="ea-agentSettingsGroupName">{group.name}</span>
                                 <div className="bd-edit-tags">
                                     {group.models.map((item) => <button type="button" className={buttonClass(models.current.provider === group.id && models.current.model === item.id)} disabled={sending} key={`${group.id}:${item.id}`} title={item.description || item.name} onClick={() => selectModel(group.id, item.id)}>{item.name}</button>)}
                                 </div>
                             </div>
-                        )) : <div className="eza-sessionSettingsLoading" role="status"><span className="eza-sessionSettingsLoadingSpinner" aria-hidden="true" />{i18n('Loading models...')}</div>}
+                        )) : <div className="ea-sessionSettingsLoading" role="status"><span className="ea-sessionSettingsLoadingSpinner" aria-hidden="true" />{i18n('Loading models...')}</div>}
                     </div>
                     <NewSessionContextSlot
                         bases={bases}
@@ -161,9 +161,9 @@ export function InputConfigDialog({
                     </div>
                 </>}
             </div>
-            {!needsTeamTarget && <div className="eza-inputConfigHero">
-                <div className="eza-inputConfigCreateRow">
-                    <button type="button" className="eza-inputConfigCreate" disabled={sending} onClick={() => onCreateOnly(sessionName.trim() || i18n('New agent'))}>{i18n(requireTeamSelection ? 'Create agent' : 'Create only an agent')}</button>
+            {!needsTeamTarget && <div className="ea-inputConfigHero">
+                <div className="ea-inputConfigCreateRow">
+                    <button type="button" className="ea-inputConfigCreate" disabled={sending} onClick={() => onCreateOnly(sessionName.trim() || i18n('New agent'))}>{i18n(requireTeamSelection ? 'Create agent' : 'Create only an agent')}</button>
                     <span>{i18n(requireTeamSelection ? 'Create sessions for this agent from the team tree.' : 'Settings are saved to the Agent; you can add sessions after creation.')}</span>
                 </div>
                 {!requireTeamSelection && composer}

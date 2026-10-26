@@ -39,8 +39,8 @@ export function ActionDialog({ open, title, description, inputLabel, inputValue 
     if (!open) return null;
     return <div className={css.overlay} role="presentation">
         <button type="button" className={css.mask} aria-label={cancelLabel} onClick={() => { if (!busy) onClose(); }} />
-        <div className={css.dialog} role="dialog" aria-modal="true" aria-labelledby="eza-action-dialog-title">
-            <h3 id="eza-action-dialog-title">{title}</h3>
+        <div className={css.dialog} role="dialog" aria-modal="true" aria-labelledby="ea-action-dialog-title">
+            <h3 id="ea-action-dialog-title">{title}</h3>
             {description ? <p className={css.description}>{description}</p> : null}
             {selectLabel ? <label className={css.field}><span>{selectLabel}</span><HierarchySelect
                 value={selectValue}

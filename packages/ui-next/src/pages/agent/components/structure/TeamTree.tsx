@@ -77,7 +77,7 @@ function SessionBubbleIcon() {
 
 function ChevronIcon({ expanded }: { expanded: boolean }) {
     return <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-        <path d="M4.5 2.5L8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={expanded ? 'eza-teamTreeChevron is-expanded' : 'eza-teamTreeChevron'} />
+        <path d="M4.5 2.5L8 6l-3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={expanded ? 'ea-teamTreeChevron is-expanded' : 'ea-teamTreeChevron'} />
     </svg>;
 }
 
@@ -120,22 +120,22 @@ function flatLine(value: string): string {
 }
 
 const SessionActivityRow = memo(function SessionActivityRow({ activity, index, error, active, sendStatus }: { activity?: string; index: number; error: boolean; active: boolean; sendStatus?: 'sending' | 'sent' | 'failed' }) {
-    if (!activity) return <div className="eza-sessionCardActivity eza-sessionCardActivityEmpty" aria-hidden="true" />;
+    if (!activity) return <div className="ea-sessionCardActivity ea-sessionCardActivityEmpty" aria-hidden="true" />;
     const separator = activity.indexOf(' · ');
     const title = separator < 0 ? activity : activity.slice(0, separator);
     const output = separator < 0 ? '' : activity.slice(separator + 3);
     const isUserActivity = sendStatus !== undefined;
-    const titleClass = title === 'Inject' ? 'eza-sessionCardActivityTitle--inject'
-        : title === 'Think' ? 'eza-sessionCardActivityTitle--think'
-            : title === 'Tool' ? 'eza-sessionCardActivityTitle--tool'
-                : title === 'Error' ? 'eza-sessionCardActivityTitle--error'
-                    : isUserActivity ? 'eza-sessionCardActivityTitle--user' : 'eza-sessionCardActivityTitle--agent';
+    const titleClass = title === 'Inject' ? 'ea-sessionCardActivityTitle--inject'
+        : title === 'Think' ? 'ea-sessionCardActivityTitle--think'
+            : title === 'Tool' ? 'ea-sessionCardActivityTitle--tool'
+                : title === 'Error' ? 'ea-sessionCardActivityTitle--error'
+                    : isUserActivity ? 'ea-sessionCardActivityTitle--user' : 'ea-sessionCardActivityTitle--agent';
     const statusLabel = sendStatus === 'sending' ? i18n('Sending') : sendStatus === 'sent' ? i18n('Sent') : i18n('Send failed');
-    const statusIcon = sendStatus && <span className={`eza-sessionCardActivitySendState eza-sessionCardActivitySendState--${sendStatus}`} role="status" aria-label={statusLabel} title={statusLabel}>{sendStatus === 'sending' ? <span className="eza-sessionCardActivitySendSpinner" /> : sendStatus === 'sent' ? '✓' : '!'}</span>;
-    return <div className="eza-sessionCardActivity" data-active={active || undefined} title={activity}>
-        <span className="eza-sessionCardActivityIndex">{isUserActivity ? statusIcon : `#${index}`}</span>
-        <span className={`eza-sessionCardActivityTitle ${titleClass}`}>{title}</span>
-        {output && <div className={error ? 'eza-sessionCardActivityOutput eza-sessionCardActivityError' : 'eza-sessionCardActivityOutput'} data-active={active || undefined}><MarkdownText text={output} /></div>}
+    const statusIcon = sendStatus && <span className={`ea-sessionCardActivitySendState ea-sessionCardActivitySendState--${sendStatus}`} role="status" aria-label={statusLabel} title={statusLabel}>{sendStatus === 'sending' ? <span className="ea-sessionCardActivitySendSpinner" /> : sendStatus === 'sent' ? '✓' : '!'}</span>;
+    return <div className="ea-sessionCardActivity" data-active={active || undefined} title={activity}>
+        <span className="ea-sessionCardActivityIndex">{isUserActivity ? statusIcon : `#${index}`}</span>
+        <span className={`ea-sessionCardActivityTitle ${titleClass}`}>{title}</span>
+        {output && <div className={error ? 'ea-sessionCardActivityOutput ea-sessionCardActivityError' : 'ea-sessionCardActivityOutput'} data-active={active || undefined}><MarkdownText text={output} /></div>}
         {!isUserActivity && sendStatus && statusIcon}
     </div>;
 });
@@ -159,10 +159,10 @@ const SessionAgentTitle = memo(function SessionAgentTitle({ session, error, wait
     const activity = error ? `Error · ${flatLine(error)}` : activityPreview;
     if (editMode) {
         return <>
-            {showStatus && <StateDot state={state} size={10} className="eza-sessionStateDot" />}
-            <span className="eza-sessionCardTitleText">
+            {showStatus && <StateDot state={state} size={10} className="ea-sessionStateDot" />}
+            <span className="ea-sessionCardTitleText">
                 <input
-                    className="eza-sessionTitleEditor"
+                    className="ea-sessionTitleEditor"
                     aria-label={i18n('Session name')}
                     value={draftTitle ?? title}
                     onChange={(event) => onTitleChange(session.sessionId, event.target.value)}
@@ -175,14 +175,14 @@ const SessionAgentTitle = memo(function SessionAgentTitle({ session, error, wait
     }
     return <button
         type="button"
-        className="eza-sessionCardTitle"
+        className="ea-sessionCardTitle"
         title={error ? `${stateLabel}：${error}` : `${stateLabel}：${title}`}
         aria-label={error ? `${stateLabel}：${title}：${error}` : `${stateLabel}：${title}`}
         onClick={() => onSelect(session.sessionId)}
     >
-        <StateDot state={state} size={10} className="eza-sessionStateDot" />
-        <span className="eza-sessionCardTitleText">
-            <span className="eza-teamTreeLabel">{title}</span>
+        <StateDot state={state} size={10} className="ea-sessionStateDot" />
+        <span className="ea-sessionCardTitleText">
+            <span className="ea-teamTreeLabel">{title}</span>
             <SessionActivityRow activity={activity} index={activityIndex ?? 1} error={Boolean(error)} active={state === 'ongoing'} sendStatus={error ? undefined : activityStatus} />
         </span>
     </button>;
@@ -352,19 +352,19 @@ export function TeamTree({
         const activityStatus = sessionErrors.has(session.sessionId) ? undefined : activity?.sendStatus;
         return <div
             key={session.sessionId}
-            className={`eza-teamTreeRow eza-teamTreeRow--session${current === session.sessionId ? ' is-selected' : ''}`}
+            className={`ea-teamTreeRow ea-teamTreeRow--session${current === session.sessionId ? ' is-selected' : ''}`}
             style={{ paddingLeft: `${(level + 1) * 1.1}rem` }}
         >
             {editMode && <input
                 type="checkbox"
-                className="eza-teamTreeCheckbox"
+                className="ea-teamTreeCheckbox"
                 checked={selectedSessionIds.has(session.sessionId)}
                 onChange={() => onToggleSessionSelection(session.sessionId)}
                 onClick={(event) => event.stopPropagation()}
                 aria-label={i18n('Select {0}', sessionTitle(session))}
             />}
-            <span className="eza-teamTreeSpacer" aria-hidden="true" />
-            <span className="eza-teamTreeIcon eza-teamTreeIcon--session" aria-hidden="true"><SessionBubbleIcon /></span>
+            <span className="ea-teamTreeSpacer" aria-hidden="true" />
+            <span className="ea-teamTreeIcon ea-teamTreeIcon--session" aria-hidden="true"><SessionBubbleIcon /></span>
             <SessionAgentTitle
                 session={session}
                 error={sessionErrors.get(session.sessionId)}
@@ -381,7 +381,7 @@ export function TeamTree({
                     if (inDrawer) onCloseTree();
                 }}
             />
-            {displaySettings.showTimestamps && <time className="eza-teamTreeMeta" title={new Date(session.updatedAt).toLocaleString()}>{relativeTimeLabel(session.updatedAt)}</time>}
+            {displaySettings.showTimestamps && <time className="ea-teamTreeMeta" title={new Date(session.updatedAt).toLocaleString()}>{relativeTimeLabel(session.updatedAt)}</time>}
         </div>;
     };
     const renderAgentNode = (agent: AgentSummary, level: number, inDrawer: boolean, needle = ''): ReactNode => {
@@ -394,35 +394,35 @@ export function TeamTree({
             ...(displaySettings.showModel && agent.settings.model ? [i18n('Model: {0}', agentModelLabel(agent, modelGroups))] : []),
             ...(displaySettings.showBase && agent.settings.baseDocId ? [i18n('Base: {0}', bases.find((base) => String(base.docId) === agent.settings.baseDocId)?.title || `#${agent.settings.baseDocId}`)] : []),
         ];
-        return <div className="eza-teamTreeBranch" key={agent.agentId}>
-            <div className="eza-teamTreeRow eza-teamTreeRow--agent" style={{ paddingLeft: `${level * 1.1}rem` }}>
+        return <div className="ea-teamTreeBranch" key={agent.agentId}>
+            <div className="ea-teamTreeRow ea-teamTreeRow--agent" style={{ paddingLeft: `${level * 1.1}rem` }}>
                 {editMode && <input
                     type="checkbox"
-                    className="eza-teamTreeCheckbox"
+                    className="ea-teamTreeCheckbox"
                     checked={selectedAgentIds.has(agent.agentId)}
                     onChange={() => onToggleAgentSelection(agent.agentId)}
                     onClick={(event) => event.stopPropagation()}
                     aria-label={i18n('Select agent {0}', agent.title)}
                 />}
                 {visibleChildren.length > 0
-                    ? <button type="button" className="eza-teamTreeToggle" onClick={() => setCollapsedAgentIds((current) => {
+                    ? <button type="button" className="ea-teamTreeToggle" onClick={() => setCollapsedAgentIds((current) => {
                         const next = new Set(current);
                         if (next.has(agent.agentId)) next.delete(agent.agentId); else next.add(agent.agentId);
                         return next;
                     })} aria-expanded={expanded} aria-label={i18n(expanded ? 'Collapse sessions' : 'Expand sessions')}><ChevronIcon expanded={expanded} /></button>
-                    : <span className="eza-teamTreeSpacer" aria-hidden="true" />}
-                <button type="button" className="eza-teamTreeMain" title={i18n('Open settings for agent {0}', agent.title)} onClick={() => {
+                    : <span className="ea-teamTreeSpacer" aria-hidden="true" />}
+                <button type="button" className="ea-teamTreeMain" title={i18n('Open settings for agent {0}', agent.title)} onClick={() => {
                     onSelectAgent(agent.agentId);
                     if (inDrawer) onCloseTree();
                 }}>
-                    <span className="eza-teamTreeIcon eza-teamTreeIcon--agent" aria-hidden="true"><AgentPortraitIcon /></span>
-                    <span className="eza-teamTreeLabel">{agent.title}</span>
-                    {displaySettings.showTimestamps && <time className="eza-teamTreeMeta" title={new Date(agent.updatedAt).toLocaleString()}>{relativeTimeLabel(agent.updatedAt)}</time>}
+                    <span className="ea-teamTreeIcon ea-teamTreeIcon--agent" aria-hidden="true"><AgentPortraitIcon /></span>
+                    <span className="ea-teamTreeLabel">{agent.title}</span>
+                    {displaySettings.showTimestamps && <time className="ea-teamTreeMeta" title={new Date(agent.updatedAt).toLocaleString()}>{relativeTimeLabel(agent.updatedAt)}</time>}
                 </button>
-                <button type="button" className="eza-teamTreeAddSession" title={i18n('Create a session under {0}', agent.title)} aria-label={i18n('Create a session under {0}', agent.title)} onClick={() => onStartSession(agent.agentId)}>＋</button>
+                <button type="button" className="ea-teamTreeAddSession" title={i18n('Create a session under {0}', agent.title)} aria-label={i18n('Create a session under {0}', agent.title)} onClick={() => onStartSession(agent.agentId)}>＋</button>
             </div>
-            {tags.length > 0 && <div className="eza-teamTreeTags" style={{ marginLeft: `${(level + 1) * 1.1 + 2.1}rem` }}>{tags.map((tag) => <span key={tag}>{tag}</span>)}</div>}
-            {expanded && visibleChildren.length > 0 && <div className="eza-teamTreeChildren">
+            {tags.length > 0 && <div className="ea-teamTreeTags" style={{ marginLeft: `${(level + 1) * 1.1 + 2.1}rem` }}>{tags.map((tag) => <span key={tag}>{tag}</span>)}</div>}
+            {expanded && visibleChildren.length > 0 && <div className="ea-teamTreeChildren">
                 {visibleChildren.map((session) => renderAgentRow(session, level + 1, inDrawer))}
             </div>}
         </div>;
@@ -444,11 +444,11 @@ export function TeamTree({
             ...childAgents.map((agent) => ({ kind: 'agentContainer' as const, agent, order: agent.order })),
             ...childSessions.map((session, index) => ({ kind: 'session' as const, session, order: childAgents.length + index })),
         ].sort((a, b) => a.order - b.order);
-        return <div className="eza-teamTreeBranch" key={teamId}>
-            <div className={`eza-teamTreeRow eza-teamTreeRow--team${selected ? ' is-selected' : ''}`} style={{ paddingLeft: `${level * 1.1}rem` }}>
+        return <div className="ea-teamTreeBranch" key={teamId}>
+            <div className={`ea-teamTreeRow ea-teamTreeRow--team${selected ? ' is-selected' : ''}`} style={{ paddingLeft: `${level * 1.1}rem` }}>
                 {editMode && <input
                     type="checkbox"
-                    className="eza-teamTreeCheckbox"
+                    className="ea-teamTreeCheckbox"
                     checked={selectedTeamIds.has(teamId)}
                     disabled={team?.isRootTeam === true}
                     onChange={() => toggleTeamSelection(teamId)}
@@ -456,23 +456,23 @@ export function TeamTree({
                     aria-label={i18n('Select team {0}', label)}
                 />}
                 {hasChildren
-                    ? <button type="button" className="eza-teamTreeToggle" onClick={() => toggleTeamExpansion(teamId)} aria-expanded={expanded} aria-label={i18n(expanded ? 'Collapse' : 'Expand')}><ChevronIcon expanded={expanded} /></button>
-                    : <span className="eza-teamTreeSpacer" aria-hidden="true" />}
+                    ? <button type="button" className="ea-teamTreeToggle" onClick={() => toggleTeamExpansion(teamId)} aria-expanded={expanded} aria-label={i18n(expanded ? 'Collapse' : 'Expand')}><ChevronIcon expanded={expanded} /></button>
+                    : <span className="ea-teamTreeSpacer" aria-hidden="true" />}
                 <button
                     type="button"
-                    className="eza-teamTreeMain"
+                    className="ea-teamTreeMain"
                     title={label}
                     onClick={() => {
                         if (inDrawer) { onSelectTeam(teamId); onCloseTree(); }
                         else requestTeamSwitch(teamId);
                     }}
                 >
-                    <span className="eza-teamTreeIcon eza-teamTreeIcon--team" aria-hidden="true"><TeamPeopleIcon /></span>
-                    <span className="eza-teamTreeLabel">{label}</span>
-                    {displaySettings.showTimestamps && team && <time className="eza-teamTreeMeta" title={new Date(team.updatedAt).toLocaleString()}>{relativeTimeLabel(team.updatedAt)}</time>}
+                    <span className="ea-teamTreeIcon ea-teamTreeIcon--team" aria-hidden="true"><TeamPeopleIcon /></span>
+                    <span className="ea-teamTreeLabel">{label}</span>
+                    {displaySettings.showTimestamps && team && <time className="ea-teamTreeMeta" title={new Date(team.updatedAt).toLocaleString()}>{relativeTimeLabel(team.updatedAt)}</time>}
                 </button>
             </div>
-            {expanded && hasChildren && <div className="eza-teamTreeChildren">
+            {expanded && hasChildren && <div className="ea-teamTreeChildren">
                 {items.map((item) => item.kind === 'team'
                     ? renderTeamNode(item.id, level + 1, inDrawer, needle)
                     : item.kind === 'agentContainer'
@@ -484,7 +484,7 @@ export function TeamTree({
     const renderTree = (rootIds: string[], inDrawer = false): ReactNode => {
         const needle = inDrawer ? query.trim().toLocaleLowerCase() : '';
         const roots = rootIds.map((teamId) => renderTeamNode(teamId, 0, inDrawer, needle)).filter(Boolean);
-        return roots.length > 0 ? roots : <p className="eza-teamTreeEmpty">{i18n('No sessions')}</p>;
+        return roots.length > 0 ? roots : <p className="ea-teamTreeEmpty">{i18n('No sessions')}</p>;
     };
     useEffect(() => {
         if (!treeOpen && !pendingTeamId) return undefined;
@@ -509,32 +509,32 @@ export function TeamTree({
     const endDrawerResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
         if (drawerResizeRef.current?.pointerId === event.pointerId) drawerResizeRef.current = null;
     }, []);
-    return <section className="eza-agentStructure" aria-label={i18n('Team, Agent, and Session tree')}>
-        <div ref={toolsRef} className="eza-agentStructure__tools">
+    return <section className="ea-agentStructure" aria-label={i18n('Team, Agent, and Session tree')}>
+        <div ref={toolsRef} className="ea-agentStructure__tools">
             <input value={query} placeholder={i18n('Search teams, agents, or sessions')} aria-label={i18n('Search teams, agents, or sessions')} onChange={(event) => onQuery(event.target.value)} />
             <button type="button" onClick={onCreateAgent}>{i18n('New smart agent')}</button>
             <button type="button" onClick={onCreateTeam}>{i18n('New team')}</button>
         </div>
-        {editMode && <div className="eza-selectionToolbar" style={toolbarTop === null ? undefined : { top: `${toolbarTop}px` }} role="toolbar" aria-label={i18n('Editing actions')}>
+        {editMode && <div className="ea-selectionToolbar" style={toolbarTop === null ? undefined : { top: `${toolbarTop}px` }} role="toolbar" aria-label={i18n('Editing actions')}>
             <span>{i18n('{0} agents · {1} sessions · {2} teams', selectedAgentIds.size, selectedSessionIds.size, selectedTeamIds.size)}</span>
             <button type="button" disabled={sessionTitleSaving || !canEditTeam} onClick={() => { if (selectedTeamId) onRenameTeam(selectedTeamId); }}>{i18n('Rename team')}</button>
-            <button type="button" className="eza-selectionToolbarSave" disabled={sessionTitleSaving} onClick={() => { void onSaveSessionTitles(); }}>{sessionTitleSaving ? i18n('Saving...') : i18n('Save session names')}</button>
-            <button type="button" className="eza-selectionToolbarDelete" disabled={sessionTitleSaving || (selectedAgentIds.size === 0 && selectedSessionIds.size === 0 && selectedTeamIds.size === 0)} onClick={onDeleteSelected}>{i18n('Delete')}</button>
-            <button type="button" className="eza-selectionToolbarExit" disabled={sessionTitleSaving} onClick={onExitEdit}>{i18n('Exit edit mode')}</button>
+            <button type="button" className="ea-selectionToolbarSave" disabled={sessionTitleSaving} onClick={() => { void onSaveSessionTitles(); }}>{sessionTitleSaving ? i18n('Saving...') : i18n('Save session names')}</button>
+            <button type="button" className="ea-selectionToolbarDelete" disabled={sessionTitleSaving || (selectedAgentIds.size === 0 && selectedSessionIds.size === 0 && selectedTeamIds.size === 0)} onClick={onDeleteSelected}>{i18n('Delete')}</button>
+            <button type="button" className="ea-selectionToolbarExit" disabled={sessionTitleSaving} onClick={onExitEdit}>{i18n('Exit edit mode')}</button>
         </div>}
-        <div className="eza-agentStructure__tree eza-teamTree">{renderTree(renderedRootTeamIds)}</div>
+        <div className="ea-agentStructure__tree ea-teamTree">{renderTree(renderedRootTeamIds)}</div>
         {treeOpen && createPortal(<>
-            <button type="button" className="eza-teamTreeBackdrop" aria-label={i18n('Close team structure')} onClick={onCloseTree} />
-            <aside className="eza-teamTreeDrawer" style={{ width: `min(${drawerWidth}px, calc(100vw - 1rem))` }} role="dialog" aria-modal="true" aria-label={i18n('Team structure')}>
-                <header className="eza-teamTreeDrawerHeader">
+            <button type="button" className="ea-teamTreeBackdrop" aria-label={i18n('Close team structure')} onClick={onCloseTree} />
+            <aside className="ea-teamTreeDrawer" style={{ width: `min(${drawerWidth}px, calc(100vw - 1rem))` }} role="dialog" aria-modal="true" aria-label={i18n('Team structure')}>
+                <header className="ea-teamTreeDrawerHeader">
                     <strong>{i18n('Team structure')}</strong>
                     <span>{teams.length + agents.length + sessions.length}</span>
                     <button type="button" onClick={onCloseTree} aria-label={i18n('Close')}>×</button>
                 </header>
-                <div className="eza-teamTreeDrawerBody eza-teamTree">{renderTree(rootTeamIds, true)}</div>
+                <div className="ea-teamTreeDrawerBody ea-teamTree">{renderTree(rootTeamIds, true)}</div>
             </aside>
             <div
-                className="eza-teamTreeResize"
+                className="ea-teamTreeResize"
                 style={{ left: `min(${drawerWidth}px, calc(100vw - 1rem))` }}
                 role="separator"
                 aria-orientation="vertical"
@@ -546,16 +546,16 @@ export function TeamTree({
                 onLostPointerCapture={endDrawerResize}
             />
         </>, document.body)}
-        {pendingTeamId && createPortal(<div className="eza-teamSwitchConfirmBackdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) cancelTeamSwitch(); }}>
-            <section className="eza-teamSwitchConfirm" role="alertdialog" aria-modal="true" aria-labelledby="eza-teamSwitchConfirm-title">
-                <h2 id="eza-teamSwitchConfirm-title">{i18n('Switch team?')}</h2>
+        {pendingTeamId && createPortal(<div className="ea-teamSwitchConfirmBackdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) cancelTeamSwitch(); }}>
+            <section className="ea-teamSwitchConfirm" role="alertdialog" aria-modal="true" aria-labelledby="ea-teamSwitchConfirm-title">
+                <h2 id="ea-teamSwitchConfirm-title">{i18n('Switch team?')}</h2>
                 <p>{pendingTeamLabel ? i18n('Switch to "{0}"?', pendingTeamLabel) : i18n('Switch the current team?')}</p>
-                <div className="eza-teamSwitchConfirmActions">
+                <div className="ea-teamSwitchConfirmActions">
                     <button type="button" onClick={cancelTeamSwitch}>{i18n('Cancel')}</button>
                     <button type="button" className="is-primary" onClick={confirmTeamSwitch}>{i18n('Switch')}</button>
                 </div>
             </section>
         </div>, document.body)}
-        {searchHasMore && <p className="eza-teamTreeHint">{i18n('Only part of the search results are shown. Narrow your search.')}</p>}
+        {searchHasMore && <p className="ea-teamTreeHint">{i18n('Only part of the search results are shown. Narrow your search.')}</p>}
     </section>;
 }

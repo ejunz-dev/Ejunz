@@ -4,7 +4,7 @@ import { i18n } from '@/i18n';
 import { ActionDialog } from './components/primitives/ActionDialog';
 import { useAgentRpc } from './runtime/rpc';
 import { useAgentTheme } from './runtime/theme';
-// The design tokens (`.eza-app`, with the dark set under `body[data-ds-dark-theme]`)
+// The design tokens (`.ea-app`, with the dark set under `body[data-ds-dark-theme]`)
 // and the app-frame baseline both live with the chat page's styles; this page
 // renders inside the same frame, so it loads them explicitly rather than
 // inheriting them from a sibling's import.
@@ -129,12 +129,12 @@ export default function AgentStatusPage() {
     const rows = items ?? [];
 
     return (
-        <div className="eza-app" data-ds-dark-theme={dark || undefined}>
-            <div className="eza-status">
-                <header className="eza-status__head">
+        <div className="ea-app" data-ds-dark-theme={dark || undefined}>
+            <div className="ea-status">
+                <header className="ea-status__head">
                     <div>
-                        <h1 className="eza-status__title">{i18n('Agent runtimes')}</h1>
-                        <p className="eza-status__desc">
+                        <h1 className="ea-status__title">{i18n('Agent runtimes')}</h1>
+                        <p className="ea-status__desc">
                             {i18n('Ejunz-Agent instances that handle this server’s sessions. The embedded instance runs inside the Ejunz process, so each process appears as one row.')}
                         </p>
                     </div>
@@ -145,22 +145,22 @@ export default function AgentStatusPage() {
 
                 <Card title={i18n('Runtimes ({0})', rows.length)}>
                     {items === null ? (
-                        <p className="eza-status__muted">{i18n('Loading...')}</p>
+                        <p className="ea-status__muted">{i18n('Loading...')}</p>
                     ) : rows.length === 0 ? (
-                        <p className="eza-status__muted">{i18n('No runtime has reported yet. It starts and registers after the server begins listening.')}</p>
+                        <p className="ea-status__muted">{i18n('No runtime has reported yet. It starts and registers after the server begins listening.')}</p>
                     ) : (
-                        <ul className="eza-status__list">
+                        <ul className="ea-status__list">
                             {rows.map((row) => {
                                 const state = runtimeState(row);
                                 return (
-                                    <li key={row.runtimeId} className="eza-status__row">
-                                        <div className="eza-status__main">
-                                            <div className="eza-status__line">
-                                                <span className="eza-status__name">{row.label}</span>
-                                                <Tag className={`eza-status__tag eza-status__tag--${state.tone}`}>{state.text}</Tag>
-                                                <span className="eza-status__kind">{row.kind}</span>
+                                    <li key={row.runtimeId} className="ea-status__row">
+                                        <div className="ea-status__main">
+                                            <div className="ea-status__line">
+                                                <span className="ea-status__name">{row.label}</span>
+                                                <Tag className={`ea-status__tag ea-status__tag--${state.tone}`}>{state.text}</Tag>
+                                                <span className="ea-status__kind">{row.kind}</span>
                                             </div>
-                                            <div className="eza-status__facts">
+                                            <div className="ea-status__facts">
                                                 <span>{row.host}:{row.pid}</span>
                                                 <span>{i18n('Version {0}', row.version)}</span>
                                                 <span>{i18n('{0} sessions', row.attachedSessions)}</span>
@@ -168,7 +168,7 @@ export default function AgentStatusPage() {
                                                 <span>{i18n('Last report: {0} ago', formatDuration(row.sinceReportMs))}</span>
                                             </div>
                                         </div>
-                                        <div className="eza-status__actions">
+                                        <div className="ea-status__actions">
                                             <Button
                                                 variant="ghost"
                                                 onClick={() => { setDialogError(null); setLabelDraft(row.label); setRenaming(row); }}
