@@ -3,7 +3,14 @@ agent.dev.yaml
 CLAUDE.local.md
 .envx
 node_modules/
-lib/
+/lib/
+/src/**/lib/
+!/src/lib/
+# Generated declaration sidecars emitted beside nested package sources.
+/src/**/src/**/*.d.ts.map
+/src/**/src/**/*.d.ts
+!/src/service/client/runtime/src/env.d.ts
+!/src/tools/web/tool-web/src/turndown-plugin-gfm.d.ts
 *.tsbuildinfo
 yarn-error.log
 .yarn/
@@ -24,6 +31,7 @@ tmp/
 .claude/commands/
 .claude/launch.json
 .claude/settings.json
+/src/.claude/
 .vscode/
 .DS_Store
 .idea

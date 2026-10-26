@@ -1,5 +1,5 @@
 import { defineConfig } from 'tsdown'
-import { typertPlugin } from './packages/typert/generator/lib/types/tsdown-plugin.js'
+import { typertPlugin } from './src/script/typert/generator/lib/types/tsdown-plugin.js'
 
 function isBuildFaceClient(value: unknown): boolean {
   if (value === undefined || value === 'host') return false
@@ -17,7 +17,7 @@ export default defineConfig(({ env }) => {
   const client = isBuildFaceClient(env?.EA_BUILD_FACE)
   return {
     workspace: {
-      include: ['vendor/*', 'packages/*/*', 'apps/cli'],
+      include: ['src/vendor/*', 'src/*/*/*'],
       exclude: ['.'],
     },
     outDir: 'lib',

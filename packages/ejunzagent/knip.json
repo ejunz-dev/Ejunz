@@ -4,7 +4,7 @@
     "duplicates"
   ],
   "ignoreWorkspaces": [
-    "vendor/*"
+    "src/vendor/*"
   ],
   "ignoreDependencies": [
     "@yarnpkg/cli-dist",
@@ -13,16 +13,21 @@
   "workspaces": {
     ".": {
       "entry": [
-        "scripts/**/*.mjs",
-        "scripts/**/*.cjs"
+        "src/script/**/*.mjs",
+        "src/script/**/*.cjs",
+        "src/script/**/*.mjs",
+        "src/script/**/*.cjs"
       ],
       "project": [
-        "scripts/**/*.ts",
-        "scripts/**/*.mjs",
-        "scripts/**/*.cjs"
+        "src/script/**/*.ts",
+        "src/script/**/*.mjs",
+        "src/script/**/*.cjs",
+        "src/script/**/*.ts",
+        "src/script/**/*.mjs",
+        "src/script/**/*.cjs"
       ]
     },
-    "packages/host/webserver": {
+    "src/service/host/webserver": {
       "entry": [
         "tests/**/*.spec.ts"
       ],
@@ -31,7 +36,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/extensions/cordis-host-runner": {
+    "src/service/extensions/cordis-host-runner": {
       "entry": [
         "tests/**/*.spec.ts"
       ],
@@ -43,7 +48,7 @@
         "zod"
       ]
     },
-    "packages/client/runtime": {
+    "src/service/client/runtime": {
       "entry": [
         "tests/**/*.spec.ts"
       ],
@@ -52,7 +57,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/api/remotes": {
+    "src/service/api/remotes": {
       "entry": [
         "tests/**/*.e2e.ts"
       ],
@@ -64,7 +69,7 @@
         "@ejunz/api-gateway"
       ]
     },
-    "packages/*/*": {
+    "src/*/*/*": {
       "entry": [
         "tests/**/*.spec.ts"
       ],
@@ -73,7 +78,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/core/tools": {
+    "src/service/core/tools": {
       "entry": [
         "tests/**/*.spec.ts"
       ],
@@ -82,7 +87,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/typert/generator": {
+    "src/script/typert/generator": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/fixtures/type-model/**/*.ts",
@@ -93,7 +98,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/e2b/e2b": {
+    "src/service/e2b/e2b": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -103,7 +108,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/context/time-context": {
+    "src/model/context/time-context": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -113,7 +118,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/lsp/lsp-stdio": {
+    "src/service/lsp/lsp-stdio": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts",
@@ -127,7 +132,7 @@
         "typescript-language-server"
       ]
     },
-    "packages/session/session-telemetry-otel": {
+    "src/model/session/session-telemetry-otel": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -137,17 +142,17 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/util/brand": {
+    "src/lib/util/brand": {
       "project": [
         "src/**/*.ts"
       ]
     },
-    "packages/attachment/attachment": {
+    "src/service/attachment/attachment": {
       "project": [
         "src/**/*.ts"
       ]
     },
-    "packages/util/timeout": {
+    "src/lib/util/timeout": {
       "entry": [
         "tests/**/*.spec.ts"
       ],
@@ -156,7 +161,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/util/output-retention": {
+    "src/lib/util/output-retention": {
       "entry": [
         "tests/**/*.spec.ts"
       ],
@@ -165,7 +170,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/core/agent-loop": {
+    "src/service/core/agent-loop": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -175,7 +180,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/goal/goal": {
+    "src/service/goal/goal": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -185,7 +190,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/goal/goal-round-driver": {
+    "src/service/goal/goal-round-driver": {
       "entry": [
         "tests/**/*.spec.ts"
       ],
@@ -194,7 +199,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/goal/tool-goal": {
+    "src/tools/goal/tool-goal": {
       "entry": [
         "tests/**/*.spec.ts"
       ],
@@ -203,7 +208,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/session-query/session-query-sqlite": {
+    "src/service/session-query/session-query-sqlite": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -213,7 +218,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/llm/llm-deepseek": {
+    "src/service/llm/llm-deepseek": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -223,7 +228,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/llm/llm-pi-ai": {
+    "src/service/llm/llm-pi-ai": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -233,7 +238,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/session/session-title-first-prompt-llm": {
+    "src/model/session/session-title-first-prompt-llm": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -243,7 +248,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/context/agent-instructions": {
+    "src/model/context/agent-instructions": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -253,7 +258,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/session/session-checkpoint-policy": {
+    "src/model/session/session-checkpoint-policy": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -263,7 +268,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/util/home-paths": {
+    "src/lib/util/home-paths": {
       "entry": [
         "tests/**/*.spec.ts"
       ],
@@ -272,7 +277,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/web/web-search-exa": {
+    "src/service/web/web-search-exa": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -282,7 +287,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/web/web-search-perplexity": {
+    "src/service/web/web-search-perplexity": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -292,7 +297,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/workflow/workflow-worker-thread": {
+    "src/service/workflow/workflow-worker-thread": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -302,7 +307,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/web/web-search-deepseek": {
+    "src/service/web/web-search-deepseek": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -312,12 +317,12 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/examples/agent-spine-demo": {
+    "src/entry/examples/agent-spine-demo": {
       "project": [
         "src/**/*.ts"
       ]
     },
-    "packages/sdk/server": {
+    "src/service/sdk/server": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -327,7 +332,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/interaction/commands": {
+    "src/service/interaction/commands": {
       "entry": [
         "tests/**/*.spec.ts"
       ],
@@ -339,7 +344,7 @@
         "zod"
       ]
     },
-    "packages/subagent/subagent-spawn-in-process": {
+    "src/service/subagent/subagent-spawn-in-process": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -349,7 +354,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/subagent/subagent-acp": {
+    "src/service/subagent/subagent-acp": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts",
@@ -360,7 +365,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/subagent/subagent-codex": {
+    "src/service/subagent/subagent-codex": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -373,7 +378,7 @@
         "@openai/codex"
       ]
     },
-    "packages/subagent/subagent-claude-code": {
+    "src/service/subagent/subagent-claude-code": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -383,7 +388,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/mcp/mcp-client": {
+    "src/service/mcp/mcp-client": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts",
@@ -398,7 +403,7 @@
         "@modelcontextprotocol/server-filesystem"
       ]
     },
-    "apps/cli": {
+    ".": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts",
@@ -412,7 +417,7 @@
         "@ejunz/.+"
       ]
     },
-    "packages/subagent/subagent-ea-sdk": {
+    "src/service/subagent/subagent-ea-sdk": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -422,12 +427,12 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/bundle/base": {
+    "src/entry/bundle/base": {
       "ignoreDependencies": [
         "@ejunz/.+"
       ]
     },
-    "packages/bundle/web-app": {
+    "src/entry/bundle/web-app": {
       "ignoreDependencies": [
         "@ejunz/.+"
       ]

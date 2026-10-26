@@ -1,2 +1,2 @@
-export { embedAgentRuntime } from './apps/cli/src/embed.ts';
-export type { EmbedWebAppOptions, EmbeddedAgentRuntime } from './apps/cli/src/embed.ts';
+export { embedAgentRuntime } from './src/service/embed.ts';
+export type { EmbedWebAppOptions, EmbeddedAgentRuntime } from './src/service/embed.ts';

@@ -20,21 +20,19 @@
     "**/.node-next-types-*/**",
     "**/.oxlint-contract-*/**", // Scratch files created by the executable lint-contract tests.
     "**/oxlint-contract-*", // Flat probes use real TypeScript project include paths.
-    "vendor/**", // Vendored source keeps upstream style and idioms.
+    "src/vendor/**", // Vendored source keeps upstream style and idioms.
     "**/*.js",
     "**/*.mjs",
     "**/*.config.ts", // Tool and app configs are outside the repository TypeScript programs.
-    "packages/client/tsdown.client.ts" // Shared client build preset, also outside a TypeScript program.
+    "src/service/client/tsdown.client.ts" // Shared client build preset, also outside a TypeScript program.
   ],
   "overrides": [
     {
       // Shared strict type-aware rules. Source/test differences stay in the short overrides below.
       "files": [
-        "packages/*/*/src/**/*.{ts,tsx}",
-        "packages/*/*/tests/**/*.{ts,tsx}",
-        "apps/*/src/**/*.{ts,tsx}",
-        "apps/*/tests/**/*.{ts,tsx}",
-        "scripts/**/*.{ts,tsx}"
+        "src/*/*/*/src/**/*.{ts,tsx}",
+        "src/*/*/*/tests/**/*.{ts,tsx}",
+                        "src/script/**/*.{ts,tsx}"
       ],
       "rules": {
         "no-var": "error",
@@ -137,9 +135,8 @@
     },
     {
       "files": [
-        "packages/*/*/src/**/*.{ts,tsx}",
-        "apps/*/src/**/*.{ts,tsx}",
-        "scripts/**/*.{ts,tsx}"
+        "src/*/*/*/src/**/*.{ts,tsx}",
+                "src/script/**/*.{ts,tsx}"
       ],
       "rules": {
         "typescript/no-non-null-assertion": "error",
@@ -171,9 +168,8 @@
     },
     {
       "files": [
-        "packages/*/*/tests/**/*.{ts,tsx}",
-        "apps/*/tests/**/*.{ts,tsx}",
-        "scripts/**/*.spec.{ts,tsx}"
+        "src/*/*/*/tests/**/*.{ts,tsx}",
+                "src/script/**/*.spec.{ts,tsx}"
       ],
       "rules": {
         "typescript/no-invalid-void-type": "error",
@@ -190,8 +186,7 @@
     {
       "files": [
         "packages/**/*.{ts,tsx}",
-        "apps/**/*.{ts,tsx}",
-        "scripts/**/*.{ts,tsx}"
+                "src/script/**/*.{ts,tsx}"
       ],
       "rules": {
         "sonarjs/duplicates-in-character-class": "error",
@@ -210,8 +205,7 @@
     {
       "files": [
         "packages/**/*.{ts,tsx}",
-        "apps/**/*.{ts,tsx}",
-        "scripts/**/*.{ts,tsx}"
+                "src/script/**/*.{ts,tsx}"
       ],
       "rules": {
         "@stylistic/indent": [
