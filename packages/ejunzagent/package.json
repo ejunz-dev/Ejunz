@@ -55,7 +55,7 @@
     "release:verify-packed-install": "tsx src/script/release/verify-packed-install.ts",
     "release:publish": "tsx src/script/release/publish.ts",
     "ea": "node --expose-internals --import tsx/esm src/entry/bin.ts",
-    "postinstall": "node src/script/install-lefthook.mjs",
+    "postinstall": "node bin/postinstall.js",
     "agent": "yarn run ea node",
     "build:cli": "tsc -b tsconfig.cli.json && tsdown --config tsdown.cli.config.ts && yarn run build:cli-runtime"
   },
@@ -164,6 +164,7 @@
   "bin": "bin/ea.js",
   "files": [
     "bin/ea.js",
+    "bin/postinstall.js",
     "lib/*.js",
     "config"
   ]

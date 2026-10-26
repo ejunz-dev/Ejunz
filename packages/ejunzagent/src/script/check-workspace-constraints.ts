@@ -34,7 +34,7 @@ const releaseMemberDirectory = /^(?:\.|src\/[^/]+\/[^/]+\/[^/]+|src\/vendor\/[^/
 
 const localArtifactDirs = new Set(['node_modules'])
 const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
-  '@ejunz/ea': ['bin/ea.js', 'lib/*.js', 'config'],
+  '@ejunz/ea': ['bin/ea.js', 'bin/postinstall.js', 'lib/*.js', 'config'],
   // The Web build emits sourcemaps for browser debugging; publishing them is
   // what the payload policy forbids, so the bundle ships without them.
   '@ejunz/web-frontend': ['dist', '!dist/**/*.map'],
@@ -114,7 +114,7 @@ function workspaceManifests(): WorkspaceManifest[] {
 
 const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   // The published bin shim delegates to this built CLI entry.
-  '@ejunz/ea': ['lib/bin.js'],
+  '@ejunz/ea': ['bin/postinstall.js', 'lib/bin.js'],
   // Profile bundles publish their ea.bundle.patch layer beside the lib.
   '@ejunz/base': ['cordis.patch.yml'],
   '@ejunz/web-app': ['cordis.patch.yml'],
