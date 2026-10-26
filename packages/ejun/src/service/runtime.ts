@@ -48,7 +48,7 @@ interface RpcBody {
 const { WebSocket } = require('ws');
 const logger = new Logger('agent');
 const agentRoot = path.resolve(__dirname, '../../../ejunzagent');
-const agentEmbedEntry = path.join(agentRoot, 'apps/cli/src/embed.ts');
+const agentEmbedEntry = path.join(agentRoot, 'src/service/embed.ts');
 const CREDENTIAL_REF_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Validate a credential-reference without importing the embedded Agent workspace. */

@@ -347,11 +347,14 @@ export async function apply(ctx: Context) {
 
 async function loadToolPlugins(ctx: Context) {
     const toolsDir = resolve(__dirname, '../tools');
-    for (const name of await fs.readdir(toolsDir)) {
-        if (!name.endsWith('.ts') || name.endsWith('.d.ts')) continue;
-        const file = resolve(toolsDir, name);
-        if (typeof require(file).apply !== 'function') continue;
-        await ctx.loader.reloadPlugin(file, '');
+    const dirs = [toolsDir, resolve(toolsDir, 'runtime')];
+    for (const dir of dirs) {
+        for (const name of await fs.readdir(dir)) {
+            if (!name.endsWith('.ts') || name.endsWith('.d.ts')) continue;
+            const file = resolve(dir, name);
+            if (typeof require(file).apply !== 'function') continue;
+            await ctx.loader.reloadPlugin(file, '');
+        }
     }
     const server = ctx.get('server') as { listTools(): { addonId: string }[] } | undefined;
     if (!server) throw new Error('Ejunz WebService is unavailable.');

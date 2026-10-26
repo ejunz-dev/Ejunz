@@ -2,9 +2,9 @@ import { Executor } from '@ejunz/framework';
 import type { Context } from 'ejun/src/context';
 import { PRIV } from 'ejun/src/model/builtin';
 import Schema from 'schemastery';
-import type { ToolArgs, ToolContext } from '../lib/tool-types';
-import { registerAgentAddon } from '../service/addons';
-import type {} from '../service/server';
+import type { ToolArgs, ToolContext } from '../../lib/tool-types';
+import { registerAgentAddon } from '../../service/addons';
+import type {} from '../../service/server';
 
 export const inject = ['server'];
 
