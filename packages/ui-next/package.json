@@ -12,6 +12,7 @@
       "import": "./index.ts",
       "default": "./index.ts"
     },
+    "./package.json": "./package.json",
     "./api": {
       "types": "./api.ts",
       "import": "./api.ts",

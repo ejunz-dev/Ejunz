@@ -20,6 +20,7 @@
         "@cordisjs/plugin-timer": "1.1.1",
         "@ejunz/common": "workspace:^",
         "@ejunz/framework": "workspace:^",
+        "@ejunz/ui-next": "workspace:^",
         "@ejunz/utils": "workspace:^",
         "@simplewebauthn/server": "13.2.2",
         "@undefined-moe/require-resolve-hook": "^1.1.0",
