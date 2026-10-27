@@ -6,6 +6,7 @@ const PACKAGE_NAME = '@ejunz/session-persistence-ejunz'
 export const name = 'session-persistence-ejunz-invariant'
 export const inject = ['invariants']
 
+/** No runtime invariant: persisted session state is owned by the host, not this remote adapter. */
 const install: InvariantInstaller = () => {}
 
 export const apply = (ctx: Context): Promise<() => void> =>

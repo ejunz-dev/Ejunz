@@ -37,10 +37,15 @@ for (const manifestPath of manifests) {
     continue
   }
   const invariantExport = manifest.exports?.['./invariant']
+  const invariantFile = invariantExport?.default === './lib/invariant.js'
+    ? 'lib/invariant.js'
+    : invariantExport?.default === './lib/types/invariant.js' ? 'lib/types/**/*.js' : undefined
   if (typeof invariantExport !== 'object'
-    || invariantExport.default !== './lib/invariant.js'
-    || !manifest.files?.includes('lib/invariant.js')) {
-    failures.push(`${packageName}: manifest does not publish ./lib/invariant.js as ./invariant`)
+    || invariantExport === null
+    || invariantFile === undefined
+    || (!manifest.files?.includes(invariantFile)
+      && !(invariantFile === 'lib/invariant.js' && manifest.files?.includes('lib/*.js')))) {
+    failures.push(`${packageName}: manifest does not publish its ./invariant runtime entry`)
     continue
   }
 

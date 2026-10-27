@@ -83,17 +83,26 @@ function checkManifest(
   violations: PackageInvariantViolation[],
 ): void {
   const invariantExport = manifest.exports?.['./invariant']
+  const invariantRuntime = typeof invariantExport === 'object' && invariantExport !== null
+    ? invariantExport.default
+    : undefined
+  const invariantFile = invariantRuntime === './lib/invariant.js'
+    ? 'lib/invariant.js'
+    : invariantRuntime === './lib/types/invariant.js' ? 'lib/types/**/*.js' : undefined
   if (typeof invariantExport !== 'object'
+    || invariantExport === null
     || invariantExport.types !== './lib/types/invariant.d.ts'
-    || invariantExport.default !== './lib/invariant.js') {
+    || invariantFile === undefined) {
     addViolation(
       violations,
       owner.manifestPath,
-      'exports["./invariant"] must target ./lib/types/invariant.d.ts and ./lib/invariant.js',
+      'exports["./invariant"] must target its published runtime JS and lib/types/invariant.d.ts',
     )
   }
-  if (!manifest.files?.includes('lib/invariant.js')) {
-    addViolation(violations, owner.manifestPath, 'files must publish lib/invariant.js')
+  if (invariantFile !== undefined
+    && !manifest.files?.includes(invariantFile)
+    && !(invariantFile === 'lib/invariant.js' && manifest.files?.includes('lib/*.js'))) {
+    addViolation(violations, owner.manifestPath, `files must publish ${invariantFile}`)
   }
   if (owner.packageName === '@ejunz/invariants') return
   if (manifest.peerDependencies?.['@ejunz/invariants'] !== 'workspace:^') {

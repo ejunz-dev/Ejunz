@@ -6,6 +6,7 @@ const PACKAGE_NAME = '@ejunz/storage-ejunz'
 export const name = 'storage-ejunz-invariant'
 export const inject = ['invariants']
 
+/** No runtime invariant: durable storage state is owned by the host, not this remote adapter. */
 const install: InvariantInstaller = () => {}
 
 export const apply = (ctx: Context): Promise<() => void> =>

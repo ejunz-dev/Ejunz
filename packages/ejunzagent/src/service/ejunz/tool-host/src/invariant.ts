@@ -6,6 +6,7 @@ const PACKAGE_NAME = '@ejunz/tool-host'
 export const name = 'tool-host-invariant'
 export const inject = ['invariants']
 
+/** No runtime invariant: registrations live in each Agent scope and are disposed with that scope. */
 const install: InvariantInstaller = () => {}
 
 export const apply = (ctx: Context): Promise<() => void> =>

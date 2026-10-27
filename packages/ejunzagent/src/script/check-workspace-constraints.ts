@@ -113,6 +113,8 @@ function workspaceManifests(): WorkspaceManifest[] {
 }
 
 const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
+  // Agent presets split their runtime entry across sibling files in lib/.
+  '@ejunz/agent-presets': ['lib/*.js'],
   // The published bin shim delegates to this built CLI entry.
   '@ejunz/ea': ['bin/postinstall.js', 'lib/bin.js'],
   // Profile bundles publish their ea.bundle.patch layer beside the lib.
@@ -135,12 +137,14 @@ function binFiles(bin: PackageManifest['bin']): string[] {
 }
 
 function expectedEaPackageFiles(manifest: PackageManifest): readonly string[] {
-  const extras = manifest.name ? packageFileExtras[manifest.name] ?? []
+  const extras = manifest.name ? (packageFileExtras[manifest.name] ?? []) : []
+  const usesTypeTreeRoot = exportDefault(manifest, '.') === './lib/types/index.js'
+  const publishesAllLibJs = extras.includes('lib/*.js')
   return [
-    'lib/index.js',
-    // Every package publishes its invariant ownership companion as a separate
-    // bundle; the package-invariant gate validates the companion itself.
-    'lib/invariant.js',
+    // Packages without a root bundle publish the TypeScript-emitted runtime tree.
+    ...(usesTypeTreeRoot
+      ? ['lib/types/**/*.js']
+      : publishesAllLibJs ? [] : ['lib/index.js', 'lib/invariant.js']),
     ...binFiles(manifest.bin),
     ...manifest.exports?.['./worker'] ? ['lib/worker.cjs'] : [],
     // UI plugin packages ship their browser bundle beside the node lib
@@ -160,7 +164,7 @@ function expectedEaPackageFiles(manifest: PackageManifest): readonly string[] {
     // browser-safe source channels rehomed off src so plain Node can import
     // them without type stripping) publish the emitted JS alongside the
     // declarations.
-    ...usesEmittedTreeDefaults(manifest) ? ['lib/types/**/*.js'] : [],
+    ...usesEmittedTreeDefaults(manifest) && !usesTypeTreeRoot ? ['lib/types/**/*.js'] : [],
     'lib/types/**/*.d.ts',
     ...hasExportPair(manifest, './typert', './lib/typert.host.d.ts', './lib/typert.host.js')
       ? ['lib/typert.host.js', 'lib/typert.host.d.ts']
@@ -268,27 +272,31 @@ function checkWorkspace({ dir, manifest }: WorkspaceManifest): string[] {
     if (manifest.type !== 'module') {
       errors.push(`${label}: package.json must set "type": "module"`)
     }
-    if (manifest.main !== 'lib/index.js') {
-      errors.push(`${label}: package.json must set "main": "lib/index.js"`)
+    const rootExport = manifest.exports?.['.']
+    const rootEntry = typeof rootExport === 'object' && rootExport !== null ? rootExport : undefined
+    const usesTypeTreeRoot = rootEntry?.default === './lib/types/index.js'
+    const expectedMain = usesTypeTreeRoot ? 'lib/types/index.js' : 'lib/index.js'
+    const expectedRootDefault = usesTypeTreeRoot ? './lib/types/index.js' : './lib/index.js'
+    const expectedInvariantDefault = usesTypeTreeRoot ? './lib/types/invariant.js' : './lib/invariant.js'
+    if (manifest.main !== expectedMain) {
+      errors.push(`${label}: package.json main must match exports["."].default (${expectedMain})`)
     }
     if (manifest.types !== 'lib/types/index.d.ts') {
       errors.push(`${label}: package.json must set "types": "lib/types/index.d.ts"`)
     }
-    const rootExport = manifest.exports?.['.']
-    const rootEntry = typeof rootExport === 'object' && rootExport !== null ? rootExport : undefined
     if (rootEntry?.types !== './lib/types/index.d.ts') {
       errors.push(`${label}: package.json exports["."].types must be "./lib/types/index.d.ts"`)
     }
-    if (rootEntry?.default !== './lib/index.js') {
-      errors.push(`${label}: package.json exports["."].default must be "./lib/index.js"`)
+    if (rootEntry?.default !== expectedRootDefault) {
+      errors.push(`${label}: package.json exports["."].default must be "${expectedRootDefault}"`)
     }
     const invariantRaw = manifest.exports?.['./invariant']
     const invariantExport = typeof invariantRaw === 'object' && invariantRaw !== null ? invariantRaw : undefined
     if (invariantExport?.types !== undefined && invariantExport.types !== './lib/types/invariant.d.ts') {
       errors.push(`${label}: package.json exports["./invariant"].types must be "./lib/types/invariant.d.ts"`)
     }
-    if (invariantExport?.default !== undefined && invariantExport.default !== './lib/invariant.js') {
-      errors.push(`${label}: package.json exports["./invariant"].default must be "./lib/invariant.js"`)
+    if (invariantExport?.default !== undefined && invariantExport.default !== expectedInvariantDefault) {
+      errors.push(`${label}: package.json exports["./invariant"].default must be "${expectedInvariantDefault}"`)
     }
     if (invariantExport && (invariantExport.types === undefined || invariantExport.default === undefined)) {
       errors.push(`${label}: package.json exports["./invariant"] must declare both types and default targets`)
