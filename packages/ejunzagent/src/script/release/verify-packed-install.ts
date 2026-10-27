@@ -109,7 +109,34 @@ function main(): void {
     if (version !== expected.version) {
       throw new Error(`installed ${entry.packageName} --version reported ${JSON.stringify(version)}, expected ${expected.version}`)
     }
-    console.log(`release verify-packed-install: installed ${entry.packageName} reports ${version}`)
+
+    capture(process.execPath, [
+      '--input-type=module',
+      '-e',
+      "const { embedAgentRuntime } = await import('@ejunz/ea/embed'); if (typeof embedAgentRuntime !== 'function') throw new TypeError('embedAgentRuntime is not exported');",
+    ], { cwd: consumerRoot, env: environment })
+
+    const typecheckFile = join(consumerRoot, 'embed-consumer.mts')
+    writeFileSync(typecheckFile, [
+      "import { embedAgentRuntime, type EmbedWebAppOptions, type EmbeddedAgentRuntime } from '@ejunz/ea/embed'",
+      "const options: EmbedWebAppOptions = { bridge: { origin: 'http://localhost', token: 'test' } }",
+      'const boot: typeof embedAgentRuntime = embedAgentRuntime',
+      'let runtime: EmbeddedAgentRuntime | undefined',
+      'void [options, boot, runtime]',
+      '',
+    ].join('\n'))
+    capture(process.execPath, [
+      resolve(root, 'node_modules/typescript/bin/tsc'),
+      '--noEmit',
+      '--strict',
+      '--skipLibCheck',
+      '--module', 'NodeNext',
+      '--moduleResolution', 'NodeNext',
+      '--target', 'ES2024',
+      typecheckFile,
+    ], { cwd: consumerRoot, env: environment })
+
+    console.log(`release verify-packed-install: installed ${entry.packageName} reports ${version} and resolves its embed API`)
   } finally {
     rmSync(consumerRoot, { recursive: true, force: true })
   }

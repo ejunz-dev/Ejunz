@@ -156,6 +156,12 @@
     "ws": "^8.18.3"
   },
   "description": "ea CLI: profile boot, plugin management, and the browser UI alias",
+  "exports": {
+    "./embed": {
+      "types": "./lib/types/entry/embed.d.ts",
+      "default": "./lib/embed.js"
+    }
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ejunz-dev/ejunz-agent.git",
@@ -166,6 +172,9 @@
     "bin/ea.js",
     "bin/postinstall.js",
     "lib/*.js",
+    "lib/types/entry/embed.d.ts",
+    "lib/types/service/embed.d.ts",
+    "lib/types/service/host-tools.d.ts",
     "config"
   ]
 }

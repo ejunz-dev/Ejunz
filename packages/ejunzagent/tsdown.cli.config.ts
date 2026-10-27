@@ -5,7 +5,10 @@ import { defineConfig } from 'tsdown'
  * Declarations come from `tsc -b` (dts: false), matching every package.
  */
 export default defineConfig({
-  entry: ['lib/types/entry/bin.js'],
+  entry: {
+    bin: 'lib/types/entry/bin.js',
+    embed: 'src/entry/embed.ts',
+  },
   outDir: 'lib',
   format: ['esm'],
   platform: 'node',
