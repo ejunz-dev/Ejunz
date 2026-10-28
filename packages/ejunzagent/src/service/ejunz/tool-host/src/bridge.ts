@@ -115,7 +115,7 @@ async function request(
 /**
  * Build the bridge for one host origin and its data token.
  * @param origin - host origin, e.g. `http://127.0.0.1:2333`.
- * @param token - value of `EJUNZ_AGENT_DATA_TOKEN`.
+ * @param token - credential issued by the owning Ejunz host.
  * @returns the bridge the Agent process uses for host data.
  */
 export function createHostToolBridge(origin: string, token: string): HostToolBridge {

@@ -1,0 +1,5 @@
+# Ejunz Agent data bridge used by the standalone ejunz profile.
+# This is an HTTP(S) host origin, not ejunz-node's ws.endpoint.
+bridge:
+  origin: ''
+  token: ''

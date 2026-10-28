@@ -1,5 +1,6 @@
 agent.yaml
 agent.dev.yaml
+config.agent.yaml
 CLAUDE.local.md
 .envx
 node_modules/
@@ -9,8 +10,10 @@ node_modules/
 # Generated declaration sidecars emitted beside nested package sources.
 /src/**/src/**/*.d.ts.map
 /src/**/src/**/*.d.ts
-!/src/service/client/runtime/src/env.d.ts
-!/src/tools/web/tool-web/src/turndown-plugin-gfm.d.ts
+# Generated JavaScript, declarations and sourcemaps from profile package builds.
+/packages/profile-*/lib/
+!packages/profile-web/src/client/runtime/src/env.d.ts
+!packages/profile-web/src/tool/tool-web/src/turndown-plugin-gfm.d.ts
 *.tsbuildinfo
 yarn-error.log
 .yarn/
@@ -50,3 +53,6 @@ apps/desktop/dist/
 worktrees/
 .agents/worktrees/
 .typert-*/
+
+# Profile bundles own explicit TypeScript projects.
+!packages/profile-*/tsconfig*.json

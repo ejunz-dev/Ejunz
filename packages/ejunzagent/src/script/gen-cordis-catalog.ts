@@ -127,12 +127,12 @@ export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   launcherSessionQueryPath: 'not a service: launcher-provided boot-context value (string | undefined) — src/service/session-query/session-query-sqlite/README.md owns this launcher contract',
   eaHomePath: 'not a service: boot-provided root accessor function (typeof eaHomePath | undefined) for Loader !!js config expressions — src/entry/boot/app-boot/README.md owns the boot contract',
   launchEnvironment: 'not a service: launcher-provided root accessor value (LaunchEnvironmentSnapshot | undefined) — src/lib/util/launch-environment/README.md owns this launcher contract',
-  connection: 'interface-typed (HostConnectionHandle); implementing class HostConnectionService is declared in rpc-host.ts — src/service/client/connection/README.md owns the API',
+  connection: 'interface-typed (HostConnectionHandle); implementing class HostConnectionService is declared in rpc-host.ts — packages/profile-web/src/client/connection/README.md owns the API',
   hostTools: 'optional installer value supplied by a host composition, not a Cordis Service.',
   llmDomainRuntime: 'optional provider resolver supplied by a domain composition, not a Cordis Service.',
-  conversationEvents: 'client-side interface-typed registry — src/service/client/runtime/README.md owns the API',
-  conversationViews: 'client-side interface-typed registry — src/service/client/runtime/README.md owns the API',
-  remote: 'client-side interface-typed gateway accessor (ClientRemote) — src/service/api/gateway/README.md owns the API',
+  conversationEvents: 'client-side interface-typed registry — packages/profile-web/src/client/runtime/README.md owns the API',
+  conversationViews: 'client-side interface-typed registry — packages/profile-web/src/client/runtime/README.md owns the API',
+  remote: 'client-side interface-typed gateway accessor (ClientRemote) — packages/profile-web/src/api/gateway/README.md owns the API',
 }
 
 /**
@@ -175,7 +175,7 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
  * exemption cannot mask another declaration in that scope.
  */
 export const EVENT_WALK_EXEMPTIONS: Record<string, string> = {
-  'connection/reset': 'client-face transport signal — src/service/client/runtime/README.md owns the API',
+  'connection/reset': 'client-face transport signal — packages/profile-web/src/client/runtime/README.md owns the API',
 }
 
 /**
@@ -463,7 +463,7 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   PresetMetadata: 'preset display text is owned by src/service/preset/agent-presets/README.md',
   CompactionAgentContext: 'compaction service input is owned by src/service/compaction/compaction/src/index.ts',
   ManualCompactAgentContext: 'manual compaction service input is owned by src/service/compaction/compaction/src/index.ts',
-  ClientResponse: 'wire response message is owned by src/service/host/apiproxy/src/api/rpc.ts',
+  ClientResponse: 'wire response message is owned by packages/profile-web/src/host/apiproxy/src/api/rpc.ts',
   ApprovalRequestId: 'dynamic Plugin approval identity is owned by src/service/extensions/cordis-host-runner/src/types.ts',
   CordisErrorDetails: 'Cordis runtime error payload is owned by src/service/extensions/cordis-host-runner/src/types.ts',
   CordisInspectPlatform: 'Cordis inspect platform identity is owned by src/service/extensions/cordis-host-runner/src/types.ts',
@@ -504,19 +504,19 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   'z.core.JSONSchema.BaseSchema': 'zod projection output is owned by the zod v4 API',
   'z.core.ToJSONSchemaParams': 'zod projection parameters are owned by the zod v4 API',
   TypertDisposer: 'Typert lifecycle contract is owned by src/service/typert/protocol/README.md',
-  InvokeRemoteRequest: 'gateway invocation contract is owned by src/service/api/gateway/README.md',
+  InvokeRemoteRequest: 'gateway invocation contract is owned by packages/profile-web/src/api/gateway/README.md',
   LocaleDict: 'service-local dictionary contract; the browser UI consumer has been removed',
   ThemeTokens: 'service-local token dictionary; the browser UI consumer has been removed',
   Translate: 'service-local bound translator is owned by src/service/client/i18n/src/index.ts',
   WebUpgradeRoute:
-    'upgrade route registration contract is owned by src/service/host/webserver/src/index.ts',
+    'upgrade route registration contract is owned by packages/profile-web/src/host/webserver/src/index.ts',
   InvariantRegistration: 'service-local lifecycle handle is owned by src/service/runtime-diagnostics/invariants/README.md',
   JsonValue: 'JSON value union is owned by src/service/core/session/src/json.ts',
   KnobState: 'projection unit state fields are owned by src/service/interaction/permission-presets/README.md',
   PermissionSelect: 'permissions projection payload is owned by src/service/interaction/permission-presets/src/types.ts',
   PromptAssembly: 'assembly result is owned by src/service/core/system-prompt/README.md',
   RequestRunId: 'dynamic-package payload contract is owned by src/service/extensions/cordis-host-runner/src/types.ts',
-  RpcReceipt: 'carrier-layer receipt is owned by src/service/host/apiproxy/src/api/rpc.ts',
+  RpcReceipt: 'carrier-layer receipt is owned by packages/profile-web/src/host/apiproxy/src/api/rpc.ts',
   Sandbox: 'external E2B SDK handle is owned by src/service/e2b/e2b/README.md',
   SessionForkSource: 'service-local fork input is owned by src/service/core/session/src/index.ts',
   SubagentRunEndInfo: 'event payload contract is owned by src/service/subagent/subagent/src/types.ts',
@@ -731,7 +731,7 @@ export function computeOutputs(): [string, string][] {
 
   const declaredKeys = new Map<string, string>()
   const declaredEvents = new Map<string, string>()
-  for (const { rel, sf, body } of contextMergeFiles(root, ['src/*/*/*/src/**/*.ts', 'src/*/*/*/src/**/*.tsx'])) {
+  for (const { rel, sf, body } of contextMergeFiles(root, ['src/*/*/*/src/**/*.ts', 'packages/profile-*/src/**/*.ts', 'src/*/*/*/src/**/*.tsx', 'packages/profile-*/src/**/*.tsx'])) {
     for (const key of contextKeyMap(body, sf).keys()) {
       if (!declaredKeys.has(key)) declaredKeys.set(key, rel)
     }

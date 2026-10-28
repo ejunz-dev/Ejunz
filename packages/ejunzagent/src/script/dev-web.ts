@@ -35,11 +35,13 @@ const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
  */
 export function discoverPluginDirs(root = repoRoot): string[] {
   const dirs: string[] = []
-  for (const manifestPath of globSync('src/*/*/*/package.json', { cwd: root }).sort()) {
+  for (const manifestPath of globSync(['src/*/*/*/package.json', 'packages/profile-*/package.json'], { cwd: root }).sort()) {
     const manifest = JSON.parse(readFileSync(join(root, manifestPath), 'utf8')) as {
-      ea?: { client?: { platform?: unknown } }
+      ea?: { client?: { platform?: unknown }; clients?: { platform?: unknown }[] }
     }
-    if (manifest.ea?.client?.platform === 'web') dirs.push(dirname(manifestPath).split(sep).join('/'))
+    if (manifest.ea?.client?.platform === 'web' || manifest.ea?.clients?.some(client => client.platform === 'web')) {
+      dirs.push(dirname(manifestPath).split(sep).join('/'))
+    }
   }
   return dirs
 }

@@ -488,6 +488,7 @@ export async function mountRootInclude(
   absoluteConfigPath: string,
   patches: readonly PatchOptions[] = [],
   bareModuleBaseUrl?: string,
+  enableLogs = false,
 ): Promise<Entry | undefined> {
   ctx.loader.builtins.include = bareModuleBaseUrl === undefined
     ? Include
@@ -514,6 +515,7 @@ export async function mountRootInclude(
   const includeConfig: Include.Config = {
     path: pathToFileURL(absoluteConfigPath).href,
     ...patches.length > 0 ? { patches: [...patches] } : {},
+    ...(enableLogs ? { enableLogs: true } : {}),
   }
   const rootInclude: EntryOptions = {
     id: 'include',
@@ -748,6 +750,7 @@ export async function assertEntriesActivated(ctx: Context, binName: string): Pro
  * @param bareModuleBaseUrl - optional installed-host base for bare package
  * names; use it when the host, rather than the configuration project, owns the
  * complete plugin set.
+ * @param enableLogs - emit Loader apply/reload/unload messages for the included tree.
  * @returns the root context once every entry has started, or as soon as a
  * surface disposed the tree while startup was still in flight.
  * @throws a labelled error after disposing the partial context — `host
@@ -760,6 +763,7 @@ export async function boot(
   patches?: PatchOptions[],
   prepare?: (ctx: Context) => Promise<void> | void,
   bareModuleBaseUrl?: string,
+  enableLogs = false,
 ): Promise<Context> {
   const ctx = new Context()
   // Two failure labels: `prepare` runs before any config-tree entry mounts,
@@ -769,9 +773,10 @@ export async function boot(
     ctx.baseUrl = pathToFileURL(dirname(absoluteConfigPath)).href + '/'
     ctx.provide('eaHomePath', eaHomePath)
     await ctx.plugin(Loader)
+    if (enableLogs) ctx.loader.enableLogs = true
     await prepare?.(ctx)
     stage = 'plugin tree failed to load'
-    await mountRootInclude(ctx, absoluteConfigPath, patches, bareModuleBaseUrl)
+    await mountRootInclude(ctx, absoluteConfigPath, patches, bareModuleBaseUrl, enableLogs)
     // A surface can finish and dispose the whole tree while startup is still
     // in flight, before the last entry settles. The Loader service goes with
     // it, and the activation audit describes a live tree — reading `ctx.loader`

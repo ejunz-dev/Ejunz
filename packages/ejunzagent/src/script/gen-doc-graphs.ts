@@ -76,6 +76,7 @@ const GROUP_ORDER = [
   'jobs',
   'workflow',
   'web',
+  'ejunz',
   'spill',
   'todo',
   'plan',
@@ -339,7 +340,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'agent-default-model',
     title: 'Default Agent model selection',
     mode: 'core',
-    consumers: ['headless', 'host-apiproxy'],
+    consumers: ['host-apiproxy'],
     note: 'Layers the default ModelSelection through settings so direct and Host-backed Agent entry points share one state owner.',
   },
   {
@@ -645,15 +646,7 @@ const APP_EXAMPLES = [
     title: 'EA Base Composition',
     label: 'src/entry/bundle/base/cordis.patch.yml',
     config: 'src/entry/bundle/base/cordis.patch.yml',
-    summary: 'The ea-base bundle patch every profile applies first; mode bundles (ea-web-app, ea-headless) and the user\'s profile layer patch over it.',
-  },
-  {
-    id: 'headless',
-    rel: 'examples/headless-agent/composition.md',
-    title: 'Headless Agent Snapshot Composition',
-    label: 'examples/headless-agent',
-    config: 'examples/headless-agent/cordis.yml',
-    summary: 'The headless snapshot composition combines the real DeepSeek adapter and coding capabilities with one explicitly configured persisted top-level agent; its JSONL driver is test-only.',
+    summary: 'The ea-base bundle patch every profile applies first; the web-app bundle and the user\'s profile layer patch over it.',
   },
   {
     id: 'acp',
@@ -1331,7 +1324,6 @@ function renderIndex(docs: GraphDoc[]): string {
   const labels: Record<string, string> = {
     'docs/capability-seams.md': 'capability seams and core services',
     'composition.md': 'ea shared base composition',
-    'examples/headless-agent/composition.md': 'headless-agent app composition',
     'examples/cordis-agent/composition.md': 'cordis-agent app composition',
     'examples/acp-agent/composition.md': 'acp-agent app composition',
     'docs/event-producer-consumer.md': 'event producer/consumer matrix',
@@ -1341,7 +1333,6 @@ function renderIndex(docs: GraphDoc[]): string {
   const modes: Record<string, string> = {
     'docs/capability-seams.md': 'hybrid generated',
     'composition.md': 'hybrid generated',
-    'examples/headless-agent/composition.md': 'hybrid generated',
     'examples/cordis-agent/composition.md': 'hybrid generated',
     'examples/acp-agent/composition.md': 'hybrid generated',
     'docs/event-producer-consumer.md': 'hybrid generated',

@@ -16,7 +16,7 @@ export interface PackageGraphNode {
   short: string
   /** Full npm package name. */
   name: string
-  /** Package group from `src/<layer>/<group>/<pkg>`. */
+  /** Package group inferred from its workspace path. */
   group: string
   /** Repo-relative package directory. */
   rel: string
@@ -33,14 +33,15 @@ export interface PackageGraphNode {
  */
 export function collectPackageGraph(root: string, groupOrder: readonly string[], gate: string): PackageGraphNode[] {
   const packages: PackageGraphNode[] = []
-  for (const rel of globSync('src/*/*/*/package.json', { cwd: root }).map(path => path.split(sep).join('/')).sort()) {
+  for (const rel of globSync(['src/*/*/*/package.json', 'packages/profile-*/package.json'], { cwd: root }).map(path => path.split(sep).join('/')).sort()) {
     const json = JSON.parse(readFileSync(resolve(root, rel), 'utf8')) as {
       name: string
       peerDependencies?: Record<string, string>
     }
     if (!json.name.startsWith(SCOPE)) continue
-    const [, group, leaf] = rel.split('/')
-    if (group === undefined || leaf === undefined) throw new Error(`${gate}: unexpected package path ${rel}`)
+    const parts = rel.split('/')
+    const group = parts[0] === 'packages' ? parts[1]?.replace(/^profile-/, '') : parts[2]
+    if (group === undefined) throw new Error(`${gate}: unexpected package path ${rel}`)
     const deps = Object.keys(json.peerDependencies ?? {})
       .filter(dep => dep.startsWith(SCOPE))
       .map(dep => dep.slice(SCOPE.length))
@@ -61,8 +62,10 @@ function topoSort(packages: PackageGraphNode[], groupOrder: readonly string[], g
   const placed = new Set<string>()
   const out: PackageGraphNode[] = []
   while (remaining.size > 0) {
+    // Peer dependencies outside this graph (notably vendored platform packages)
+    // do not constrain the topological order of release-member packages.
     const ready = [...remaining.values()]
-      .filter(pkg => pkg.deps.every(dep => placed.has(dep)))
+      .filter(pkg => pkg.deps.every(dep => !remaining.has(dep) || placed.has(dep)))
       .sort((a, b) => comparePackages(a, b, groupOrder))
     if (ready.length === 0) throw new Error(`${gate}: dependency cycle among ${[...remaining.keys()].join(', ')}`)
     for (const pkg of ready) {

@@ -9,10 +9,17 @@
 /* v8 ignore file -- built-bin acceptance exercises this self-executing dispatch. */
 
 import { readFileSync } from 'node:fs'
-import { loadLayeredEnv } from '@ejunz/app-boot'
+import { loadEjunzAgentConfig } from '@ejunz/profile-ejunz'
+import { loadLayeredEnv, loadProfile } from '@ejunz/app-boot'
 import { cliManifestPath } from '../lib/cli-paths.ts'
 import { installHostToolBridge } from '../service/host-tools.ts'
 import { parseEaArgs } from '../commands/args.ts'
+
+function configText(config: unknown, key: string): string | undefined {
+  if (typeof config !== 'object' || config === null) return undefined
+  const value = (config as Record<string, unknown>)[key]
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+}
 
 /** This app's version, read from its checked-in package.json. */
 function readVersion(): string {
@@ -25,31 +32,41 @@ const invocation = parseEaArgs(process.argv.slice(2), readVersion())
 switch (invocation.mode) {
   case 'profile': {
     const { runProfile } = await import('../service/profile-boot.ts')
+    const profile = loadProfile('ea', invocation.profile, cliManifestPath())
+    const hasEjunzBundle = profile.layers.some(layer => layer.packageName === '@ejunz/profile-ejunz')
+    const ejunzConfig = hasEjunzBundle ? loadEjunzAgentConfig() : undefined
+    const profileConfigPatches = ejunzConfig === undefined ? [] : [
+      { id: 'storage-ejunz', config: ejunzConfig },
+      { id: 'session-persistence-ejunz', config: ejunzConfig },
+    ]
     await runProfile({
       environment: loadLayeredEnv('ea'),
       profile: invocation.profile,
       patchFiles: invocation.patches,
+      profileConfigPatches,
       args: invocation.args,
-      prepare: async (ctx) => {
-        const origin = process.env.EJUNZ_AGENT_DATA_ORIGIN
-        const token = process.env.EJUNZ_AGENT_DATA_TOKEN
-        if (origin && token) await installHostToolBridge(ctx, { origin, token })
-        else console.warn(`[host-tools] bridge unavailable origin=${origin ? 'set' : 'missing'} token=${token ? 'set' : 'missing'}`)
+      debug: invocation.debug,
+      prepare: async (ctx, composed) => {
+        const hasEjunzBridge = ['storage-ejunz', 'session-persistence-ejunz'].some((id) => {
+          const row = composed.rows.get(id)
+          return row !== undefined && row.disabled !== true
+        })
+        if (!hasEjunzBridge) return
+        const storageConfig = composed.rows.get('storage-ejunz')?.config
+        const persistenceConfig = composed.rows.get('session-persistence-ejunz')?.config
+        const origin = configText(storageConfig, 'origin')
+        const token = configText(storageConfig, 'token')
+        const persistenceOrigin = configText(persistenceConfig, 'origin')
+        const persistenceToken = configText(persistenceConfig, 'token')
+        if (!origin || !token || !persistenceOrigin || !persistenceToken) {
+          throw new Error('ea: config.agent.yaml must provide the Ejunz bridge for storage-ejunz and session-persistence-ejunz')
+        }
+        if (origin !== persistenceOrigin || token !== persistenceToken) {
+          throw new Error('ea: storage-ejunz and session-persistence-ejunz must use the same Ejunz bridge origin and token')
+        }
+        await installHostToolBridge(ctx, { origin, token })
       },
     })
-    break
-  }
-  case 'node': {
-    const { runNode, parseNodeArgs } = await import('./node.ts')
-    const { surfaceLogger } = await import('../service/surface-log.ts')
-    try {
-      await runNode(parseNodeArgs(invocation.args))
-    } catch (error) {
-      const logger = surfaceLogger('ea-node')
-      if (error instanceof Error) logger.error(error.stack ?? error.message)
-      else logger.error(String(error))
-      process.exitCode = 1
-    }
     break
   }
   case 'plugin': {

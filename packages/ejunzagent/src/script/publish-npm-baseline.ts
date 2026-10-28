@@ -25,6 +25,7 @@ const DEFAULT_OUTPUT_DIRECTORY = '.artifacts/npm-baseline'
 const PACKAGE_PATTERNS = [
   'src/vendor/*/package.json',
   'src/*/*/*/package.json',
+  'packages/profile-*/package.json',
   'package.json',
 ] as const
 const DEPENDENCY_SECTIONS = [

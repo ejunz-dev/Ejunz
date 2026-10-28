@@ -1,0 +1,59 @@
+{
+  "name": "@ejunz/profile-ejunz",
+  "description": "Ejunz storage, persistence and telemetry profile layer for EjunzAgent",
+  "version": "0.1.2-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejunz-dev/ejunz-agent.git",
+    "directory": "packages/profile-ejunz"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "cordis.patch.yml",
+    "config.agent.example.yaml",
+    "README.md",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "AGPL-3.0-only",
+  "ea": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "js-yaml": "^4.2.0",
+    "@ejunz/profile-web": "workspace:^",
+    "@ejunz/session-persistence-ejunz": "workspace:^",
+    "@ejunz/session-telemetry-otel": "workspace:^",
+    "@ejunz/storage": "workspace:^",
+    "@ejunz/storage-domain": "workspace:^",
+    "@ejunz/storage-ejunz": "workspace:^"
+  },
+  "peerDependencies": {
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/invariants": "workspace:^"
+  },
+  "devDependencies": {
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/invariants": "workspace:^"
+  }
+}

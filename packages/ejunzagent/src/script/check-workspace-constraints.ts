@@ -15,6 +15,7 @@ const root = resolve(import.meta.dirname, '../..')
 const workspaceGlobs = [
   { dir: 'src/vendor', depth: 1 },
   { dir: 'src', depth: 3 },
+  { dir: 'packages', depth: 1 },
 ] as const
 const vendoredPackages = new Set([
   '@ejunz/cordis',
@@ -30,7 +31,7 @@ const vendoredPackages = new Set([
 /** Source home the published packages point consumers at. */
 const publishedRepositoryUrl = 'git+https://github.com/ejunz-dev/ejunz-agent.git'
 /** Directories whose packages this repository publishes: one release member each. */
-const releaseMemberDirectory = /^(?:\.|src\/[^/]+\/[^/]+\/[^/]+|src\/vendor\/[^/]+)$/
+const releaseMemberDirectory = /^(?:\.|src\/[^/]+\/[^/]+\/[^/]+|src\/vendor\/[^/]+|packages\/profile-(?:web|ejunz))$/
 
 const localArtifactDirs = new Set(['node_modules'])
 const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
@@ -119,8 +120,8 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@ejunz/ea': ['bin/postinstall.js', 'lib/bin.js'],
   // Profile bundles publish their ea.bundle.patch layer beside the lib.
   '@ejunz/base': ['cordis.patch.yml'],
-  '@ejunz/web-app': ['cordis.patch.yml'],
-  '@ejunz/headless': ['cordis.patch.yml'],
+  '@ejunz/profile-ejunz': ['cordis.patch.yml'],
+  '@ejunz/profile-web': ['cordis.patch.yml'],
   // The Python runtime uses a distinct closed-resolution bin; the public bin
   // shim delegates to lib/bin.js for config-owned bare-package resolution.
   '@ejunz/sdk-jsonrpc-demo': ['lib/packaged-bin.js'],

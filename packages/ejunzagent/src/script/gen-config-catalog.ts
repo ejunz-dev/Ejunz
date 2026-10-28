@@ -583,7 +583,7 @@ export function collectConfigCatalog(scanRoot: string = root): CatalogEntry[] {
   // workspace-package imports while individual packages are still being walked.
   const pkgDirByName = new Map<string, string>()
   const manifests: { dir: string; pkg: string }[] = []
-  for (const manifestRel of globSync('src/*/*/*/package.json', { cwd: scanRoot }).map(path => path.split(sep).join('/')).sort()) {
+  for (const manifestRel of globSync(['src/*/*/*/package.json', 'packages/profile-*/package.json'], { cwd: scanRoot }).map(path => path.split(sep).join('/')).sort()) {
     const dir = manifestRel.slice(0, -'/package.json'.length)
     const manifest = JSON.parse(readFileSync(resolve(scanRoot, manifestRel), 'utf8')) as { name?: string; os?: string[]; cpu?: string[] }
     const pkg = manifest.name

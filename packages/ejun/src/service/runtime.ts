@@ -2203,7 +2203,7 @@ async function domainCredentialsRpc(envelope: RpcEnvelope, scope: AgentScope): P
  * application's unbuilt `lib/` entries instead.
  * @returns the embed entry's exports.
  */
-async function importAgentEmbed(): Promise<{ embedAgentRuntime(options: { bridge: { origin: string; token: string } }): Promise<InProcessRuntime> }> {
+async function importAgentEmbed(): Promise<{ embedAgentRuntime(options: { profile: string; bridge: { origin: string; token: string } }): Promise<InProcessRuntime> }> {
     const agentRequire = createRequire(path.join(agentRoot, 'package.json'));
     const requireEntry = agentRequire.resolve('tsx/esm/api');
     const tsxApiPath = requireEntry.endsWith('.cjs') ? requireEntry.slice(0, -4) + '.mjs' : requireEntry;
@@ -2731,7 +2731,7 @@ async function startAgent(ctx: EjunContext): Promise<void> {
     logger.info('Ejunz-Agent data bridge origin: %s', dataOrigin);
     agentStarting = (async () => {
         const { embedAgentRuntime } = await importAgentEmbed();
-        return await embedAgentRuntime({ bridge: { origin: dataOrigin, token: agentDataToken } }) as InProcessRuntime;
+        return await embedAgentRuntime({ profile: 'ejunz', bridge: { origin: dataOrigin, token: agentDataToken } }) as InProcessRuntime;
     })();
     try {
         agentRuntime = await agentStarting;

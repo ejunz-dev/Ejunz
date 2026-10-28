@@ -36,8 +36,8 @@ export interface InstallHostToolsOptions {
   readonly agentCtx: Context
   /**
    * Client the installed tools read and call through. Passed in rather than resolved from
-   * a service so an install works however the caller reached this Agent: the deployment's
-   * client service, or a bridge built from `EJUNZ_AGENT_DATA_*`.
+   * a service so an install works with either the deployment's client or its per-instance
+   * host bridge.
    */
   readonly client: HostToolClient
 }

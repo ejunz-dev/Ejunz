@@ -73,7 +73,7 @@ if (failures.length > 0) {
 console.log(`verify-runtime-closure: ${queue.length} workspace packages form a closed runtime dependency graph.`)
 
 async function loadWorkspacePackages(): Promise<Map<string, WorkspacePackage>> {
-  const paths = globSync(['src/*/*/*/package.json', 'src/vendor/*/package.json'], { cwd: root })
+  const paths = globSync(['src/*/*/*/package.json', 'packages/profile-*/package.json', 'src/vendor/*/package.json'], { cwd: root })
     .sort()
     .map(relative => resolve(root, relative))
   const result = new Map<string, WorkspacePackage>()

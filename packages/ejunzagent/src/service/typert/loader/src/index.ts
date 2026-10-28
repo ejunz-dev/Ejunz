@@ -25,7 +25,7 @@
  * @module @ejunz/typert-loader
  */
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -327,6 +327,15 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       }
       // Not a resolvable package root: loader builtins (cordis:include) and
       // subpath entries land here — permanently not a typert contributor.
+      artifactPath.set(pkgName, null)
+      return null
+    }
+    if (!existsSync(pkgPath)) {
+      if (configured.has(pkgName)) {
+        throw new Error(`typert-loader: configured package ${JSON.stringify(pkgName)} resolves to missing manifest ${pkgPath}`)
+      }
+      // Source aliases and bundled subpaths can resolve to a specifier-shaped
+      // path without a physical package manifest; they are not Typert owners.
       artifactPath.set(pkgName, null)
       return null
     }

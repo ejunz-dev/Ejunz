@@ -1,0 +1,319 @@
+{
+  "name": "@ejunz/profile-web",
+  "description": "Web capability, embedded Host API and client runtime for EjunzAgent",
+  "version": "0.1.2-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejunz-dev/ejunz-agent.git",
+    "directory": "packages/profile-web"
+  },
+  "type": "module",
+  "main": "./lib/types/host/providers/web/src/index.js",
+  "types": "./lib/types/host/providers/web/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/host/providers/web/src/index.d.ts",
+      "default": "./lib/types/host/providers/web/src/index.js"
+    },
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./invariant": {
+      "types": "./lib/types/host/invariant.d.ts",
+      "default": "./lib/types/host/invariant.js"
+    },
+    "./app": {
+      "types": "./lib/types/host/app/web-app/src/index.d.ts",
+      "default": "./lib/types/host/app/web-app/src/index.js"
+    },
+    "./app/invariant": {
+      "types": "./lib/types/host/app/web-app/src/invariant.d.ts",
+      "default": "./lib/types/host/app/web-app/src/invariant.js"
+    },
+    "./api/gateway": {
+      "types": "./lib/types/host/api/gateway/src/index.d.ts",
+      "default": "./lib/types/host/api/gateway/src/index.js"
+    },
+    "./api/gateway/invariant": {
+      "types": "./lib/types/host/api/gateway/src/invariant.d.ts",
+      "default": "./lib/types/host/api/gateway/src/invariant.js"
+    },
+    "./api/gateway/client": {
+      "types": "./lib/types/client/api/gateway/src/client/index.d.ts",
+      "default": "./lib/client/api-gateway.js"
+    },
+    "./api/gateway/types": {
+      "types": "./lib/types/host/api/gateway/src/types.d.ts",
+      "default": "./lib/types/host/api/gateway/src/types.js"
+    },
+    "./api/remotes": {
+      "types": "./lib/types/host/api/remotes/src/index.d.ts",
+      "default": "./lib/types/host/api/remotes/src/index.js"
+    },
+    "./api/remotes/invariant": {
+      "types": "./lib/types/host/api/remotes/src/invariant.d.ts",
+      "default": "./lib/types/host/api/remotes/src/invariant.js"
+    },
+    "./api/remotes/client": {
+      "types": "./lib/types/client/api/remotes/src/client/index.d.ts",
+      "default": "./lib/client/api-remotes.js"
+    },
+    "./api/remotes/types": {
+      "types": "./lib/types/host/api/remotes/src/types.d.ts",
+      "default": "./lib/types/host/api/remotes/src/types.js"
+    },
+    "./client/connection": {
+      "types": "./lib/types/host/client/connection/src/index.d.ts",
+      "default": "./lib/types/host/client/connection/src/index.js"
+    },
+    "./client/connection/invariant": {
+      "types": "./lib/types/host/client/connection/src/invariant.d.ts",
+      "default": "./lib/types/host/client/connection/src/invariant.js"
+    },
+    "./client/connection/client": {
+      "types": "./lib/types/client/client/connection/src/client/index.d.ts",
+      "default": "./lib/client/client-connection.js"
+    },
+    "./client/runtime": {
+      "types": "./lib/types/client/client/runtime/src/index.d.ts",
+      "default": "./lib/types/client/client/runtime/src/index.js"
+    },
+    "./client/runtime/invariant": {
+      "types": "./lib/types/client/client/runtime/src/invariant.d.ts",
+      "default": "./lib/types/client/client/runtime/src/invariant.js"
+    },
+    "./client/runtime/client": {
+      "types": "./lib/types/client/client/runtime/src/client/index.d.ts",
+      "default": "./lib/client/client-runtime.js"
+    },
+    "./host/apiproxy": {
+      "types": "./lib/types/host/host/apiproxy/src/index.d.ts",
+      "default": "./lib/types/host/host/apiproxy/src/index.js"
+    },
+    "./host/apiproxy/invariant": {
+      "types": "./lib/types/host/host/apiproxy/src/invariant.d.ts",
+      "default": "./lib/types/host/host/apiproxy/src/invariant.js"
+    },
+    "./host/apiproxy/api": {
+      "types": "./lib/types/host/host/apiproxy/src/api/index.d.ts",
+      "default": "./lib/types/host/host/apiproxy/src/api/index.js"
+    },
+    "./host/apiproxy/api/*": {
+      "types": "./lib/types/host/host/apiproxy/src/api/*.d.ts",
+      "default": "./lib/types/host/host/apiproxy/src/api/*.js"
+    },
+    "./host/apiproxy/client": {
+      "types": "./lib/types/client/host/apiproxy/src/fetch/client.d.ts",
+      "default": "./lib/types/client/host/apiproxy/src/fetch/client.js"
+    },
+    "./host/plugin-inventory": {
+      "types": "./lib/types/host/host/plugin-inventory/src/index.d.ts",
+      "default": "./lib/types/host/host/plugin-inventory/src/index.js"
+    },
+    "./host/plugin-inventory/invariant": {
+      "types": "./lib/types/host/host/plugin-inventory/src/invariant.d.ts",
+      "default": "./lib/types/host/host/plugin-inventory/src/invariant.js"
+    },
+    "./host/plugin-inventory/types": {
+      "types": "./lib/types/host/host/plugin-inventory/src/types.d.ts",
+      "default": "./lib/types/host/host/plugin-inventory/src/types.js"
+    },
+    "./host/plugin-inventory/typert": {
+      "types": "./lib/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
+    "./host/plugin-inventory/remote": {
+      "types": "./lib/typert.remote-client.d.ts",
+      "default": "./lib/typert.remote-client.js"
+    },
+    "./host/webserver": {
+      "types": "./lib/types/host/host/webserver/src/index.d.ts",
+      "default": "./lib/types/host/host/webserver/src/index.js"
+    },
+    "./host/webserver/invariant": {
+      "types": "./lib/types/host/host/webserver/src/invariant.d.ts",
+      "default": "./lib/types/host/host/webserver/src/invariant.js"
+    },
+    "./providers/web": {
+      "types": "./lib/types/host/providers/web/src/index.d.ts",
+      "default": "./lib/types/host/providers/web/src/index.js"
+    },
+    "./providers/web/invariant": {
+      "types": "./lib/types/host/invariant.d.ts",
+      "default": "./lib/types/host/invariant.js"
+    },
+    "./providers/web-fetch-http": {
+      "types": "./lib/types/host/providers/web-fetch-http/src/index.d.ts",
+      "default": "./lib/types/host/providers/web-fetch-http/src/index.js"
+    },
+    "./providers/web-fetch-http/invariant": {
+      "types": "./lib/types/host/providers/web-fetch-http/src/invariant.d.ts",
+      "default": "./lib/types/host/providers/web-fetch-http/src/invariant.js"
+    },
+    "./providers/web-search-deepseek": {
+      "types": "./lib/types/host/providers/web-search-deepseek/src/index.d.ts",
+      "default": "./lib/types/host/providers/web-search-deepseek/src/index.js"
+    },
+    "./providers/web-search-deepseek/invariant": {
+      "types": "./lib/types/host/providers/web-search-deepseek/src/invariant.d.ts",
+      "default": "./lib/types/host/providers/web-search-deepseek/src/invariant.js"
+    },
+    "./providers/web-search-exa": {
+      "types": "./lib/types/host/providers/web-search-exa/src/index.d.ts",
+      "default": "./lib/types/host/providers/web-search-exa/src/index.js"
+    },
+    "./providers/web-search-exa/invariant": {
+      "types": "./lib/types/host/providers/web-search-exa/src/invariant.d.ts",
+      "default": "./lib/types/host/providers/web-search-exa/src/invariant.js"
+    },
+    "./providers/web-search-perplexity": {
+      "types": "./lib/types/host/providers/web-search-perplexity/src/index.d.ts",
+      "default": "./lib/types/host/providers/web-search-perplexity/src/index.js"
+    },
+    "./providers/web-search-perplexity/invariant": {
+      "types": "./lib/types/host/providers/web-search-perplexity/src/invariant.d.ts",
+      "default": "./lib/types/host/providers/web-search-perplexity/src/invariant.js"
+    },
+    "./tool": {
+      "types": "./lib/types/host/tool/tool-web/src/index.d.ts",
+      "default": "./lib/types/host/tool/tool-web/src/index.js"
+    },
+    "./tool/invariant": {
+      "types": "./lib/types/host/tool/tool-web/src/invariant.d.ts",
+      "default": "./lib/types/host/tool/tool-web/src/invariant.js"
+    }
+  },
+  "files": [
+    "lib/**",
+    "cordis.patch.yml"
+  ],
+  "dependencies": {
+    "@ejunz/agent": "workspace:^",
+    "@ejunz/agent-default-model": "workspace:^",
+    "@ejunz/agent-presets": "workspace:^",
+    "@ejunz/attachment": "workspace:^",
+    "@ejunz/brand": "workspace:^",
+    "@ejunz/commands": "workspace:^",
+    "@ejunz/credentials": "workspace:^",
+    "@ejunz/goal": "workspace:^",
+    "@ejunz/jobs": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/llm-retry": "workspace:^",
+    "@ejunz/schemastery": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/session-persistence": "workspace:^",
+    "@ejunz/session-projection": "workspace:^",
+    "@ejunz/session-projection-cache": "workspace:^",
+    "@ejunz/session-query": "workspace:^",
+    "@ejunz/session-stats": "workspace:^",
+    "@ejunz/session-title": "workspace:^",
+    "@ejunz/settings": "workspace:^",
+    "@ejunz/skill": "workspace:^",
+    "@ejunz/storage": "workspace:^",
+    "@ejunz/storage-domain": "workspace:^",
+    "@ejunz/storage-json": "workspace:^",
+    "@ejunz/subagent": "workspace:^",
+    "@ejunz/typert-protocol": "workspace:^",
+    "@ejunz/user-approval": "workspace:^",
+    "@ejunz/user-questions": "workspace:^",
+    "@joplin/turndown-plugin-gfm": "^1.0.67",
+    "fflate": "^0.8.2",
+    "immer": "^10.1.1",
+    "react": "^18.2.0",
+    "turndown": "^7.2.4",
+    "ws": "^8.21.0",
+    "zod": "^4.4.3",
+    "zustand": "~4.4.7"
+  },
+  "peerDependencies": {
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/cordis-host-runner": "workspace:^",
+    "@ejunz/cordis-plugin-loader": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/launch-environment": "workspace:^",
+    "@ejunz/message-feedback": "workspace:^",
+    "@ejunz/system-prompt": "workspace:^",
+    "@ejunz/timeout": "workspace:^",
+    "@ejunz/typert-registry": "workspace:^"
+  },
+  "devDependencies": {
+    "@ejunz/agent": "workspace:^",
+    "@ejunz/agent-presets": "workspace:^",
+    "@ejunz/brand": "workspace:^",
+    "@ejunz/commands": "workspace:^",
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/cordis-host-runner": "workspace:^",
+    "@ejunz/cordis-plugin-loader": "workspace:^",
+    "@ejunz/credentials": "workspace:^",
+    "@ejunz/credentials-local": "workspace:^",
+    "@ejunz/goal": "workspace:^",
+    "@ejunz/invariants": "workspace:^",
+    "@ejunz/launch-environment": "workspace:^",
+    "@ejunz/llm": "workspace:^",
+    "@ejunz/message-feedback": "workspace:^",
+    "@ejunz/session": "workspace:^",
+    "@ejunz/session-persistence": "workspace:^",
+    "@ejunz/settings": "workspace:^",
+    "@ejunz/spill-local": "workspace:^",
+    "@ejunz/spill-policy": "workspace:^",
+    "@ejunz/system-prompt": "workspace:^",
+    "@ejunz/timeout": "workspace:^",
+    "@ejunz/tool-call-timeout-policy": "workspace:^",
+    "@ejunz/tool-host": "workspace:^",
+    "@ejunz/tools": "workspace:^",
+    "@ejunz/typert-protocol": "workspace:^",
+    "@ejunz/typert-registry": "workspace:^",
+    "@types/turndown": "^5.0.6",
+    "@types/ws": "^8.18.1"
+  },
+  "ea": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "clients": [
+      {
+        "id": "@ejunz/profile-web/api/gateway",
+        "entry": "src/api/gateway/src/client/index.ts",
+        "clientFile": "api-gateway.js",
+        "inject": [
+          "@ejunz/typert-registry",
+          "@ejunz/profile-web/client/connection"
+        ],
+        "platform": "web",
+        "immediately": true
+      },
+      {
+        "id": "@ejunz/profile-web/api/remotes",
+        "entry": "src/api/remotes/src/client/index.ts",
+        "clientFile": "api-remotes.js",
+        "inject": [
+          "@ejunz/profile-web/api/gateway"
+        ],
+        "platform": "web",
+        "immediately": true
+      },
+      {
+        "id": "@ejunz/profile-web/client/connection",
+        "entry": "src/client/connection/src/client/index.ts",
+        "clientFile": "client-connection.js",
+        "inject": [],
+        "platform": "web",
+        "immediately": true
+      },
+      {
+        "id": "@ejunz/profile-web/client/runtime",
+        "entry": "src/client/runtime/src/client/index.ts",
+        "clientFile": "client-runtime.js",
+        "inject": [
+          "@ejunz/profile-web/client/connection",
+          "@ejunz/typert-registry",
+          "@ejunz/profile-web/api/remotes"
+        ],
+        "platform": "web",
+        "immediately": true
+      }
+    ]
+  }
+}

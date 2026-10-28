@@ -113,13 +113,8 @@ export function resolveProfileDir(name: string, home: string = resolveEaHome()):
 
 /** The shipped profile templates auto-initialized on first use, by name. */
 export const PROFILE_TEMPLATES: Record<string, readonly string[]> = {
-  web: ['@ejunz/base', '@ejunz/web-app'],
-  headless: ['@ejunz/base', '@ejunz/headless'],
-}
-
-/** Installation-owned bundle tuples normalized to the shipped template. */
-const INSTALLATION_OWNED_PROFILE_TUPLES: Record<string, readonly string[]> = {
-  headless: ['@ejunz/base', '@ejunz/web-app', '@ejunz/headless'],
+  web: ['@ejunz/base', '@ejunz/profile-web'],
+  ejunz: ['@ejunz/base', '@ejunz/profile-web', '@ejunz/profile-ejunz'],
 }
 
 /** The bundle list a `ea plugin` init uses for a name with no shipped template. */
@@ -279,32 +274,6 @@ export function writeProfileManifest(dir: string, manifest: ProfileManifest): vo
   writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest, undefined, 2) + '\n')
 }
 
-/** Return whether two bundle lists have the same values in the same order. */
-function sameBundles(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index])
-}
-
-/**
- * Normalize an exact installation-owned bundle tuple to its shipped template
- * while preserving every other manifest field. Any other list is user-owned.
- */
-function normalizeShippedProfile(name: string, dir: string, manifest: ProfileManifest): ProfileManifest {
-  const installationOwned = INSTALLATION_OWNED_PROFILE_TUPLES[name]
-  const current = PROFILE_TEMPLATES[name]
-  const bundles = manifest.ea?.profile?.bundles
-  if (installationOwned === undefined || current === undefined || bundles === undefined
-    || !sameBundles(bundles, installationOwned)) return manifest
-  const normalized: ProfileManifest = {
-    ...manifest,
-    ea: {
-      ...manifest.ea,
-      profile: { ...manifest.ea?.profile, bundles: [...current] },
-    },
-  }
-  writeProfileManifest(dir, normalized)
-  return normalized
-}
-
 function workspacePackageDir(anchor: string, packageName: string): string | undefined {
   const root = resolve(dirname(anchor), '../..')
   const packages = join(root, 'packages')
@@ -400,7 +369,7 @@ export function loadProfile(
     }
     initProfile(dir, template)
   }
-  const manifest = normalizeShippedProfile(name, dir, readProfileManifest(binName, dir))
+  const manifest = readProfileManifest(binName, dir)
   // A hand-written profile manifest may omit the ea section entirely.
   const bundles = manifest.ea?.profile?.bundles ?? []
   const layers = bundles.map((packageName): ProfileLayer => {

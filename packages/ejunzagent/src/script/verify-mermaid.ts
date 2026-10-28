@@ -22,6 +22,7 @@ const PATTERNS = [
   'docs/**/*.md',
   'src/*/*/*.md',
   'src/*/*/*/*.md',
+  'packages/profile-*/**/*.md',
   'examples/**/*.md',
   'AGENTS.md',
   'packages/AGENTS.md',

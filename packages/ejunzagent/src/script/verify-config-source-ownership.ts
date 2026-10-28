@@ -15,6 +15,8 @@ const SHIPPED_CONFIG_GLOBS = [
   'examples/*/*.cordis.yml',
   'examples/*/cordis.yml',
   'src/entry/bundle/*/cordis.patch.yml',
+  'packages/profile-ejunz/cordis.patch.yml',
+  'packages/profile-web/cordis.patch.yml',
   // The Python runtime ships its own default composition inside the wheel.
   'python/*/src/**/cordis.yml',
 ]

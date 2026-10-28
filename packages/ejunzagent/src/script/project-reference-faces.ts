@@ -13,6 +13,7 @@ interface ProjectReferenceConfig {
 
 const WORKSPACE_MANIFESTS = [
   'src/*/*/*/package.json',
+  'packages/profile-*/package.json',
   'package.json',
   'src/vendor/*/package.json',
 ] as const

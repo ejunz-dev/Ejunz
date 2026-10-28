@@ -35,7 +35,7 @@ export interface PackageInvariantViolation {
 
 /** Discover every package under the repository package tree. */
 export function packageInvariantOwners(root: string): PackageInvariantOwner[] {
-  return globSync('src/*/*/*/package.json', { cwd: root })
+  return globSync(['src/*/*/*/package.json', 'packages/profile-*/package.json'], { cwd: root })
     .map(path => path.split(sep).join('/'))
     .sort()
     .map((manifestPath) => {

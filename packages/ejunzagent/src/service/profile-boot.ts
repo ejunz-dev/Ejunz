@@ -14,7 +14,7 @@
 import { writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { cliAssetPath, cliManifestPath } from '../lib/cli-paths.ts'
-import { FiberState, type Context } from '@ejunz/cordis'
+import type { Context, FiberState } from '@ejunz/cordis'
 import type { PatchOptions } from '@ejunz/cordis-plugin-include'
 import type { EntryOptions } from '@ejunz/cordis-plugin-loader'
 import {
@@ -38,6 +38,8 @@ import { EA_LAUNCH_ENVIRONMENT_KEY, type LaunchEnvironmentSnapshot } from '@ejun
 import { provideCmdline } from '@ejunz/cmdline'
 import { createProcessShutdown, type ProcessShutdown } from './process-shutdown.ts'
 
+// Cordis exposes FiberState as a const enum, so keep the runtime value local.
+const FIBER_ACTIVE = 2 as FiberState.ACTIVE
 const NAME = 'ea'
 
 /**
@@ -107,6 +109,8 @@ export interface ComposedProfile {
   profile: Profile
   /** Bundle layers concatenated — the part below the user layers on a live reload. */
   bundlePatches: PatchOptions[]
+  /** Profile runtime config generated from config.agent.yaml. */
+  profileConfigPatches: PatchOptions[]
   /** The home-level user layer (`$EA_HOME/cordis.patch.yml`), applied after the profile's own. */
   homePatches: PatchOptions[]
   /** Layers above the user layers on a live reload: `--patch` overlays and the telemetry switch. */
@@ -122,6 +126,7 @@ export interface ComposedProfile {
 function allPatches(composed: ComposedProfile): PatchOptions[] {
   return [
     ...composed.bundlePatches,
+    ...composed.profileConfigPatches,
     ...composed.profile.patches,
     ...composed.homePatches,
     ...composed.overlays,
@@ -142,13 +147,15 @@ function allPatches(composed: ComposedProfile): PatchOptions[] {
 export function composeProfile(
   name: string,
   patchFiles: readonly string[],
+  profileConfigPatches: readonly PatchOptions[] = [],
 ): ComposedProfile {
   const profile = prepareProfile(name)
   const homePatches = loadOptionalPatches(NAME, homePatchPath()) ?? []
   const overlays = patchFiles.flatMap(file => loadOverlayPatches(NAME, resolve(file)))
   const bundlePatches = profile.layers.flatMap(layer => layer.patches)
+  const configPatches = [...profileConfigPatches]
   const rows = new Map<string, EntryOptions>()
-  for (const row of composeEntries([bundlePatches, profile.patches, homePatches, overlays])) {
+  for (const row of composeEntries([bundlePatches, configPatches, profile.patches, homePatches, overlays])) {
     if (typeof row.id === 'string') rows.set(row.id, row)
   }
   const composedOverlays = [...overlays]
@@ -167,7 +174,7 @@ export function composeProfile(
   }
   const telemetryPatch = resolveTelemetryPatch(process.env.EA_TELEMETRY_DISABLED, rows.has(TELEMETRY_ROW_ID))
   if (telemetryPatch !== undefined) composedOverlays.push(telemetryPatch)
-  return { profile, bundlePatches, homePatches, overlays: composedOverlays, rows }
+  return { profile, bundlePatches, profileConfigPatches: configPatches, homePatches, overlays: composedOverlays, rows }
 }
 
 /** Options for {@link bootProfileTree}: everything a boot needs that is not the composition itself. */
@@ -176,8 +183,10 @@ export interface BootProfileTreeOptions {
   environment: LaunchEnvironmentSnapshot
   /** The invocation's inner arguments, handed to the tree through `ctx.cmdlineArgs`. */
   args: readonly string[]
+  /** Enable Loader apply/reload/unload messages. */
+  debug?: boolean
   /** Host-owned in-process services provided before the profile tree mounts. */
-  prepare?: (ctx: Context) => Promise<void> | void
+  prepare?: (ctx: Context, composed: ComposedProfile) => Promise<void> | void
   /**
    * Receives the booting context before any entry mounts, so an owner can
    * dispose a boot that is still in flight.
@@ -217,8 +226,8 @@ export async function bootProfileTree(
       args: options.args,
       exit: code => options.onExit?.(code),
     })
-    await options.prepare?.(hostCtx)
-  })
+    await options.prepare?.(hostCtx, composed)
+  }, undefined, options.debug ?? false)
 }
 
 /** Options for {@link runProfile}. */
@@ -229,10 +238,14 @@ export interface RunProfileOptions {
   profile: string
   /** `--patch` overlay paths, in argv order. */
   patchFiles: readonly string[]
+  /** Profile-specific settings loaded from a generated local YAML config. */
+  profileConfigPatches?: readonly PatchOptions[]
   /** The invocation's inner arguments, handed to the tree through `ctx.cmdlineArgs`. */
   args: readonly string[]
+  /** Enable Loader apply/reload/unload messages. */
+  debug?: boolean
   /** Host-owned in-process services provided before the profile tree mounts. */
-  prepare?: (ctx: Context) => Promise<void> | void
+  prepare?: (ctx: Context, composed: ComposedProfile) => Promise<void> | void
 }
 
 /**
@@ -247,7 +260,7 @@ export interface RunProfileOptions {
  */
 function suppressShutdownError(ctx: Context, signal: AbortSignal, error: unknown): void {
   if (signal.aborted) return
-  if (ctx.fiber.state !== FiberState.ACTIVE || ctx.get('loader') === undefined) return
+  if (ctx.fiber.state !== FIBER_ACTIVE || ctx.get('loader') === undefined) return
   throw error
 }
 
@@ -258,7 +271,7 @@ function suppressShutdownError(ctx: Context, signal: AbortSignal, error: unknown
  * @returns the settled root context and the shutdown controller.
  */
 export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Context; shutdown: ProcessShutdown }> {
-  const composed = composeProfile(options.profile, options.patchFiles)
+  const composed = composeProfile(options.profile, options.patchFiles, options.profileConfigPatches)
   const app: { current?: Context } = {}
   const shutdown = createProcessShutdown(async () => { await app.current?.fiber.dispose() })
   const signalShutdown = new AbortController()
@@ -291,6 +304,7 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
   // removing the override could never revert the row to the bundle default.
   const composeLive = (): PatchOptions[] => structuredClone([
     ...composed.bundlePatches,
+    ...composed.profileConfigPatches,
     ...loadOptionalPatches(NAME, composed.profile.patchPath) ?? [],
     ...loadOptionalPatches(NAME, homePatchPath()) ?? [],
     ...composed.overlays,
@@ -300,6 +314,7 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
   const ctx = await bootProfileTree(composed, {
     environment: options.environment,
     args: options.args,
+    debug: options.debug,
     // Owned here so an interrupt during boot can dispose a tree that is still
     // mounting: the launcher, not the tree, owns process lifetime.
     onContext: (hostCtx) => { app.current = hostCtx },
@@ -307,6 +322,13 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
     ...options.prepare === undefined ? {} : { prepare: options.prepare },
   })
   app.current = ctx
+  if (options.debug) {
+    const logger = ctx.logger('loader')
+    for (const row of composed.rows.values()) {
+      if (row.disabled === true || typeof row.name !== 'string') continue
+      logger.info('apply plugin %C', row.name)
+    }
+  }
   // A surface can dispose the whole tree while boot or this post-boot watcher
   // setup is still in flight — a signal, or a fast one-shot's appExit. Loader
   // presence and fiber state own liveness; the initial check skips a tree
@@ -315,7 +337,7 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
   // through its bounded shutdown, which disposes the watchers before the
   // loop drains.
   if (!signalShutdown.signal.aborted
-    && ctx.fiber.state === FiberState.ACTIVE
+    && ctx.fiber.state === FIBER_ACTIVE
     && ctx.get('loader') !== undefined) {
     try {
       // Config-only HMR for the live profile patch layer: the web bundle

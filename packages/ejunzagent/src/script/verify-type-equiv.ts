@@ -18,7 +18,7 @@ import { isArchivedAgentNotePath } from './repo-files.ts'
 const root = resolve(import.meta.dirname, '../..')
 
 /** Scan doc-typecheck's full Markdown scope so unmanifested blocks also fail. */
-const MARKDOWN_GLOBS = ['README.md', '.agents/notes/**/*.md', 'docs/**/*.md', 'src/*/*/*.md', 'src/*/*/*/*.md']
+const MARKDOWN_GLOBS = ['README.md', '.agents/notes/**/*.md', 'docs/**/*.md', 'src/*/*/*.md', 'src/*/*/*/*.md', 'packages/profile-*/**/*.md']
 
 /** One manifest entry: a source-equivalence block and its source symbol. */
 interface ManifestEntry {

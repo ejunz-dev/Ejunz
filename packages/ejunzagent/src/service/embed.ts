@@ -13,10 +13,10 @@ import type { Context } from '@ejunz/cordis'
 import { cliAssetPath } from '../lib/cli-paths.ts'
 import { loadLayeredEnv } from '@ejunz/app-boot'
 // Activate the Context merges this surface reads (`connection`, `apiProxy`).
-import type {} from '@ejunz/client-connection'
-import type {} from '@ejunz/host-apiproxy'
-import type { ConnectionFetchHandler } from '@ejunz/client-connection'
-import { RpcId, type HostFrame, type MuxFrame, type RpcRequest } from '@ejunz/host-apiproxy/api'
+import type {} from '@ejunz/profile-web/client/connection'
+import type {} from '@ejunz/profile-web/host/apiproxy'
+import type { ConnectionFetchHandler } from '@ejunz/profile-web/client/connection'
+import { RpcId, type HostFrame, type MuxFrame, type RpcRequest } from '@ejunz/profile-web/host/apiproxy/api'
 import { bootProfileTree, composeProfile } from './profile-boot.ts'
 import { installHostToolBridge, type HostToolBridgeConfig } from './host-tools.ts'
 
@@ -25,8 +25,10 @@ const EMBEDDED_PATCH = cliAssetPath('config/embedded.patch.yml')
 
 /** Configuration for {@link embedAgentRuntime}. */
 export interface EmbedWebAppOptions {
-  /** The host this instance belongs to, for tools, session logs, storage, settings, and credentials. */
-  bridge: HostToolBridgeConfig
+  /** The profile composition selected by the owning integration. */
+  profile: string
+  /** Optional host bridge for profiles that mount Ejunz-backed storage and tools. */
+  bridge?: HostToolBridgeConfig
   /**
    * Inner arguments recorded as the tree's command line. Absent, the tree sees
    * an empty command line — the shape the Web composition's parsers accept,
@@ -68,18 +70,29 @@ export interface EmbeddedAgentRuntime {
  * with no dispatch face could not serve a single request.
  */
 export async function embedAgentRuntime(options: EmbedWebAppOptions): Promise<EmbeddedAgentRuntime> {
-  const composed = composeProfile('web', [EMBEDDED_PATCH])
-  // The host bridge is per-instance, so its rows carry runtime values: the
-  // bundle's own rows read them from the environment a spawned process would
-  // have been given, and an embedded boot has no such environment.
-  composed.overlays.push(
-    { id: 'session-persistence-ejunz', config: { ...options.bridge } },
-    { id: 'storage-ejunz', config: { ...options.bridge } },
-  )
+  const composed = composeProfile(options.profile, [EMBEDDED_PATCH])
+  const hasEjunzBridge = ['storage-ejunz', 'session-persistence-ejunz'].some((id) => {
+    const row = composed.rows.get(id)
+    return row !== undefined && row.disabled !== true
+  })
+  const bridge = options.bridge
+  if (hasEjunzBridge && bridge === undefined) {
+    throw new Error('ea embed: this profile requires an explicit Ejunz host bridge')
+  }
+  // A host bridge is per-instance, so Ejunz-backed rows use the owning host's
+  // runtime values rather than environment values from a spawned process.
+  if (composed.rows.has('session-persistence-ejunz') && bridge !== undefined) {
+    composed.overlays.push({ id: 'session-persistence-ejunz', config: { ...bridge } })
+  }
+  if (composed.rows.has('storage-ejunz') && bridge !== undefined) {
+    composed.overlays.push({ id: 'storage-ejunz', config: { ...bridge } })
+  }
   const ctx = await bootProfileTree(composed, {
     environment: loadLayeredEnv('ea'),
     args: options.args ?? [],
-    prepare: async (hostCtx) => { await installHostToolBridge(hostCtx, options.bridge) },
+    prepare: async hostCtx => {
+      if (hasEjunzBridge && bridge !== undefined) await installHostToolBridge(hostCtx, bridge)
+    },
   })
   const api = ctx.get('connection')?.apiHandler
   const apiProxy = ctx.get('apiProxy')

@@ -12,6 +12,3 @@
   config:
     trustedHosts: []
 
-- insert:
-    - id: logger-console
-      name: '@ejunz/cordis-plugin-logger-console'

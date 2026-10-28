@@ -30,6 +30,7 @@ interface SentenceContract {
  * so an absent section cannot be mistaken for forgotten documentation.
  */
 const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
+  'packages/profile-ejunz': 'The bundle only selects Ejunz storage and telemetry providers; the mounted providers and tools own their model-facing behavior.',
   'src/model/core/scope': 'The package is a model-agnostic registration and lifecycle primitive; model-facing consumers own any context selection.',
   'src/lib/util/brand': 'The package is a type-only primitive erased at compile time.',
   'src/lib/util/home-paths': 'The package only resolves ejunzAgent-owned host paths; model-facing consumers own any rendered use.',
@@ -49,16 +50,8 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'src/service/typert/registry': { kind: 'none', reason: 'Runtime type registry; consumers (cordis_inspect, wire faces, gates) own any model-visible projection of registry contents.' },
   'src/service/typert/loader': { kind: 'none', reason: 'Loader integration only registers generated artifacts; consumers own any model-visible projection.' },
   'src/service/e2b/e2b': { kind: 'none', reason: 'The shared remote-runtime owner registers no model context; provider adapters and consumers own rendered effects.' },
-  'src/service/client/connection': { kind: 'none', reason: 'Browser wire carrier; registers nothing model-facing.' },
-  'src/service/api/remotes': { kind: 'none', reason: 'The Remote BFF selects business methods and identity policy; selected services own any model-visible effect.' },
-  'src/service/client/runtime': { kind: 'none', reason: 'Client-side session and conversation projection runtime; registers nothing model-facing.' },
-
   'src/entry/examples/agent-spine-demo': { kind: 'indirect', reason: 'The bundle only mounts model-facing child plugins.' },
-  'src/service/host/apiproxy': { kind: 'none', reason: 'The wire contract and fetch carriers move already-composed messages and register nothing model-facing.' },
-  'src/service/host/webserver': { kind: 'none', reason: 'The HTTP carrier bridges browser and API handler and registers nothing model-facing.' },
-  'src/service/host/plugin-inventory': { kind: 'none', reason: 'Host-side read-only Loader projection; registers nothing model-facing.' },
   'src/entry/bundle/base': { kind: 'indirect', reason: 'The bundle is a patch-list carrier; each inserted row\'s package owns its model-facing behavior.' },
-  'src/entry/bundle/headless': { kind: 'none', reason: 'The one-shot runner submits the task as an ordinary user message; prompts and tools belong to the composed base and headless bundles.' },
   'src/service/llm/llm': { kind: 'none', reason: 'The adapter registry forwards already-assembled requests unchanged.' },
   'src/service/llm/token-meter': { kind: 'indirect', reason: 'The measurement service leaves model-visible changes to its consumers.' },
   'src/service/lsp/lsp': { kind: 'indirect', reason: 'The provider registry delegates model rendering to ea-tool-lsp.' },
@@ -72,7 +65,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'src/service/session/session-projection-cache': { kind: 'none', reason: 'The persisted cache accelerates host-side cold reads of projection state and registers nothing model-facing.' },
   'src/model/session/session-stats': { kind: 'none', reason: 'The sessionStats unit folds already-logged step boundaries into a client-facing read model and registers nothing model-facing.' },
   'src/service/session-query/session-query': { kind: 'none', reason: 'The trusted query service exposes cloned records only to callers and registers nothing model-facing.' },
-  'src/service/session-query/session-query-sqlite': { kind: 'none', reason: 'The search backend returns hits only to callers and registers nothing model-facing.' },
+  'src/model/session-query/session-query-sqlite': { kind: 'none', reason: 'The search backend returns hits only to callers and registers nothing model-facing.' },
   'src/service/settings/settings': { kind: 'indirect', reason: 'The seam stores and resolves user settings; consumer plugins own any model-facing content fed by a value.' },
   'src/service/settings/settings-file': { kind: 'indirect', reason: 'The file provider stores and publishes namespace sections; consumers of ctx.settings own any model-facing behavior.' },
   'src/service/credentials/credentials': { kind: 'indirect', reason: 'The seam resolves credential references; the consuming adapter owns every model-facing use a value authorizes.' },
@@ -87,7 +80,6 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'src/service/spill/spill': { kind: 'indirect', reason: 'The storage seam delegates model rendering to spill consumers.' },
   'src/service/spill/spill-local': { kind: 'indirect', reason: 'The storage backend delegates model rendering to spill consumers.' },
   'src/service/runtime-diagnostics/invariants': { kind: 'none', reason: 'The observer validates requests but never rewrites their context.' },
-  'src/service/api/gateway': { kind: 'none', reason: 'Remote dispatch infrastructure; invoked business methods own any model-visible effect.' },
   'src/service/typert/protocol': { kind: 'none', reason: 'Compiler-independent Remote protocol declarations; registers nothing model-facing.' },
   'src/script/typert/generator': { kind: 'none', reason: 'The build-time generator runs outside any agent runtime and touches no model request.' },
   'src/service/jobs/jobs': { kind: 'indirect', reason: 'Producer and controller plugins own all model rendering over the job registry.' },
@@ -98,9 +90,6 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'src/service/interaction/user-questions': { kind: 'indirect', reason: 'Model-facing consumers render provider answers and seam errors.' },
   'src/lib/util/timeout': { kind: 'indirect', reason: 'Only timeout consumers render timeout outcomes.' },
   'src/lib/util/output-retention': { kind: 'indirect', reason: 'Only retention consumers render retained content and omission metadata.' },
-  'src/service/web/web': { kind: 'indirect', reason: 'The provider registry delegates model rendering to ea-tool-web.' },
-  'src/service/web/web-fetch-http': { kind: 'indirect', reason: 'The provider backend delegates model rendering to ea-tool-web.' },
-  'src/service/web/web-search-exa': { kind: 'indirect', reason: 'The provider backend delegates model rendering to ea-tool-web.' },
   'src/service/workflow/workflow': { kind: 'indirect', reason: 'The service delegates parent and child model rendering to its consumer and engine.' },
 }
 
@@ -189,7 +178,7 @@ if (toolCatalogAvailable) {
 }
 
 const failures: Failure[] = []
-const packageJsons = globSync('src/*/*/*/package.json', { cwd: root }).map(path => path.split(sep).join('/')).sort()
+const packageJsons = globSync(['src/*/*/*/package.json', 'packages/profile-*/package.json'], { cwd: root }).map(path => path.split(sep).join('/')).sort()
 const scannedPackages = new Set(packageJsons.map(path => path.slice(0, -'/package.json'.length)))
 let structuredCount = 0
 let modelContextEntryCount = 0

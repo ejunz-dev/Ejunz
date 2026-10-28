@@ -30,7 +30,7 @@ function isLimitationsLike(headingText: string): boolean {
   )
 }
 
-const packageJsons = globSync('src/*/*/*/package.json', { cwd: root }).map(path => path.split(sep).join('/')).sort()
+const packageJsons = globSync(['src/*/*/*/package.json', 'packages/profile-*/package.json'], { cwd: root }).map(path => path.split(sep).join('/')).sort()
 const scannedPackages = new Set(packageJsons.map(path => path.slice(0, -'/package.json'.length)))
 const failures: string[] = []
 

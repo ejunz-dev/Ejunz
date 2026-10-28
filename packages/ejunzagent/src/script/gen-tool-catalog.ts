@@ -21,9 +21,9 @@ import SystemPrompt from '@ejunz/system-prompt'
 import ToolRuntime from '@ejunz/tools'
 import UserQuestionService from '@ejunz/user-questions'
 import PlanModeController from '@ejunz/plan-mode'
-import WebRuntime from '@ejunz/web'
-import * as WebSearchExa from '@ejunz/web-search-exa'
-import * as WebFetchLocal from '@ejunz/web-fetch-http'
+import WebRuntime from '@ejunz/profile-web'
+import * as WebSearchExa from '@ejunz/profile-web/providers/web-search-exa'
+import * as WebFetchLocal from '@ejunz/profile-web/providers/web-fetch-http'
 import SubagentRuntime from '@ejunz/subagent'
 import type { SubagentProvider, SubagentReportDelivery } from '@ejunz/subagent'
 import * as ToolSubagentControl from '@ejunz/tool-subagent-control'
@@ -45,7 +45,7 @@ import * as ToolTasks from '@ejunz/tool-jobs'
 import * as ToolTodo from '@ejunz/tool-todo'
 import * as ToolHost from '../service/ejunz/tool-host/src/index.ts'
 import * as ToolSubagent from '@ejunz/tool-subagent'
-import * as ToolWeb from '@ejunz/tool-web'
+import * as ToolWeb from '@ejunz/profile-web/tool'
 import VmWorkflowEngine from '@ejunz/workflow-worker-thread'
 import * as ToolRalph from '@ejunz/tool-ralph'
 import * as ToolWorkflow from '@ejunz/tool-workflow'
@@ -410,9 +410,9 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
   },
   {
-    pkg: '@ejunz/tool-web',
+    pkg: '@ejunz/profile-web/tool',
     dir: 'tool-web',
-    source: 'src/tools/web/tool-web/src/index.ts',
+    source: 'packages/profile-web/src/tool/tool-web/src/index.ts',
     requires: ['ctx.tools', 'ctx.web', 'ctx.systemPrompt'],
     writes: ['tool/call', 'tool/result'],
     async mount(ctx) {

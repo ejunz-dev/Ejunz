@@ -198,6 +198,7 @@ class EaFamily extends ReleaseFamily {
   readonly id = 'ea'
   readonly patterns = [
     'src/*/*/*/package.json',
+    'packages/profile-*/package.json',
     'package.json',
   ] as const
   readonly tagPrefix = 'ea-v'

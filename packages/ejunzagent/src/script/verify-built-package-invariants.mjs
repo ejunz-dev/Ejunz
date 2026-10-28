@@ -24,7 +24,7 @@ const packagesRoot = resolve(options['packages-root'] ?? repositoryRoot)
 const loaderUrl = options['loader-url']
   ?? pathToFileURL(resolve(repositoryRoot, 'src/vendor/loader/lib/index.js')).href
 const failures = []
-const manifests = globSync('src/*/*/*/package.json', { cwd: packagesRoot }).sort()
+const manifests = globSync(['src/*/*/*/package.json', 'packages/profile-*/package.json'], { cwd: packagesRoot }).sort()
 const { default: Loader } = await import(loaderUrl)
 const loader = Object.create(Loader.prototype)
 

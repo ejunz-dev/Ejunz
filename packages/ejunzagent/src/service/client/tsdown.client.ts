@@ -29,7 +29,7 @@ const CSS_VIRTUAL_SUFFIX = '.mjs'
  * Everything else under @ejunz/* is either a module-table entry
  * (external) or a leak the purity gate rejects.
  */
-export const INLINE_SAFE = /^@ejunz\/(host-apiproxy|session|llm|tools|brand)(\/|$)/
+export const INLINE_SAFE = /^@ejunz\/(?:profile-web\/(?:host\/apiproxy|api\/gateway|api\/remotes|client\/connection|host\/plugin-inventory)(\/|$)|(?:session|llm|tools|brand)(\/|$))/
 
 /**
  * Vendored framework libraries: rescoped into @ejunz, so the gate below
@@ -40,7 +40,7 @@ export const INLINE_SAFE = /^@ejunz\/(host-apiproxy|session|llm|tools|brand)(\/|
 const VENDORED_LIBRARY = /^@ejunz\/(cosmokit|schemastery)(\/|$)/
 
 /** Generated descriptor/codec contribution with no shared runtime identity. */
-const GENERATED_REMOTE = /^@ejunz\/[a-z0-9]+(?:-[a-z0-9]+)*\/remote$/
+const GENERATED_REMOTE = /^(?:@ejunz\/[a-z0-9]+(?:-[a-z0-9]+)*\/remote|@ejunz\/profile-web\/host\/plugin-inventory\/remote)$/
 
 /**
  * Workspace mode replaces an empty config array with the root defaults. A
@@ -56,12 +56,12 @@ const SKIP_WORKSPACE_BUILD: UserConfig = { entry: '' }
  * lazy CJS table answers the require natively: runtime is an immediately-tier
  * row, its factory is registered before any dependent bundle materializes.
  */
-const RUNTIME_STORE_EXEMPTION = '@ejunz/client-runtime/client'
+const RUNTIME_STORE_EXEMPTION = '@ejunz/profile-web/client/runtime/client'
 
 /** Externals resolved from the loader module table: the platform seed entries plus the documented runtime exemption. */
 export const CLIENT_EXTERNALS: readonly string[] = ['@ejunz/cordis', RUNTIME_STORE_EXEMPTION]
 
-const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url))
+const REPOSITORY_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
 
 /** Rebase a physical lib-relative source onto a browser URL that mirrors the repository directories. */
 function browserSourcePath(source: string, sourcemapPath: string): string {
@@ -92,16 +92,22 @@ export function clientBundle(
   libEntry: readonly string[],
   options: ClientBundleOptions = {},
 ): BuildFaceConfig {
-  const lib = clientLibraryConfig(id, libEntry, options.lib)
+  const lib = options.clientOnly ? undefined : clientLibraryConfig(id, libEntry, options.lib)
   return ({ env }) => {
     const face = buildFace(env?.EA_BUILD_FACE)
-    const client = clientConfig(id, face === undefined
-      ? 'src/client/index.ts'
-      : 'lib/types/client/index.js')
-    const node = [lib, ...(options.companions ?? [])]
-    if (face === 'host') return options.hostPhase === true ? node : [SKIP_WORKSPACE_BUILD]
-    if (face === 'client') return options.hostPhase === true ? [client] : [...node, client]
-    return [...node, client]
+    const client = clientConfig(
+      id,
+      face === undefined
+        ? options.clientSourceEntry ?? 'src/client/index.ts'
+        : options.clientTypesEntry ?? 'lib/types/client/index.js',
+      options,
+    )
+    const node = lib === undefined ? [] : [lib, ...(options.companions ?? [])]
+    if (face === 'host') return options.hostPhase === true && node.length > 0 ? node : [SKIP_WORKSPACE_BUILD]
+    if (face === 'client') {
+      return options.clientOnly === true || options.hostPhase === true ? [client] : [...node, client]
+    }
+    return options.clientOnly === true ? [client] : [...node, client]
   }
 }
 
@@ -130,6 +136,15 @@ export function clientOnly(configs: readonly UserConfig[]): BuildFaceConfig {
 interface ClientBundleOptions {
   /** Emit the Node-side artifacts during the Host pass instead of the Client pass. */
   readonly hostPhase?: boolean
+  /** Emit only the browser client; the host TypeScript project owns its Node entry. */
+  readonly clientOnly?: boolean
+  /** Source and TypeScript-emitted entries for a client plugin in a consolidated workspace. */
+  readonly clientSourceEntry?: string
+  readonly clientTypesEntry?: string
+  /** Unique browser artifact filename when one workspace emits multiple clients. */
+  readonly clientFile?: string
+  /** Directory for the browser client artifact, relative to the workspace. */
+  readonly clientOutDir?: string
   /** Additional Node-side configs emitted alongside the package library. */
   readonly companions?: readonly UserConfig[]
   /** Overrides for the package's primary Node-side library config. */
@@ -164,14 +179,14 @@ function clientLibraryConfig(
   }
 }
 
-function clientConfig(id: string, entry: string): UserConfig {
+function clientConfig(id: string, entry: string, options: ClientBundleOptions): UserConfig {
   return {
     name: `${id}/client`,
     entry: { client: entry },
-    // Browser bundle lands next to the node half (single lib/ artifact dir;
-    // the entryFileNames pin keeps it exactly lib/client.js). clean must stay
-    // off — a default clean would wipe the node-half output emitted above.
-    outDir: 'lib',
+    // Browser bundles share a package artifact root; consolidated packages use
+    // distinct clientFile values so their client entrypoints do not collide.
+    // Keep clean off so node-side outputs from the same face survive.
+    outDir: options.clientOutDir ?? 'lib',
     format: 'cjs',
     platform: 'browser',
     // Types ship from lib/types (tsc); dts here would wrap the banner/footer into .d.cts and break parsing.
@@ -257,7 +272,7 @@ function clientConfig(id: string, entry: string): UserConfig {
       },
     }],
     outputOptions: {
-      entryFileNames: 'client.js',
+      entryFileNames: options.clientFile ?? 'client.js',
       // The map is served from /plugins/<scoped-package>/client.js.map. The
       // browser resolves its local sources back into URLs that mirror the
       // /packages/<group>/<package>/src directories; sourcesContent keeps them usable

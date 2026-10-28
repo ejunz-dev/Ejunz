@@ -9,7 +9,10 @@
   },
   "workspaces": [
     "src/vendor/*",
-    "src/*/*/*"
+    "src/*/*/*",
+    "packages/*",
+    "plugins/*",
+    "modules/*"
   ],
   "scripts": {
     "build": "yarn run build:lib && yarn run build:cli",
@@ -56,13 +59,11 @@
     "release:publish": "tsx src/script/release/publish.ts",
     "ea": "node --expose-internals --import tsx/esm src/entry/bin.ts",
     "postinstall": "node bin/postinstall.js",
-    "agent": "yarn run ea node",
     "build:cli": "tsc -b tsconfig.cli.json && tsdown --config tsdown.cli.config.ts && yarn run build:cli-runtime"
   },
   "devDependencies": {
     "@agentclientprotocol/sdk": "0.25.1",
     "@ejunz/agent": "workspace:^",
-    "@ejunz/host-webserver": "workspace:^",
     "@ejunz/llm": "workspace:^",
     "@ejunz/session": "workspace:^",
     "@ejunz/settings": "workspace:^",
@@ -78,7 +79,6 @@
     "@types/mdast": "^4.0.4",
     "@types/node": "^22.20.0",
     "@types/spdx-expression-parse": "^4.0.0",
-    "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.1.8",
     "@yarnpkg/cli-dist": "4.17.1",
     "eslint-plugin-sonarjs": "^4.1.0",
@@ -109,7 +109,6 @@
   "dependencies": {
     "@ejunz/app-boot": "workspace:^",
     "@ejunz/base": "workspace:^",
-    "@ejunz/client-connection": "workspace:^",
     "@ejunz/cmdline": "workspace:^",
     "@ejunz/command-compact": "workspace:^",
     "@ejunz/command-goal": "workspace:^",
@@ -124,13 +123,13 @@
     "@ejunz/credentials": "workspace:^",
     "@ejunz/goal": "workspace:^",
     "@ejunz/goal-round-driver": "workspace:^",
-    "@ejunz/headless": "workspace:^",
     "@ejunz/home-paths": "workspace:^",
-    "@ejunz/host-apiproxy": "workspace:^",
     "@ejunz/jobs-local": "workspace:^",
     "@ejunz/launch-environment": "workspace:^",
     "@ejunz/persona": "workspace:^",
     "@ejunz/plan-mode": "workspace:^",
+    "@ejunz/profile-ejunz": "workspace:^",
+    "@ejunz/profile-web": "workspace:^",
     "@ejunz/schedule": "workspace:^",
     "@ejunz/session-projection": "workspace:^",
     "@ejunz/session-reference": "workspace:^",
@@ -143,17 +142,14 @@
     "@ejunz/tool-jobs": "workspace:^",
     "@ejunz/tool-skill": "workspace:^",
     "@ejunz/tool-todo": "workspace:^",
-    "@ejunz/tool-web": "workspace:^",
     "@ejunz/tool-workflow": "workspace:^",
-    "@ejunz/web-app": "workspace:^",
     "@ejunz/workflow-worker-thread": "workspace:^",
     "commander": "^15.0.0",
     "js-yaml": "^4.2.0",
     "katex": "^0.16.25",
     "markdown-it": "^14.1.0",
     "node-addon-require-builtin": "^0.1.4",
-    "shiki": "^4.4.3",
-    "ws": "^8.18.3"
+    "shiki": "^4.4.3"
   },
   "description": "ea CLI: profile boot, plugin management, and the browser UI alias",
   "exports": {

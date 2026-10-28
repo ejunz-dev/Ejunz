@@ -119,7 +119,7 @@ function main(): void {
     const typecheckFile = join(consumerRoot, 'embed-consumer.mts')
     writeFileSync(typecheckFile, [
       "import { embedAgentRuntime, type EmbedWebAppOptions, type EmbeddedAgentRuntime } from '@ejunz/ea/embed'",
-      "const options: EmbedWebAppOptions = { bridge: { origin: 'http://localhost', token: 'test' } }",
+      "const options: EmbedWebAppOptions = { profile: 'ejunz', bridge: { origin: 'http://localhost', token: 'test' } }",
       'const boot: typeof embedAgentRuntime = embedAgentRuntime',
       'let runtime: EmbeddedAgentRuntime | undefined',
       'void [options, boot, runtime]',

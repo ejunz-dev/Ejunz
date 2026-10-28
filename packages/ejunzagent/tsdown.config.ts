@@ -17,7 +17,7 @@ export default defineConfig(({ env }) => {
   const client = isBuildFaceClient(env?.EA_BUILD_FACE)
   return {
     workspace: {
-      include: ['src/vendor/*', 'src/*/*/*'],
+      include: ['src/vendor/*', 'src/*/*/*', 'packages/profile-*'],
       exclude: ['.'],
     },
     outDir: 'lib',

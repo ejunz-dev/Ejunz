@@ -21,8 +21,8 @@ import type { Context } from '@ejunz/cordis'
 
 /**
  * The invocation's inner arguments: everything after the launcher's own flags,
- * verbatim and in argv order. `ea --profile tui --resume abc` yields
- * `['--resume', 'abc']`.
+ * verbatim and in argv order. `ea --profile web --port 8080` yields
+ * `['--port', '8080']`.
  */
 export interface CmdlineArgs {
   /**

@@ -13,6 +13,9 @@
 # driven); the grouping is for readers.
 
 - insert:
+    - id: logger-console
+      name: '@ejunz/cordis-plugin-logger-console'
+
     - id: timer
       name: '@ejunz/cordis-plugin-timer'
 
@@ -34,7 +37,7 @@
       name: '@ejunz/typert-loader'
 
     - id: typert-gateway
-      name: '@ejunz/api-gateway'
+      name: '@ejunz/profile-web/api/gateway'
 
     - id: session-title
       name: '@ejunz/session-title'
@@ -124,40 +127,6 @@
     # loud without it; web layers reuse this same mount for list rows.
     - id: session-projection
       name: '@ejunz/session-projection'
-
-    # Session telemetry is mounted but disabled by default. EA_TELEMETRY_MODE
-    # explicitly opts into FULL or FEEDBACK_ONLY reporting; uploading mirrors
-    # session-log records onto OTLP/HTTP logs with no session-telemetry/record redaction
-    # rule, so exports are the raw captured copy. The deployment stance, env
-    # seams, and follow-ups are pinned in the default-off Agent Note.
-    # EA_TELEMETRY_OTLP_URL overrides the production endpoint. A non-empty
-    # EA_TELEMETRY_DISABLED — any value, including '0'/'false' — opts the
-    # process out (the launchers patch the row disabled; config cannot disable
-    # a row). Exports carry the ejunzAgent home's anonymous user id ($EA_HOME/.anonymous-user-id,
-    # random UUID; delete the file to reset the identity) as the Resource's
-    # user.id. The exporter/processor values normally bound the shutdown drain
-    # to ~1s against an unreachable collector: exporter.timeoutMillis is both
-    # the per-attempt socket timeout and the retry deadline (1s effectively
-    # disables the SDK's 5-try backoff), while maxExportBatchSize == maxQueueSize
-    # (both explicit) makes the drain a single batch. The SDK awaits
-    # exporter.forceFlush() outside exportTimeoutMillis, so the backend's 3s
-    # shutdownTimeoutMillis is the load-bearing outer bound when a transport
-    # promise never settles. Every CLI exit path drains it by disposing the root
-    # on SIGINT/SIGTERM.
-    - id: session-telemetry-otel
-      name: '@ejunz/session-telemetry-otel'
-      config:
-        mode: !!js process.env.EA_TELEMETRY_MODE || 'DISABLED'
-        shutdownTimeoutMillis: 3000
-        exporter:
-          url: !!js process.env.EA_TELEMETRY_OTLP_URL ?? 'https://ejunzAgent-telemetry.deepseeksvc.com/v1/logs'
-          compression: gzip
-          timeoutMillis: 1000
-        processor:
-          scheduledDelayMillis: 10000
-          maxQueueSize: 2048
-          maxExportBatchSize: 2048
-          exportTimeoutMillis: 1500
 
     - id: approval
       name: '@ejunz/user-approval'
@@ -293,17 +262,17 @@
     # auxiliary model request with server-side retrieval, so this shipped DeepSeek
     # route gets 60s while the provider-neutral tool default remains 30s.
     - id: web
-      name: '@ejunz/web'
+      name: '@ejunz/profile-web'
       config:
         searchProvider: deepseek-official
 
     - id: web-search-deepseek
-      name: '@ejunz/web-search-deepseek'
+      name: '@ejunz/profile-web/providers/web-search-deepseek'
       config:
         apiKeyEnv: DEEPSEEK_API_KEY
 
     - id: tool-web
-      name: '@ejunz/tool-web'
+      name: '@ejunz/profile-web/tool'
       config:
         fetch: false
         searchTimeoutMs: 60000

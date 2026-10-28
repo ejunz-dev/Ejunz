@@ -7,8 +7,8 @@
  * their own flag families and print their own `--help` (see
  * `@ejunz/cmdline`). Launcher flags therefore come first: the first
  * token this parser does not recognize starts the inner arguments, so
- * `ea --profile tui --resume abc` boots the tui profile with `--resume abc`,
- * `plugin` manages a profile's plugin dependencies by forwarding to yarn.
+ * `ea --profile web --port 8080` boots the web profile with `--port 8080`,
+ * and `plugin` manages a profile's dependencies by forwarding to yarn.
  * @module @ejunz/ea/args
  */
 
@@ -18,6 +18,8 @@ import { Command, CommanderError } from 'commander'
 interface ProfileInvocation {
   mode: 'profile'
   profile: string
+  /** Log profile entry activation and lifecycle events. */
+  debug: boolean
   /** Extra patch-list overlays applied after the profile's own layer, in argv order. */
   patches: string[]
   /** Everything after the launcher's own flags, verbatim, for injected app plugins. */
@@ -41,21 +43,15 @@ interface PluginInvocation {
   args: string[]
 }
 
-/** Join a server that runs elsewhere: this agent dials out to it. */
-interface NodeInvocation {
-  mode: 'node'
-  /** The node surface's own arguments, verbatim. */
-  args: string[]
-}
-
 /** The resolved `ea` invocation. Help, version, and errors exit inside {@link parseEaArgs}. */
-export type EaInvocation = ProfileInvocation | DumpConfigInvocation | PluginInvocation | NodeInvocation
+export type EaInvocation = ProfileInvocation | DumpConfigInvocation | PluginInvocation
 
 /** Launcher flags shared by the default command and the `web` alias. */
 interface BootOptions {
   patch?: string[]
   dumpConfig?: boolean
   dumpDefaultConfig?: boolean
+  debug?: boolean
 }
 
 /**
@@ -67,11 +63,11 @@ const collect = (value: string, previous: string[] = []): string[] => [...previo
 /** The launcher's own help text; each app prints its own. */
 const HELP_EXAMPLES = `
 Examples:
-  ea --profile headless "run the tests"     answer one task, print the result, and exit
-  ea --profile tui --patch ./extra.yml      boot a custom profile with one extra overlay
-  ea --profile tui --resume <session>       arguments after the launcher flags reach the app
-  ea node                                   join the server named in $EA_HOME/agent.yaml
-  ea plugin --profile tui add <package>     install a plugin into the tui profile
+  ea --profile web                          boot the generic Web profile
+  ea --profile web --debug                  include Cordis plugin activation logs
+  ea --profile ejunz                        boot with Ejunz-hosted services
+  ea --profile web --port 8080              pass app arguments after launcher flags
+  ea plugin --profile web add <package>     install a plugin into the web profile
 `
 
 /**
@@ -87,7 +83,7 @@ function resolveBoot(program: Command, profile: string, options: BootOptions, ar
   const patches = options.patch ?? []
   if (patches.includes('')) program.error('error: --patch needs a path')
   if (options.dumpConfig !== true && options.dumpDefaultConfig !== true) {
-    return { mode: 'profile', profile, patches, args }
+    return { mode: 'profile', profile, patches, args, debug: options.debug === true }
   }
   if (options.dumpConfig === true && options.dumpDefaultConfig === true) {
     program.error('error: --dump-config and --dump-default-config are mutually exclusive')
@@ -132,6 +128,7 @@ export function parseEaArgs(argv: readonly string[], version: string): EaInvocat
     .enablePositionalOptions()
     .argument('[args...]', 'arguments for the booted profile\'s app (see: ea --profile <name> --help)')
     .option('--profile <name>', 'the profile under $EA_HOME/profiles to boot')
+    .option('--debug', 'log profile plugin activation and lifecycle events')
     .option('--patch <path>', 'extra patch-list overlay applied after the profile layer (repeatable)', collect)
     .option('--dump-config', 'print the composed profile tree and exit')
     .option('--dump-default-config', 'print the profile tree without its user layer or --patch overlays and exit')
@@ -150,23 +147,11 @@ export function parseEaArgs(argv: readonly string[], version: string): EaInvocat
   /** Reject parent options supplied before a subcommand. */
   const rejectParentOptions = (command: string): void => {
     const parent = program.opts<BootOptions & { profile?: string }>()
-    if (parent.profile !== undefined || parent.patch !== undefined
+    if (parent.profile !== undefined || parent.patch !== undefined || parent.debug !== undefined
       || parent.dumpConfig !== undefined || parent.dumpDefaultConfig !== undefined) {
-      program.error(`error: ${command} takes none of parent --profile, --patch, --dump-config, or --dump-default-config`)
+      program.error(`error: ${command} takes none of parent --profile, --debug, --patch, --dump-config, or --dump-default-config`)
     }
   }
-
-  const node = program.command('node').description('join a server that runs elsewhere, reading $EA_HOME/agent.yaml; the node surface\'s own flags follow')
-  node
-    .helpOption(false)
-    .allowUnknownOption()
-    .passThroughOptions()
-    .enablePositionalOptions()
-    .argument('[args...]', 'arguments for the node surface (e.g. --url <server>, --label <name>)')
-    .action((args: string[]) => {
-      rejectParentOptions('node')
-      resolved = { mode: 'node', args }
-    })
 
   const plugin = program.command('plugin').description('manage a profile\'s plugins by forwarding the remaining arguments to yarn in the profile directory')
   plugin

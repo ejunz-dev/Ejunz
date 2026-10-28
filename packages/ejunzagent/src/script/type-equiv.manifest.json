@@ -1163,32 +1163,32 @@
     {
       "doc": "docs/subsystems/web.md",
       "symbol": "WebSearchRequest",
-      "source": "src/service/web/web/src/types.ts"
+      "source": "packages/profile-web/src/providers/web/src/types.ts"
     },
     {
       "doc": "docs/subsystems/web.md",
       "symbol": "WebSearchResult",
-      "source": "src/service/web/web/src/types.ts"
+      "source": "packages/profile-web/src/providers/web/src/types.ts"
     },
     {
       "doc": "docs/subsystems/web.md",
       "symbol": "WebSearchSource",
-      "source": "src/service/web/web/src/types.ts"
+      "source": "packages/profile-web/src/providers/web/src/types.ts"
     },
     {
       "doc": "docs/subsystems/web.md",
       "symbol": "WebFetchRequest",
-      "source": "src/service/web/web/src/types.ts"
+      "source": "packages/profile-web/src/providers/web/src/types.ts"
     },
     {
       "doc": "docs/subsystems/web.md",
       "symbol": "WebFetchResult",
-      "source": "src/service/web/web/src/types.ts"
+      "source": "packages/profile-web/src/providers/web/src/types.ts"
     },
     {
       "doc": "docs/subsystems/web.md",
       "symbol": "WebFetchBody",
-      "source": "src/service/web/web/src/types.ts"
+      "source": "packages/profile-web/src/providers/web/src/types.ts"
     },
     {
       "doc": "docs/subsystems/spill.md",
@@ -1498,17 +1498,17 @@
     {
       "doc": "docs/subsystems/web-server.md",
       "symbol": "WebRouteKind",
-      "source": "src/service/host/webserver/src/index.ts"
+      "source": "packages/profile-web/src/host/webserver/src/index.ts"
     },
     {
       "doc": "docs/subsystems/web-server.md",
       "symbol": "WebRoute",
-      "source": "src/service/host/webserver/src/index.ts"
+      "source": "packages/profile-web/src/host/webserver/src/index.ts"
     },
     {
       "doc": "docs/subsystems/web-server.md",
       "symbol": "Config",
-      "source": "src/service/host/webserver/src/index.ts"
+      "source": "packages/profile-web/src/host/webserver/src/index.ts"
     },
     {
       "doc": "docs/subsystems/storage.md",
@@ -1613,17 +1613,17 @@
     {
       "doc": "docs/subsystems/typert.md",
       "symbol": "InvokeRemoteRequest",
-      "source": "src/service/api/gateway/src/types.ts"
+      "source": "packages/profile-web/src/api/gateway/src/types.ts"
     },
     {
       "doc": "docs/subsystems/typert.md",
       "symbol": "TypertGatewayErrorCode",
-      "source": "src/service/api/gateway/src/types.ts"
+      "source": "packages/profile-web/src/api/gateway/src/types.ts"
     },
     {
       "doc": "docs/subsystems/typert.md",
       "symbol": "TypertGateway",
-      "source": "src/service/api/gateway/src/types.ts"
+      "source": "packages/profile-web/src/api/gateway/src/types.ts"
     },
     {
       "doc": "docs/subsystems/typert.md",

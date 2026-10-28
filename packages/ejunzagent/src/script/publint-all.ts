@@ -36,7 +36,7 @@ type PublintResult =
   | { path: string; status: 'failed'; messages: Message[]; manifest: Record<string, unknown>; failure?: string }
 
 function workspacePackages(): PackageTarget[] {
-  return globSync('src/*/*/*/package.json', { cwd: packagesRoot })
+  return globSync(['src/*/*/*/package.json', 'packages/profile-*/package.json'], { cwd: packagesRoot })
     .sort()
     .map((manifestPath) => {
       const absoluteManifestPath = resolve(packagesRoot, manifestPath)

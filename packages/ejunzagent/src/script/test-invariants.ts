@@ -43,7 +43,10 @@ export const TEST_INVARIANT_READY_SERVICE = 'testInvariantReady'
  * transitive package sources.
  */
 export const testInvariantCompanions: Readonly<Record<string, () => Promise<TestInvariantCompanion>>> =
-  import.meta.glob<TestInvariantCompanion>('../src/*/*/*/src/invariant.ts')
+  {
+    ...import.meta.glob<TestInvariantCompanion>('../src/*/*/*/src/invariant.ts'),
+    ...import.meta.glob<TestInvariantCompanion>('../packages/profile-*/src/**/invariant.ts'),
+  }
 
 /** Manual-topology suites whose names cannot follow the focused invariant convention. */
 const MANUAL_INVARIANT_TEST_EXCEPTIONS = [

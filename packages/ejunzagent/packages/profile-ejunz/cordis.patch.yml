@@ -1,0 +1,34 @@
+# Ejunz-hosted persistence and telemetry choices. This layer follows
+# profile-web, which supplies the storage hub, JSON backend and domain row.
+
+- id: session-persistence-jsonl
+  disabled: true
+
+- id: storage-json
+  disabled: true
+
+- insert:
+    - id: storage-ejunz
+      name: '@ejunz/storage-ejunz'
+
+    - id: session-persistence-ejunz
+      name: '@ejunz/session-persistence-ejunz'
+
+    - id: session-telemetry-otel
+      name: '@ejunz/session-telemetry-otel'
+      config:
+        mode: !!js process.env.EA_TELEMETRY_MODE || 'DISABLED'
+        shutdownTimeoutMillis: 3000
+        exporter:
+          url: !!js process.env.EA_TELEMETRY_OTLP_URL ?? 'https://ejunzAgent-telemetry.deepseeksvc.com/v1/logs'
+          compression: gzip
+          timeoutMillis: 1000
+        processor:
+          scheduledDelayMillis: 10000
+          maxQueueSize: 2048
+          maxExportBatchSize: 2048
+          exportTimeoutMillis: 1500
+
+- id: storage-domain
+  config:
+    backend: ejunz

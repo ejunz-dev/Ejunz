@@ -27,15 +27,6 @@
         "src/script/**/*.cjs"
       ]
     },
-    "src/service/host/webserver": {
-      "entry": [
-        "tests/**/*.spec.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "tests/**/*.ts"
-      ]
-    },
     "src/service/extensions/cordis-host-runner": {
       "entry": [
         "tests/**/*.spec.ts"
@@ -48,27 +39,6 @@
         "zod"
       ]
     },
-    "src/service/client/runtime": {
-      "entry": [
-        "tests/**/*.spec.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "tests/**/*.ts"
-      ]
-    },
-    "src/service/api/remotes": {
-      "entry": [
-        "tests/**/*.e2e.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "tests/**/*.ts"
-      ],
-      "ignoreDependencies": [
-        "@ejunz/api-gateway"
-      ]
-    },
     "src/*/*/*": {
       "entry": [
         "tests/**/*.spec.ts"
@@ -76,6 +46,26 @@
       "project": [
         "src/**/*.ts",
         "tests/**/*.ts"
+      ]
+    },
+    "packages/profile-web": {
+      "entry": [
+        "src/**/*.spec.ts",
+        "src/**/*.e2e.ts"
+      ],
+      "project": [
+        "src/**/*.ts"
+      ],
+      "ignoreDependencies": [
+        "@ejunz/.+"
+      ]
+    },
+    "packages/profile-ejunz": {
+      "project": [
+        "src/**/*.ts"
+      ],
+      "ignoreDependencies": [
+        "@ejunz/.+"
       ]
     },
     "src/service/core/tools": {
@@ -277,37 +267,7 @@
         "tests/**/*.ts"
       ]
     },
-    "src/service/web/web-search-exa": {
-      "entry": [
-        "tests/**/*.spec.ts",
-        "tests/**/*.e2e.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "tests/**/*.ts"
-      ]
-    },
-    "src/service/web/web-search-perplexity": {
-      "entry": [
-        "tests/**/*.spec.ts",
-        "tests/**/*.e2e.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "tests/**/*.ts"
-      ]
-    },
     "src/service/workflow/workflow-worker-thread": {
-      "entry": [
-        "tests/**/*.spec.ts",
-        "tests/**/*.e2e.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "tests/**/*.ts"
-      ]
-    },
-    "src/service/web/web-search-deepseek": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -432,10 +392,5 @@
         "@ejunz/.+"
       ]
     },
-    "src/entry/bundle/web-app": {
-      "ignoreDependencies": [
-        "@ejunz/.+"
-      ]
-    }
   }
 }
