@@ -19,7 +19,7 @@ export interface SessionStatsProjection {
   decodeTokens: number
 }
 
-declare module '@ejunz/ea/session-projection/types' {
+declare module '@ejunz/ea-core/session-projection/types' {
   interface SessionProjectionMap {
     /** Whole-log turn/step counts and wall times; see {@link SessionStatsProjection}. */
     sessionStats: SessionStatsProjection
@@ -28,9 +28,9 @@ declare module '@ejunz/ea/session-projection/types' {
 
 import { z } from 'zod'
 
-import { isTokenDelta } from '@ejunz/ea/llm/message'
+import { isTokenDelta } from '@ejunz/ea-core/llm/message'
 
-import type { ProjectionDefinition } from '@ejunz/ea/session-projection'
+import type { ProjectionDefinition } from '@ejunz/ea-core/session-projection'
 
 interface SessionStatsTotals {
   /** Distinct turns with at least one closed step so far. */
@@ -183,11 +183,11 @@ export function apply(ctx: Context): void {
   ctx.sessionProjections.register(sessionStatsProjectionDefinition)
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/session-stats'
+  const PACKAGE_NAME = '@ejunz/ea-core/session-stats'
   export const name = 'session-stats-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

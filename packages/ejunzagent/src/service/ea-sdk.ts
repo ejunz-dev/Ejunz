@@ -1,16 +1,16 @@
 import { randomUUID } from 'node:crypto'
 
-import { EjunzAgent, type EjunzAgentNotification } from '@ejunz/ea/sdk-client'
+import { EjunzAgent, type EjunzAgentNotification } from '@ejunz/ea-core/sdk-client'
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import { SessionId, type SessionEvent, type TurnEndReason } from '@ejunz/ea/session'
+import { SessionId, type SessionEvent, type TurnEndReason } from '@ejunz/ea-core/session'
 
-import type { SubagentResult, SubagentRun, SubagentStartRequest, SubagentStopReason } from '@ejunz/ea/subagent'
+import type { SubagentResult, SubagentRun, SubagentStartRequest, SubagentStopReason } from '@ejunz/ea-core/subagent'
 
-import { AssistantOutputFold, settleRunResult, subprocessRunHandle } from '@ejunz/ea/subagent'
+import { AssistantOutputFold, settleRunResult, subprocessRunHandle } from '@ejunz/ea-core/subagent'
 
-import { scrubbedParentEnv } from '@ejunz/ea/subprocess'
+import { scrubbedParentEnv } from '@ejunz/ea-core/subprocess'
 
 export interface SdkRunSpec {
   /** The executable to spawn (the child runtime — a `ea-jsonrpc-agent` bin or packaged exe). */
@@ -181,9 +181,9 @@ import type { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import type { SubagentCapabilities, SubagentProvider, SubagentStartRequest } from '@ejunz/ea/subagent'
+import type { SubagentCapabilities, SubagentProvider, SubagentStartRequest } from '@ejunz/ea-core/subagent'
 
-import { assertPositiveFinite, NO_START_CAPABILITIES, resolveChildCwd, validateConfiguredCwd } from '@ejunz/ea/subagent'
+import { assertPositiveFinite, NO_START_CAPABILITIES, resolveChildCwd, validateConfiguredCwd } from '@ejunz/ea-core/subagent'
 
 export const name = 'subagent-ea-sdk'
 
@@ -294,11 +294,11 @@ export function apply(ctx: Context, config: Config): void {
   ctx.subagents.registerProvider(new SdkSubagentProvider(validated.providerName, ctx, validated))
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/subagent-ea-sdk'
+  const PACKAGE_NAME = '@ejunz/ea-core/subagent-ea-sdk'
   export const name = 'subagent-ea-sdk-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

@@ -1,4 +1,4 @@
-import { timeoutOf } from '@ejunz/ea/timeout'
+import { timeoutOf } from '@ejunz/ea-core/timeout'
 
 export function abortError(signal: AbortSignal): Error {
   const timeout = timeoutOf(signal)
@@ -111,7 +111,7 @@ function parseContentLength(headerText: string): number {
 
 import type { Writable } from 'node:stream'
 
-import type { SubprocessHandle, SubprocessSpawnSpec } from '@ejunz/ea/subprocess'
+import type { SubprocessHandle, SubprocessSpawnSpec } from '@ejunz/ea-core/subprocess'
 
 export interface ConnectionSpec {
   /** The resolved absolute executable path (no shell). */
@@ -419,7 +419,7 @@ function asError(value: unknown): Error {
 
 import { Buffer } from 'node:buffer'
 
-import type { FileSystem, FsTarget } from '@ejunz/ea/fs'
+import type { FileSystem, FsTarget } from '@ejunz/ea-core/fs'
 
 export interface HostWorkspace {
   /** Stable filesystem identity used for provider pooling. */
@@ -585,11 +585,11 @@ import type {
   LspLocation,
   LspOperation,
   LspRange,
-} from '@ejunz/ea/lsp'
+} from '@ejunz/ea-core/lsp'
 
-import { LspError } from '@ejunz/ea/lsp'
+import { LspError } from '@ejunz/ea-core/lsp'
 
-import { assertNever } from '@ejunz/ea/llm'
+import { assertNever } from '@ejunz/ea-core/llm'
 
 export function requestMethod(operation: LspOperation): string {
   switch (operation) {
@@ -748,15 +748,15 @@ function malformedResponse(message: string): LspError {
   return new LspError(message, 'LSP_MALFORMED_RESPONSE')
 }
 
-import { LspError } from '@ejunz/ea/lsp'
+import { LspError } from '@ejunz/ea-core/lsp'
 
 import type {
   LspOperation,
   LspProviderQuery,
   LspQueryResult,
-} from '@ejunz/ea/lsp'
+} from '@ejunz/ea-core/lsp'
 
-import { deadline } from '@ejunz/ea/timeout'
+import { deadline } from '@ejunz/ea-core/timeout'
 
 export interface InstanceSpec extends ConnectionSpec {
   /** Canonical workspace file URI supplied by the filesystem provider. */
@@ -1068,15 +1068,15 @@ import type { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { LspError, LspProviderId } from '@ejunz/ea/lsp'
+import { LspError, LspProviderId } from '@ejunz/ea-core/lsp'
 
 import type {
   LspProvider,
   LspProviderQuery,
   LspQueryResult,
-} from '@ejunz/ea/lsp'
+} from '@ejunz/ea-core/lsp'
 
-import { MAX_TIMER_DELAY_MS } from '@ejunz/ea/timeout'
+import { MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
 
 export const name = 'lsp-stdio'
 
@@ -1394,11 +1394,11 @@ class LocalLspProvider implements LspProvider {
   }
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/lsp-stdio'
+  const PACKAGE_NAME = '@ejunz/ea-core/lsp-stdio'
   export const name = 'lsp-stdio-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

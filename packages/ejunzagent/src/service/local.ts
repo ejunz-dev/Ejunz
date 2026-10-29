@@ -1,8 +1,8 @@
 import sharp, { type Sharp } from 'sharp'
 
-import { AttachmentError } from '@ejunz/ea/attachment'
+import { AttachmentError } from '@ejunz/ea-core/attachment'
 
-import type { ImageMediaType } from '@ejunz/ea/attachment'
+import type { ImageMediaType } from '@ejunz/ea-core/attachment'
 
 export interface DetectedImage {
   mediaType: ImageMediaType
@@ -61,14 +61,14 @@ import { dirname, join, parse, resolve } from 'node:path'
 import {
   AttachmentError,
   AttachmentId,
-} from '@ejunz/ea/attachment'
+} from '@ejunz/ea-core/attachment'
 
 import type {
   ImageAttachmentLimits,
   ImageAttachmentRef,
   SaveImageAttachment,
   StoredImageAttachment,
-} from '@ejunz/ea/attachment'
+} from '@ejunz/ea-core/attachment'
 
 const ID_PATTERN = /^sha256:([a-f0-9]{64})$/
 
@@ -246,9 +246,9 @@ import { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { AttachmentStore } from '@ejunz/ea/attachment'
+import { AttachmentStore } from '@ejunz/ea-core/attachment'
 
-import { resolveEaHome } from '@ejunz/ea/home-paths'
+import { resolveEaHome } from '@ejunz/ea-core/home-paths'
 
 export const DEFAULT_MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
@@ -311,11 +311,11 @@ export class LocalAttachmentStore extends AttachmentStore {
 
 export default LocalAttachmentStore
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/attachment-local'
+  const PACKAGE_NAME = '@ejunz/ea-core/attachment-local'
   export const name = 'attachment-local-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

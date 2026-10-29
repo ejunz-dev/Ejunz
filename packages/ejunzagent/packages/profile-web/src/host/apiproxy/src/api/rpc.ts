@@ -7,9 +7,9 @@
 
 import type { z as zCore } from 'zod'
 type ZodIssue = zCore.core.$ZodIssue
-import type { Branded } from '@ejunz/ea/brand'
-import type { MessageId } from '@ejunz/ea/llm/brand'
-import type { SessionId } from '@ejunz/ea/session/types'
+import type { Branded } from '@ejunz/ea-core/brand'
+import type { MessageId } from '@ejunz/ea-core/llm/brand'
+import type { SessionId } from '@ejunz/ea-core/session/types'
 
 /**
  * Message correlation id: the initiator mints it on a request; a response

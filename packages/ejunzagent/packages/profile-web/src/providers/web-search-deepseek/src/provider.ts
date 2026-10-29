@@ -13,8 +13,8 @@ import type {
   WebSearchResult,
   WebSearchSource,
 } from '@ejunz/profile-web'
-import type { CredentialRef } from '@ejunz/ea/credentials'
-import type {} from '@ejunz/ea/session'
+import type { CredentialRef } from '@ejunz/ea-core/credentials'
+import type {} from '@ejunz/ea-core/session'
 import type {
   AnthropicError,
   AnthropicResponse,
@@ -29,7 +29,7 @@ export const DEEPSEEK_PROVIDER_ID = 'deepseek-official'
 /**
  * Default endpoint: DeepSeek's Anthropic-compatible API, `/v1` included
  * (`/messages` is appended). This is NOT the chat-completions base
- * (`https://api.deepseek.com`) `@ejunz/ea/llm-deepseek` uses, so this
+ * (`https://api.deepseek.com`) `@ejunz/ea-core/llm-deepseek` uses, so this
  * provider does NOT reuse `$DEEPSEEK_BASE_URL` — only the API key is shared.
  */
 export const DEEPSEEK_DEFAULT_BASE_URL = 'https://api.deepseek.com/anthropic/v1'
@@ -77,7 +77,7 @@ export interface DeepSeekSearchLlmRequest {
   }
 }
 
-declare module '@ejunz/ea/session/types' {
+declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {
     /** Secret-free auxiliary DeepSeek search request recorded before dispatch. */
     'web/deepseek-search-llm-request': DeepSeekSearchLlmRequest

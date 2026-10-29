@@ -3,17 +3,17 @@
  * promises to honor `exec.signal`; this wrapper arms that deadline and maps its
  * own expiry to `TOOL_TIMEOUT` without racing or abandoning the tool promise.
  *
- * FIXME: settle the intended `@ejunz/ea/timeout-guard` rename before the
+ * FIXME: settle the intended `@ejunz/ea-core/timeout-guard` rename before the
  * first tagged release — suggestion only, aligning the name with its `guard/`
  * home; decide at resolution time
  * ([regrouping Agent Note](../../../../.agents/notes/implemented/architecture/2026-07-29-package-regrouping.md)).
  *
- * @module @ejunz/ea/tool-call-timeout-policy
+ * @module @ejunz/ea-core/tool-call-timeout-policy
  */
 
 import type { Context } from '@ejunz/cordis'
-import { deadline, timeoutOf } from '@ejunz/ea/timeout'
-import type { ToolExecutionResult } from '@ejunz/ea/tools'
+import { deadline, timeoutOf } from '@ejunz/ea-core/timeout'
+import type { ToolExecutionResult } from '@ejunz/ea-core/tools'
 
 /**
  * The code owned by this plugin, used BOTH as the internal {@link deadline}
@@ -80,11 +80,11 @@ export function apply(ctx: Context): void {
   })
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/tool-call-timeout-policy'
+  const PACKAGE_NAME = '@ejunz/ea-core/tool-call-timeout-policy'
   export const name = 'timeout-policy-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

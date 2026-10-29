@@ -2,15 +2,15 @@ import { Context } from '@ejunz/cordis'
 
 import type { Plugin } from '@ejunz/cordis'
 
-import { scopeOf } from '@ejunz/ea/scope'
+import { scopeOf } from '@ejunz/ea-core/scope'
 
-import { assertSupportedJsonSchema, defineTool } from '@ejunz/ea/tools'
+import { assertSupportedJsonSchema, defineTool } from '@ejunz/ea-core/tools'
 
-import type { ToolDefinition } from '@ejunz/ea/tools'
+import type { ToolDefinition } from '@ejunz/ea-core/tools'
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import type { JsonValue } from '@ejunz/ea/session'
+import type { JsonValue } from '@ejunz/ea-core/session'
 
 const DYNAMIC_TOOL = Symbol('cordis-host-runner.dynamic-tool')
 
@@ -694,9 +694,9 @@ export function pluginName(plugin: Plugin): string {
   return '<anonymous>'
 }
 
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
-import type { JsonValue, SessionId } from '@ejunz/ea/session/types'
+import type { JsonValue, SessionId } from '@ejunz/ea-core/session/types'
 
 export type CordisDynamicPluginId = Branded<'CordisDynamicPluginId'>
 
@@ -1059,15 +1059,15 @@ import { Service } from '@ejunz/cordis'
 
 import type { Context } from '@ejunz/cordis'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
-import { snapshotJsonValue } from '@ejunz/ea/session'
+import { snapshotJsonValue } from '@ejunz/ea-core/session'
 
-import type { JsonValue } from '@ejunz/ea/session/types'
+import type { JsonValue } from '@ejunz/ea-core/session/types'
 
-import { assertSupportedJsonSchema, validateJsonSchemaValue } from '@ejunz/ea/tools'
+import { assertSupportedJsonSchema, validateJsonSchemaValue } from '@ejunz/ea-core/tools'
 
-import type { JsonSchemaNode } from '@ejunz/ea/tools'
+import type { JsonSchemaNode } from '@ejunz/ea-core/tools'
 
 export interface HostCordisInspectQueryContext {
   /** Tool-call cancellation. */
@@ -1333,7 +1333,7 @@ export function missingServices(ctx: Context, fiber: Fiber): string[] {
 
 import type { Fiber } from '@ejunz/cordis'
 
-import type { SessionId } from '@ejunz/ea/session/types'
+import type { SessionId } from '@ejunz/ea-core/session/types'
 
 export type DynamicCordisHandler = (args: unknown) => Promise<unknown>
 
@@ -1750,13 +1750,13 @@ import type { Fiber } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
-import { createUserMessage } from '@ejunz/ea/llm'
+import { createUserMessage } from '@ejunz/ea-core/llm'
 
-import type { JsonValue } from '@ejunz/ea/session/types'
+import type { JsonValue } from '@ejunz/ea-core/session/types'
 
-import { TypertRemoteService, Remote } from '@ejunz/ea/typert-protocol'
+import { TypertRemoteService, Remote } from '@ejunz/ea-core/typert-protocol'
 
 export function CordisDynamicPluginId(id: string): CordisDynamicPluginId {
   return id as CordisDynamicPluginId
@@ -2967,11 +2967,11 @@ function cloneAttempt(attempt: DynamicCordisRunAttempt): DynamicCordisRunAttempt
 
 export default DynamicCordisRunnerService
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/cordis-host-runner'
+  const PACKAGE_NAME = '@ejunz/ea-core/cordis-host-runner'
   export const name = 'cordis-host-runner-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

@@ -4,7 +4,7 @@ import { mkdir, open } from 'node:fs/promises'
 
 import { dirname, resolve } from 'node:path'
 
-import { StorageError } from '@ejunz/ea/storage'
+import { StorageError } from '@ejunz/ea-core/storage'
 
 export const STORAGE_SQLITE_SCHEMA_VERSION = 1
 
@@ -74,9 +74,9 @@ export function recordTableName(unit: string, table: string): string {
 
 import type { DatabaseSync, StatementSync } from 'node:sqlite'
 
-import { StorageError } from '@ejunz/ea/storage'
+import { StorageError } from '@ejunz/ea-core/storage'
 
-import type { KvUnit, KvUnitDescriptor } from '@ejunz/ea/storage'
+import type { KvUnit, KvUnitDescriptor } from '@ejunz/ea-core/storage'
 
 interface TableStatements {
   upsert: StatementSync
@@ -221,9 +221,9 @@ import z from '@ejunz/schemastery'
 
 import type { DatabaseSync } from 'node:sqlite'
 
-import { StorageError, UNIT_NAME_RE, storageBackendServiceKey } from '@ejunz/ea/storage'
+import { StorageError, UNIT_NAME_RE, storageBackendServiceKey } from '@ejunz/ea-core/storage'
 
-import type { KvFacet, KvUnit, KvUnitDescriptor, StorageBackend } from '@ejunz/ea/storage'
+import type { KvFacet, KvUnit, KvUnitDescriptor, StorageBackend } from '@ejunz/ea-core/storage'
 
 export const name = 'storage-sqlite'
 
@@ -363,11 +363,11 @@ export function apply(ctx: Context, config: Config) {
   ctx.provide(storageBackendServiceKey('sqlite'), backend)
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/storage-sqlite'
+  const PACKAGE_NAME = '@ejunz/ea-core/storage-sqlite'
   export const name = 'storage-sqlite-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

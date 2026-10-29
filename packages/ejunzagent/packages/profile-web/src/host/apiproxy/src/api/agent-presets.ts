@@ -9,7 +9,7 @@
  * path), copying and deleting still rearrange what the deployment offers.
  */
 
-import type { SessionId } from '@ejunz/ea/session/types'
+import type { SessionId } from '@ejunz/ea-core/session/types'
 import type { RpcRequest, RpcResponse } from './rpc.ts'
 
 /** One preset the deployment can compose a session's agent from. */

@@ -1,12 +1,12 @@
 import type { Context } from '@ejunz/cordis'
 
-import { defineTool } from '@ejunz/ea/tools'
+import { defineTool } from '@ejunz/ea-core/tools'
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import { SessionId } from '@ejunz/ea/session'
+import { SessionId } from '@ejunz/ea-core/session'
 
-import type {} from '@ejunz/ea/subagent'
+import type {} from '@ejunz/ea-core/subagent'
 
 export const name = 'tool-subagent-control'
 
@@ -111,15 +111,15 @@ export function apply(ctx: Context): void {
 
 import type { Context } from '@ejunz/cordis'
 
-import { defineTool } from '@ejunz/ea/tools'
+import { defineTool } from '@ejunz/ea-core/tools'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
-import type { SessionId } from '@ejunz/ea/session'
+import type { SessionId } from '@ejunz/ea-core/session'
 
-import { assertNever } from '@ejunz/ea/llm'
+import { assertNever } from '@ejunz/ea-core/llm'
 
-import type { SubagentDescendantListEntry, SubagentListEntry } from '@ejunz/ea/subagent'
+import type { SubagentDescendantListEntry, SubagentListEntry } from '@ejunz/ea-core/subagent'
 
 export const name = 'tool-subagent-list-agents'
 
@@ -286,11 +286,11 @@ export function apply(ctx: Context): void {
   }))
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/tool-subagent-control'
+  const PACKAGE_NAME = '@ejunz/ea-core/tool-subagent-control'
   export const name = 'tool-subagent-control-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

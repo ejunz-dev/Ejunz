@@ -1,15 +1,15 @@
 /**
  * Human-facing `/goal` command over the persisted same-session goal domain.
- * @module @ejunz/ea/command-goal
+ * @module @ejunz/ea-core/command-goal
  */
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 
 
 import type { Context } from '@ejunz/cordis'
-import type { CommandInvocation, CommandResult } from '@ejunz/ea/commands'
-import { GoalError } from '@ejunz/ea/goal'
-import type { GoalPhase, GoalRef, GoalView } from '@ejunz/ea/goal'
+import type { CommandInvocation, CommandResult } from '@ejunz/ea-core/commands'
+import { GoalError } from '@ejunz/ea-core/goal'
+import type { GoalPhase, GoalRef, GoalView } from '@ejunz/ea-core/goal'
 
 export const name = 'command-goal'
 export const inject = ['commands', 'goals']
@@ -174,7 +174,7 @@ export function apply(ctx: Context): void {
 
 /** Invariant companion namespace for the module subpath. */
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/command-goal'
+  const PACKAGE_NAME = '@ejunz/ea-core/command-goal'
   
   /** Cordis companion plugin name. */
   export const name = 'command-goal-invariant'

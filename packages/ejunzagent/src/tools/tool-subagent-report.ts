@@ -3,16 +3,16 @@
  * continuable in-process child's unpublished context. Roots, one-shot children,
  * remote providers, and agentless executions never see the registration.
  *
- * @module @ejunz/ea/tool-subagent-report
+ * @module @ejunz/ea-core/tool-subagent-report
  */
 
 import type { Context } from '@ejunz/cordis'
 import z from '@ejunz/schemastery'
-import type { Agent } from '@ejunz/ea/agent'
-import type { ContentBlock } from '@ejunz/ea/llm'
-import type { SubagentReportDelivery } from '@ejunz/ea/subagent'
-import type {} from '@ejunz/ea/system-prompt'
-import { defineTool } from '@ejunz/ea/tools'
+import type { Agent } from '@ejunz/ea-core/agent'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
+import type { SubagentReportDelivery } from '@ejunz/ea-core/subagent'
+import type {} from '@ejunz/ea-core/system-prompt'
+import { defineTool } from '@ejunz/ea-core/tools'
 
 export const name = 'tool-subagent-report'
 // The contribution registers only through childCtx.tools and
@@ -141,11 +141,11 @@ export function apply(ctx: Context, config: Config = {}): void {
     installReportTool(childCtx, ctx, reportDelivery))
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/tool-subagent-report'
+  const PACKAGE_NAME = '@ejunz/ea-core/tool-subagent-report'
   export const name = 'tool-subagent-report-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

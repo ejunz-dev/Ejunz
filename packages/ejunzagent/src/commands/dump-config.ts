@@ -3,7 +3,7 @@
  * profile's patch layers through the include plugin's patch algorithm without
  * booting or evaluating `!!js`, with one source layer per bundle, the
  * profile's own patch file, and each `--patch` overlay.
- * @module @ejunz/ea/dump-config
+ * @module @ejunz/ea-core/dump-config
  */
 
 import { existsSync } from 'node:fs'
@@ -13,7 +13,7 @@ import {
   loadOverlayPatches,
   renderConfigDump,
   type ConfigDumpLayer,
-} from '@ejunz/ea/app-boot'
+} from '@ejunz/ea-core/app-boot'
 import { homePatchPath, prepareProfile, PROFILE_ROOT_FILENAME } from '../service/profile-boot.ts'
 
 const NAME = 'ea'

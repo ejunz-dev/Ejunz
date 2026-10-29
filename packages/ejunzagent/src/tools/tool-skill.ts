@@ -1,16 +1,16 @@
 /**
  * Durable session skill catalog and model-facing `skill` loader tool.
  *
- * @module @ejunz/ea/tool-skill
+ * @module @ejunz/ea-core/tool-skill
  */
 
 import { createHash } from 'node:crypto'
 import type { Context } from '@ejunz/cordis'
 import z from '@ejunz/schemastery'
-import type { Agent, PreStepDecision } from '@ejunz/ea/agent'
-import { defineTool } from '@ejunz/ea/tools'
-import { createUserMessage } from '@ejunz/ea/llm'
-import type { UserMessage } from '@ejunz/ea/session'
+import type { Agent, PreStepDecision } from '@ejunz/ea-core/agent'
+import { defineTool } from '@ejunz/ea-core/tools'
+import { createUserMessage } from '@ejunz/ea-core/llm'
+import type { UserMessage } from '@ejunz/ea-core/session'
 import {
   escapeText,
   isModelInvocable,
@@ -19,7 +19,7 @@ import {
   renderSkillContent,
   type SkillInvocationSource,
   type SkillSummary,
-} from '@ejunz/ea/skill'
+} from '@ejunz/ea-core/skill'
 
 export const name = 'tool-skill'
 export const inject = ['agents', 'tools', 'skills']
@@ -40,7 +40,7 @@ export interface SkillCatalogSource {
   readonly entries: readonly { readonly name: string; readonly description: string }[]
 }
 
-declare module '@ejunz/ea/llm' {
+declare module '@ejunz/ea-core/llm' {
   interface MessageSourceMap {
     'skill-catalog': SkillCatalogSource
   }
@@ -430,11 +430,11 @@ function invokedSkillNames(messages: readonly UserMessage[]): string[] {
   return names
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/tool-skill'
+  const PACKAGE_NAME = '@ejunz/ea-core/tool-skill'
   export const name = 'tool-skill-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

@@ -1,4 +1,4 @@
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
 /** Runtime mirror: FiberState is a cordis const enum with no runtime export. */
 const FiberState = {
@@ -10,7 +10,7 @@ const FiberState = {
   UNLOADING: 5,
 } as const
 
-import type { GoalView } from '@ejunz/ea/goal'
+import type { GoalView } from '@ejunz/ea-core/goal'
 
 export function renderGoalRoundPrompt(goal: GoalView, round: number): ContentBlock[] {
   return [{
@@ -34,15 +34,15 @@ import { isDeepStrictEqual } from 'node:util'
 
 import type { Context } from '@ejunz/cordis'
 
-import type { Agent, PreStepDecision } from '@ejunz/ea/agent'
+import type { Agent, PreStepDecision } from '@ejunz/ea-core/agent'
 
-import type { GoalMessageSource, GoalRef, GoalView } from '@ejunz/ea/goal'
+import type { GoalMessageSource, GoalRef, GoalView } from '@ejunz/ea-core/goal'
 
-import { createUserMessage } from '@ejunz/ea/llm'
+import { createUserMessage } from '@ejunz/ea-core/llm'
 
-import type { ContentBlock, MessageId, MessageSource } from '@ejunz/ea/llm'
+import type { ContentBlock, MessageId, MessageSource } from '@ejunz/ea-core/llm'
 
-import type { Session, SessionEvent, UserMessage } from '@ejunz/ea/session'
+import type { Session, SessionEvent, UserMessage } from '@ejunz/ea-core/session'
 
 export const name = 'goal-round-driver'
 
@@ -465,11 +465,11 @@ export function apply(ctx: Context): void {
   }, 'goal-round-driver lifecycle')
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/goal-round-driver'
+  const PACKAGE_NAME = '@ejunz/ea-core/goal-round-driver'
   export const name = 'goal-round-driver-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

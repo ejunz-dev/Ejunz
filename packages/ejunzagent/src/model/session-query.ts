@@ -163,7 +163,7 @@ import {
   SessionQueryError,
   materializeSessionEventResultFilters,
   materializeSessionResultFilters,
-} from '@ejunz/ea/session-query'
+} from '@ejunz/ea-core/session-query'
 
 import type {
   SessionAvailability,
@@ -173,7 +173,7 @@ import type {
   SessionResultFilter,
   SessionSearchCursor,
   SessionSearchRequest,
-} from '@ejunz/ea/session-query'
+} from '@ejunz/ea-core/session-query'
 
 export const FTS_HIGHLIGHT_START = '\uFDD0'
 
@@ -585,14 +585,14 @@ import { Context, Service, type Fiber } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import type { Session, SessionEvent, SessionHeader, SessionId } from '@ejunz/ea/session'
+import type { Session, SessionEvent, SessionHeader, SessionId } from '@ejunz/ea-core/session'
 
-import type SessionPersistence from '@ejunz/ea/session-persistence'
+import type SessionPersistence from '@ejunz/ea-core/session-persistence'
 
 import type {
   SessionPersistenceRevision,
   SessionPersistenceSnapshot,
-} from '@ejunz/ea/session-persistence'
+} from '@ejunz/ea-core/session-persistence'
 
 import SessionQueryEngine, {
   SESSION_QUERY_DEFAULT_PERSISTED_INSPECT_CONCURRENCY,
@@ -601,7 +601,7 @@ import SessionQueryEngine, {
   SessionSearchCursor,
   assertSessionHeadersCompatible,
   buildSessionEventSearchDocuments,
-} from '@ejunz/ea/session-query'
+} from '@ejunz/ea-core/session-query'
 
 import type {
   Config as SessionQueryConfig,
@@ -614,7 +614,7 @@ import type {
   SessionSearchCursor as SessionSearchCursorValue,
   SessionSearchPage,
   SessionSearchRequest,
-} from '@ejunz/ea/session-query'
+} from '@ejunz/ea-core/session-query'
 
 export const SESSION_QUERY_SQLITE_PATH_KEY = 'launcherSessionQueryPath'
 
@@ -1644,11 +1644,11 @@ function isRuntimeArray(value: unknown): boolean {
 
 export default SqliteSessionQueryEngine
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/session-query'
+  const PACKAGE_NAME = '@ejunz/ea-core/session-query'
   export const name = 'session-query-sqlite-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

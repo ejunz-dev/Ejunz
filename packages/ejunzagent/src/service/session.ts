@@ -152,7 +152,7 @@ export function isJsonValue(value: unknown): boolean {
   return walkJsonValue(value, false) === true
 }
 
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
 import type {
   AssistantMessage,
@@ -165,7 +165,7 @@ import type {
   ToolResultMessage,
   ToolSchema,
   UserMessage,
-} from '@ejunz/ea/llm'
+} from '@ejunz/ea-core/llm'
 
 export type SessionId = Branded<'SessionId'>
 
@@ -480,9 +480,9 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
   } : object)
 }[T]
 
-import { CallId, assertNever } from '@ejunz/ea/llm'
+import { CallId, assertNever } from '@ejunz/ea-core/llm'
 
-import type { StreamChunk } from '@ejunz/ea/llm'
+import type { StreamChunk } from '@ejunz/ea-core/llm'
 
 type DeltaKind = 'text-delta' | 'reasoning-delta' | 'tool-call-delta'
 
@@ -750,7 +750,7 @@ export function decodeStorageRecord(value: unknown): SessionEvent[] {
   return expandRow(validateRow(value, tag))
 }
 
-import type { Message } from '@ejunz/ea/llm'
+import type { Message } from '@ejunz/ea-core/llm'
 
 const SURFACE_EVENT_TYPES = new Set<string>([
   'user/message',
@@ -1130,9 +1130,9 @@ export class SurfaceManager implements SessionSurface {
   }
 }
 
-import { callConfigEquals } from '@ejunz/ea/llm'
+import { callConfigEquals } from '@ejunz/ea-core/llm'
 
-import type { ToolSchema } from '@ejunz/ea/llm'
+import type { ToolSchema } from '@ejunz/ea-core/llm'
 
 export function canonicalHeader(header: EpochHeader): EpochHeader {
   const adapterDefaults = header.adapterDefaults
@@ -1206,9 +1206,9 @@ export class SessionPreparation implements Disposable {
   }
 }
 
-import { MessageId, freezeMessage, type CallId } from '@ejunz/ea/llm'
+import { MessageId, freezeMessage, type CallId } from '@ejunz/ea-core/llm'
 
-import type { ToolResultMessage } from '@ejunz/ea/llm'
+import type { ToolResultMessage } from '@ejunz/ea-core/llm'
 
 export const TOOL_NOT_STARTED = 'TOOL_NOT_STARTED'
 
@@ -1371,17 +1371,17 @@ import { Context, Service } from '@ejunz/cordis'
 
 import { isAbsolute } from 'node:path'
 
-import { deepFreeze } from '@ejunz/ea/llm'
+import { deepFreeze } from '@ejunz/ea-core/llm'
 
-import { scopeOf, scopeTarget } from '@ejunz/ea/scope'
+import { scopeOf, scopeTarget } from '@ejunz/ea-core/scope'
 
-import type { Scoped } from '@ejunz/ea/scope'
+import type { Scoped } from '@ejunz/ea-core/scope'
 
-import type { Message } from '@ejunz/ea/llm'
+import type { Message } from '@ejunz/ea-core/llm'
 
-import type { TypertLookup } from '@ejunz/ea/typert-protocol'
+import type { TypertLookup } from '@ejunz/ea-core/typert-protocol'
 
-export type { AssistantMessage, ToolResultMessage, UserMessage } from '@ejunz/ea/llm'
+export type { AssistantMessage, ToolResultMessage, UserMessage } from '@ejunz/ea-core/llm'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -1394,7 +1394,7 @@ declare module '@ejunz/cordis' {
      * back with a paired disposal; detach requested during dispatch is deferred.
      * A returned-promise rejection is logged but cannot retroactively veto this
      * synchronous boundary.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners
      * receive only sessions entered through that agent's context.
      * @param session - the session just entered and announced.
      * @eaScopeScan unsupported
@@ -1405,7 +1405,7 @@ declare module '@ejunz/cordis' {
      * Emitted once when an announced session leaves the store, including
      * publication rollback, but never for an entry whose creation announcement
      * did not begin. Listener failures are logged and contained.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`) reuses the owner scope.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`) reuses the owner scope.
      * @param session - the session that is no longer live in the store.
      * @eaScopeScan unsupported
      * @mode emit
@@ -1415,7 +1415,7 @@ declare module '@ejunz/cordis' {
      * Post-commit, fire-and-forget append feed. The listener snapshot resolves
      * before the log push, but callbacks run after it; observer failures are
      * logged and contained without making the committed append fail.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners
      * receive only events from sessions entered through that agent's context.
      * @param session - the session whose log grew.
      * @param event - the appended event, exactly as recorded.
@@ -1426,7 +1426,7 @@ declare module '@ejunz/cordis' {
     /**
      * Awaited parallel durability checkpoint: every listener runs and the
      * caller awaits all of them, with no waterfall veto. Scope-filtered dispatch
-     * (`@ejunz/ea/scope`) reuses the session's owner scope.
+     * (`@ejunz/ea-core/scope`) reuses the session's owner scope.
      * @param session - the session whose buffered events must reach durable storage.
      * @eaScopeScan unsupported
      * @mode parallel
@@ -1435,7 +1435,7 @@ declare module '@ejunz/cordis' {
   }
 }
 
-declare module '@ejunz/ea/typert-protocol' {
+declare module '@ejunz/ea-core/typert-protocol' {
   interface TypertLookupMap {
     session: TypertLookup<Session, SessionId>
   }
@@ -2097,8 +2097,8 @@ export class SessionStore extends Service {
       typeCtx.typert.lookups.register('session', {
         parameter: 'session',
         wire: 'sessionId',
-        hostTypeSymbol: '@ejunz/ea/session#Session',
-        wireTypeSymbol: '@ejunz/ea/session/types#SessionId',
+        hostTypeSymbol: '@ejunz/ea-core/session#Session',
+        wireTypeSymbol: '@ejunz/ea-core/session/types#SessionId',
         resolve: sessionId => this.get(sessionId),
       })
     })
@@ -2454,11 +2454,11 @@ export class SessionStore extends Service {
 
 export default SessionStore
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/session'
+  const PACKAGE_NAME = '@ejunz/ea-core/session'
   export const name = 'session-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

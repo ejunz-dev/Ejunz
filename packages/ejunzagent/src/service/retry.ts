@@ -1,4 +1,4 @@
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
 export type RetryId = Branded<'RetryId'>
 
@@ -6,7 +6,7 @@ export function RetryId(id: string): RetryId {
   return id as RetryId
 }
 
-import type { SessionEvent } from '@ejunz/ea/session'
+import type { SessionEvent } from '@ejunz/ea-core/session'
 
 export function providerForOpenStep(
   events: readonly SessionEvent[],
@@ -29,11 +29,11 @@ export function providerForOpenStep(
   return undefined
 }
 
-import type { LlmFailure } from '@ejunz/ea/llm/types'
+import type { LlmFailure } from '@ejunz/ea-core/llm/types'
 
 export type { RetryId }
 
-declare module '@ejunz/ea/session/types' {
+declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {
     /** Durable, non-surface record of one provider-routed retry scheduled after a failed request attempt. */
     'llm/retry': LlmRetryEventData
@@ -81,11 +81,11 @@ import type { Context, Events } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import type { Agent, RequestErrorAction } from '@ejunz/ea/agent'
+import type { Agent, RequestErrorAction } from '@ejunz/ea-core/agent'
 
-import type { LlmFailure, ResolvedRetryPolicy } from '@ejunz/ea/llm'
+import type { LlmFailure, ResolvedRetryPolicy } from '@ejunz/ea-core/llm'
 
-import type { SessionEvent } from '@ejunz/ea/session'
+import type { SessionEvent } from '@ejunz/ea-core/session'
 
 export const name = 'llm-retry'
 
@@ -287,11 +287,11 @@ export function apply(ctx: Context, config: Config = {}, internals: RetryInterna
   }, 'llm-retry: abort and drain active recovery')
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/llm-retry'
+  const PACKAGE_NAME = '@ejunz/ea-core/llm-retry'
   export const name = 'llm-retry-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

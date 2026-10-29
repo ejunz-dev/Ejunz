@@ -6,7 +6,7 @@
  * user roots, parses YAML frontmatter, and loads bodies through `ctx.fs` when a
  * filesystem service is present.
  *
- * @module @ejunz/ea/skill-filesystem
+ * @module @ejunz/ea-core/skill-filesystem
  */
 
 import { access, lstat, readdir, readFile, stat } from 'node:fs/promises'
@@ -18,8 +18,8 @@ import chokidar from 'chokidar'
 import z from '@ejunz/schemastery'
 import type Schema from '@ejunz/schemastery'
 import { parse as parseYaml } from 'yaml'
-import type { FileSystem, FsDirEntry, FsTarget } from '@ejunz/ea/fs'
-import { canonicalizeWatchPath, resolveEaHome } from '@ejunz/ea/home-paths'
+import type { FileSystem, FsDirEntry, FsTarget } from '@ejunz/ea-core/fs'
+import { canonicalizeWatchPath, resolveEaHome } from '@ejunz/ea-core/home-paths'
 import {
   BUNDLED_SKILL_RANK,
   isSkillName,
@@ -31,7 +31,7 @@ import {
   type SkillProviderControl,
   type SkillProviderObservation,
   type SkillSource,
-} from '@ejunz/ea/skill'
+} from '@ejunz/ea-core/skill'
 
 const PROJECT_EA_RANK = 100
 const PROJECT_AGENTS_RANK = 200
@@ -1040,11 +1040,11 @@ function errorMessage(error: unknown): string {
   return String(error)
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/skill-filesystem'
+  const PACKAGE_NAME = '@ejunz/ea-core/skill-filesystem'
   export const name = 'skill-filesystem-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

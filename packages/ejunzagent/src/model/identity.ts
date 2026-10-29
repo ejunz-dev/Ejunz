@@ -13,14 +13,14 @@
  * touches the disk once, and a file deleted mid-run keeps the process's id
  * until the next launch.
  *
- * @module @ejunz/ea/anonymous-user-id
+ * @module @ejunz/ea-core/anonymous-user-id
  */
 
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import type { Branded } from '@ejunz/ea/brand'
-import { resolveEaHome } from '@ejunz/ea/home-paths'
+import type { Branded } from '@ejunz/ea-core/brand'
+import { resolveEaHome } from '@ejunz/ea-core/home-paths'
 
 /** A ejunzAgent-home-scoped anonymous user id (random UUID v4). */
 export type AnonymousUserId = Branded<'AnonymousUserId'>
@@ -99,11 +99,11 @@ export function getOrCreateAnonymousUserId(options: AnonymousUserIdOptions = {})
   return id
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/anonymous-user-id'
+  const PACKAGE_NAME = '@ejunz/ea-core/anonymous-user-id'
   export const name = 'anonymous-user-id-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

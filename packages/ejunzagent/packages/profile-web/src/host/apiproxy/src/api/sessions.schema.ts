@@ -6,8 +6,8 @@
  */
 
 import { z } from 'zod'
-import type { SessionEvent, SessionId } from '@ejunz/ea/session/types'
-import type { MessageId } from '@ejunz/ea/llm/brand'
+import type { SessionEvent, SessionId } from '@ejunz/ea-core/session/types'
+import type { MessageId } from '@ejunz/ea-core/llm/brand'
 import type { RequestPayload, ResponseValue } from './rpc-map.ts'
 import type { Wire } from './rpc.schema.ts'
 import type {
@@ -15,7 +15,7 @@ import type {
   ModelReasoningEffort, ModelSelection, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem, SessionSummary,
 } from './sessions.ts'
 import type { ToolEventView } from './events.ts'
-import type { AttachmentIdType, ImageAttachmentLimits, ImageAttachmentRef } from '@ejunz/ea/attachment'
+import type { AttachmentIdType, ImageAttachmentLimits, ImageAttachmentRef } from '@ejunz/ea-core/attachment'
 import {
   SESSION_SEARCH_RESULT_LIMIT,
   SESSION_SEARCH_SNIPPET_MAX_CODE_POINTS,

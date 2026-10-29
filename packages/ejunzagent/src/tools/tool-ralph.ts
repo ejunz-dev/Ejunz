@@ -2,19 +2,19 @@
  * Model-facing foreground Ralph loop over the workflow and subagent seams. A
  * fixed script starts one fresh structured-output child per round, carrying
  * only the immutable objective and the previous bounded handoff between them.
- * @module @ejunz/ea/tool-ralph
+ * @module @ejunz/ea-core/tool-ralph
  */
 
 import type { Context } from '@ejunz/cordis'
 import z from '@ejunz/schemastery'
-import type { ContentBlock } from '@ejunz/ea/llm'
-import type { JsonValue } from '@ejunz/ea/session'
-import type { SubagentProvider } from '@ejunz/ea/subagent'
-import { defineTool } from '@ejunz/ea/tools'
-import type { ToolCallView, ToolResultView } from '@ejunz/ea/tools'
-import type { WorkflowResult, WorkflowRun } from '@ejunz/ea/workflow'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
+import type { JsonValue } from '@ejunz/ea-core/session'
+import type { SubagentProvider } from '@ejunz/ea-core/subagent'
+import { defineTool } from '@ejunz/ea-core/tools'
+import type { ToolCallView, ToolResultView } from '@ejunz/ea-core/tools'
+import type { WorkflowResult, WorkflowRun } from '@ejunz/ea-core/workflow'
 // Declaration merge only: makes ctx.systemPrompt visible for section registration.
-import type {} from '@ejunz/ea/system-prompt'
+import type {} from '@ejunz/ea-core/system-prompt'
 
 export const name = 'tool-ralph'
 export const inject = ['tools', 'workflowEngine', 'subagents', 'systemPrompt']
@@ -478,11 +478,11 @@ export function apply(ctx: Context, config: Config): void {
   }))
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/tool-ralph'
+  const PACKAGE_NAME = '@ejunz/ea-core/tool-ralph'
   export const name = 'tool-ralph-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

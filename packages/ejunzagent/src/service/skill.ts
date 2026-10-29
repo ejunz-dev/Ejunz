@@ -3,17 +3,17 @@
  *
  * This package owns the Service Definition role of the skill capability seam.
  * Concrete
- * providers such as `@ejunz/ea/skill-filesystem` decide where skills come
+ * providers such as `@ejunz/ea-core/skill-filesystem` decide where skills come
  * from; this service only merges provider catalogs, resolves the winning skill
  * for a name, and exposes the winning summaries and definitions to consumers.
  *
- * @module @ejunz/ea/skill
+ * @module @ejunz/ea-core/skill
  */
 
 import { Context, Service } from '@ejunz/cordis'
-import { assertNever } from '@ejunz/ea/llm'
-import { NamedEntries, ScopedLayers, scopeChainOf, scopeOf } from '@ejunz/ea/scope'
-import type { ScopeKey, ScopeLayer } from '@ejunz/ea/scope'
+import { assertNever } from '@ejunz/ea-core/llm'
+import { NamedEntries, ScopedLayers, scopeChainOf, scopeOf } from '@ejunz/ea-core/scope'
+import type { ScopeKey, ScopeLayer } from '@ejunz/ea-core/scope'
 import z from '@ejunz/schemastery'
 import type Schema from '@ejunz/schemastery'
 
@@ -152,7 +152,7 @@ export interface SkillInvocationSource {
   readonly form: 'instructions'
 }
 
-declare module '@ejunz/ea/llm' {
+declare module '@ejunz/ea-core/llm' {
   interface MessageSourceMap {
     /** A user-explicit skill invocation injected by the host. */
     'skill-invocation': SkillInvocationSource
@@ -867,11 +867,11 @@ function errorMessage(error: unknown): string {
 
 export default SkillRegistry
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/skill'
+  const PACKAGE_NAME = '@ejunz/ea-core/skill'
   export const name = 'skill-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

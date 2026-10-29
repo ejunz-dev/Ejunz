@@ -1,4 +1,4 @@
-import type { LlmCallConfig } from '@ejunz/ea/llm'
+import type { LlmCallConfig } from '@ejunz/ea-core/llm'
 
 export interface CompactionPolicyConfig {
   /** Compact at this fraction of the model's context window. Defaults to `0.8`. */
@@ -61,9 +61,9 @@ export type ResolvedCompactSpec = Omit<ResolvedTargetPolicy, 'retainRatio' | 're
   readonly retainTokens: number
 }
 
-import { deepFreeze } from '@ejunz/ea/llm'
+import { deepFreeze } from '@ejunz/ea-core/llm'
 
-import type { LlmCallConfig } from '@ejunz/ea/llm'
+import type { LlmCallConfig } from '@ejunz/ea-core/llm'
 
 const DEFAULT_THRESHOLD_RATIO = 0.8
 
@@ -330,13 +330,13 @@ function assertRatio(name: string, value: unknown): asserts value is number {
 
 import type { Context } from '@ejunz/cordis'
 
-import { contentHasImage, createUserMessage, BlockAssembler, LlmError } from '@ejunz/ea/llm'
+import { contentHasImage, createUserMessage, BlockAssembler, LlmError } from '@ejunz/ea-core/llm'
 
 import type {
   ContentBlock, FinishReason, GenerateOptions, Message, TokenUsage, ToolSchema,
-} from '@ejunz/ea/llm'
+} from '@ejunz/ea-core/llm'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
 interface SummaryConfig {
   readonly summarizationProvider: string
@@ -527,21 +527,21 @@ import {
   compactCheckpointSource,
   toolPairingBalancedAfter,
   toolPairingBalancedBefore,
-} from '@ejunz/ea/compaction'
+} from '@ejunz/ea-core/compaction'
 
-import type { CompactionResult } from '@ejunz/ea/compaction'
+import type { CompactionResult } from '@ejunz/ea-core/compaction'
 
-import type { CommandId } from '@ejunz/ea/commands/brand'
+import type { CommandId } from '@ejunz/ea-core/commands/brand'
 
-import { createUserMessage, errorChain } from '@ejunz/ea/llm'
+import { createUserMessage, errorChain } from '@ejunz/ea-core/llm'
 
-import type { Message, UserMessage } from '@ejunz/ea/llm'
+import type { Message, UserMessage } from '@ejunz/ea-core/llm'
 
-import type { TokenMeasurement, TokenMeter } from '@ejunz/ea/token-meter'
+import type { TokenMeasurement, TokenMeter } from '@ejunz/ea-core/token-meter'
 
-import type { Session, SessionEvent } from '@ejunz/ea/session'
+import type { Session, SessionEvent } from '@ejunz/ea-core/session'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
 interface RegionDependencies {
   readonly meter: TokenMeter
@@ -1004,23 +1004,23 @@ import { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { CompactionEngine, ManualCompactionError } from '@ejunz/ea/compaction'
+import { CompactionEngine, ManualCompactionError } from '@ejunz/ea-core/compaction'
 
-import type { CompactionResult, CompactionTrigger } from '@ejunz/ea/compaction'
+import type { CompactionResult, CompactionTrigger } from '@ejunz/ea-core/compaction'
 
-import type { TokenMeter } from '@ejunz/ea/token-meter'
+import type { TokenMeter } from '@ejunz/ea-core/token-meter'
 
-import type { Session } from '@ejunz/ea/session'
+import type { Session } from '@ejunz/ea-core/session'
 
-import { CONTEXT_WINDOW_EXCEEDED_CODE, assertNever } from '@ejunz/ea/llm'
+import { CONTEXT_WINDOW_EXCEEDED_CODE, assertNever } from '@ejunz/ea-core/llm'
 
-import type { LlmCallConfig } from '@ejunz/ea/llm'
+import type { LlmCallConfig } from '@ejunz/ea-core/llm'
 
-import type { Agent, PreStepDecision } from '@ejunz/ea/agent'
+import type { Agent, PreStepDecision } from '@ejunz/ea-core/agent'
 
-import type { CommandId } from '@ejunz/ea/commands/brand'
+import type { CommandId } from '@ejunz/ea-core/commands/brand'
 
-import type {} from '@ejunz/ea/compaction-tool-result-pruner'
+import type {} from '@ejunz/ea-core/compaction-tool-result-pruner'
 
 type RegionSummarize = (input: SummarizationInput, agent: Agent, signal?: AbortSignal) => Promise<SummaryResult>
 
@@ -1403,11 +1403,11 @@ export class BasicCompactionEngine extends CompactionEngine {
 
 export default BasicCompactionEngine
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/compaction-basic'
+  const PACKAGE_NAME = '@ejunz/ea-core/compaction-basic'
   export const name = 'compaction-basic-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

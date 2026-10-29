@@ -3,7 +3,7 @@
  * `ctx.subagents` that runs each child as a fresh child {@link Agent} on the same cordis
  * context (its own session, own system prompt, zero parent context). The cheapest transport,
  * reusing the agent factory's quiescent teardown.
- * @module @ejunz/ea/subagent-spawn-in-process
+ * @module @ejunz/ea-core/subagent-spawn-in-process
  */
 
 import type { Context } from '@ejunz/cordis'
@@ -13,8 +13,8 @@ import type {
   ResolvedSubagentStartRequest,
   SubagentCapabilities,
   SubagentProvider,
-} from '@ejunz/ea/subagent'
-import { startInProcessRun } from '@ejunz/ea/subagent-in-process-driver'
+} from '@ejunz/ea-core/subagent'
+import { startInProcessRun } from '@ejunz/ea-core/subagent-in-process-driver'
 
 export const name = 'subagent-spawn-in-process'
 // `tools` is deliberately not injected: the child factory already provides it during setup,
@@ -63,11 +63,11 @@ export function apply(ctx: Context, config: Config): void {
   ctx.subagents.registerProvider(new SpawnInProcessProvider(config.providerName))
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/subagent-spawn-in-process'
+  const PACKAGE_NAME = '@ejunz/ea-core/subagent-spawn-in-process'
   export const name = 'subagent-spawn-in-process-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

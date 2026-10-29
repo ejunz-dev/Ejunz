@@ -6,10 +6,10 @@
  */
 
 import type { Context } from '@ejunz/cordis'
-import { defineTool } from '@ejunz/ea/tools'
-import type { GenericCallView, JsonValue, ToolResult, WebSearchResultView, WebSource } from '@ejunz/ea/tools'
+import { defineTool } from '@ejunz/ea-core/tools'
+import type { GenericCallView, JsonValue, ToolResult, WebSearchResultView, WebSource } from '@ejunz/ea-core/tools'
 import type { WebSearchResult, WebSearchSource } from '@ejunz/profile-web'
-import type {} from '@ejunz/ea/system-prompt'
+import type {} from '@ejunz/ea-core/system-prompt'
 
 /**
  * Default upper bound on returned sources (the `searchMaxResults` config).
@@ -203,7 +203,7 @@ export function presentSearchResult(args: { query: string }, result: ToolResult)
  * @param maxResults - the deployment's source cap, sent as every seam
  *   request's `maxResults`.
  * @param timeoutMs - the cooperative tool-call budget (ms) attached as the tool's
- *   `ToolDefinition.timeoutMs` for `@ejunz/ea/tool-call-timeout-policy` to enforce.
+ *   `ToolDefinition.timeoutMs` for `@ejunz/ea-core/tool-call-timeout-policy` to enforce.
  * @param fetchEnabled - whether the same composition exposes `web_fetch`, which
  *   controls whether search guidance may recommend that follow-up tool.
  */

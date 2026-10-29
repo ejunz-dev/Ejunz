@@ -2,7 +2,7 @@
 # omits host filesystem and operating-system access.
 
 - id: persona
-  name: '@ejunz/ea/persona'
+  name: '@ejunz/ea-core/persona'
   config:
     text: You are a helpful software engineer assistant.
     complete: true

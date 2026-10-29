@@ -7,11 +7,11 @@
 
 import type { Context } from '@ejunz/cordis'
 import z from '@ejunz/schemastery'
-import type {} from '@ejunz/ea/agent'
-import { credentialRef } from '@ejunz/ea/credentials'
-import { installSettingsSection, settingsNamespace } from '@ejunz/ea/settings'
-import { launchEnvironmentOf } from '@ejunz/ea/launch-environment'
-import type {} from '@ejunz/ea/session'
+import type {} from '@ejunz/ea-core/agent'
+import { credentialRef } from '@ejunz/ea-core/credentials'
+import { installSettingsSection, settingsNamespace } from '@ejunz/ea-core/settings'
+import { launchEnvironmentOf } from '@ejunz/ea-core/launch-environment'
+import type {} from '@ejunz/ea-core/session'
 import type {} from '@ejunz/profile-web'
 import {
   DeepSeekSearchProvider,

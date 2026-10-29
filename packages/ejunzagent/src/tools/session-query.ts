@@ -1,11 +1,11 @@
 import type { Context } from '@ejunz/cordis'
 
-import { EjunzAgentError } from '@ejunz/ea/llm'
+import { EjunzAgentError } from '@ejunz/ea-core/llm'
 
 import {
   SessionQueryError,
   type SessionQueryErrorCode,
-} from '@ejunz/ea/session-query'
+} from '@ejunz/ea-core/session-query'
 
 interface ModelSafeServiceFailure {
   readonly code: SessionQueryErrorCode | 'SESSION_QUERY_TOOL_FAILED'
@@ -175,21 +175,21 @@ export const serviceBoundary = {
 
 import type { Context } from '@ejunz/cordis'
 
-import { EjunzAgentError } from '@ejunz/ea/llm'
+import { EjunzAgentError } from '@ejunz/ea-core/llm'
 
 import {
   SessionId,
   type SessionEvent,
   type SessionHeader,
   type SessionId as SessionIdValue,
-} from '@ejunz/ea/session'
+} from '@ejunz/ea-core/session'
 
 import type {
   SessionLineageNode,
   SessionRecord,
-} from '@ejunz/ea/session-query'
+} from '@ejunz/ea-core/session-query'
 
-import type { ToolRunContext } from '@ejunz/ea/tools'
+import type { ToolRunContext } from '@ejunz/ea-core/tools'
 
 interface Caller {
   readonly id: SessionIdValue
@@ -429,7 +429,7 @@ import {
   SessionId,
   type SessionEventType,
   type SessionId as SessionIdValue,
-} from '@ejunz/ea/session'
+} from '@ejunz/ea-core/session'
 
 import {
   SessionQueryError,
@@ -437,7 +437,7 @@ import {
   type SessionEventMetadataFilter,
   type SessionEventSurface,
   type SessionResultFilter,
-} from '@ejunz/ea/session-query'
+} from '@ejunz/ea-core/session-query'
 
 interface SessionSearchArgs {
   query: string
@@ -735,14 +735,14 @@ import {
   type SessionLineageTrace,
   type SessionRecord,
   type SessionSearchHit,
-} from '@ejunz/ea/session-query'
+} from '@ejunz/ea-core/session-query'
 
 import type {
   SessionEvent,
   SessionId,
-} from '@ejunz/ea/session'
+} from '@ejunz/ea-core/session'
 
-import type { GenericCallView } from '@ejunz/ea/tools'
+import type { GenericCallView } from '@ejunz/ea-core/tools'
 
 type TitleView = Awaited<ReturnType<typeof cwdAccess.readTitle>>
 
@@ -981,9 +981,9 @@ export const presentation = {
 
 import type { Context } from '@ejunz/cordis'
 
-import { EjunzAgentError } from '@ejunz/ea/llm'
+import { EjunzAgentError } from '@ejunz/ea-core/llm'
 
-import type { SessionId } from '@ejunz/ea/session'
+import type { SessionId } from '@ejunz/ea-core/session'
 
 import {
   SessionQueryError,
@@ -991,9 +991,9 @@ import {
   type SessionEventSurface,
   type SessionRecord,
   type SessionSearchCursor,
-} from '@ejunz/ea/session-query'
+} from '@ejunz/ea-core/session-query'
 
-import type { ToolRunContext } from '@ejunz/ea/tools'
+import type { ToolRunContext } from '@ejunz/ea-core/tools'
 
 type SessionSearchArgs = Parameters<typeof toolInput.buildSessionFilters>[0]
 
@@ -1258,11 +1258,11 @@ import type { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { MAX_TIMER_DELAY_MS } from '@ejunz/ea/timeout'
+import { MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
 
-import { defineTool } from '@ejunz/ea/tools'
+import { defineTool } from '@ejunz/ea-core/tools'
 
-import type {} from '@ejunz/ea/system-prompt'
+import type {} from '@ejunz/ea-core/system-prompt'
 
 export const name = 'tool-session-query'
 
@@ -1380,11 +1380,11 @@ function resolveConfig(config: Config): ResolvedConfig {
   return { maxSearchResults, searchTimeoutMs }
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/tool-session-query'
+  const PACKAGE_NAME = '@ejunz/ea-core/tool-session-query'
   export const name = 'tool-session-query-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

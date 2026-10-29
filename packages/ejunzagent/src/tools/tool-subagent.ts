@@ -5,19 +5,19 @@
  * Background policy is selected by this plugin's configuration: one-shot
  * calls own a plain Task, while continuable calls use
  * `ctx.subagents.startContinuable()`.
- * @module @ejunz/ea/tool-subagent
+ * @module @ejunz/ea-core/tool-subagent
  */
 
 import type { Context } from '@ejunz/cordis'
 import z from '@ejunz/schemastery'
-import { defineTool } from '@ejunz/ea/tools'
-import type { AgentOptions } from '@ejunz/ea/agent'
-import type { ContentBlock } from '@ejunz/ea/llm'
-import type { JsonValue } from '@ejunz/ea/session'
-import { assertSubagentMaxDepth, settleRun } from '@ejunz/ea/subagent'
-import type { SubagentProvider, SubagentResult, SubagentRun } from '@ejunz/ea/subagent'
-import type { JobOutcome } from '@ejunz/ea/jobs'
-import type {} from '@ejunz/ea/system-prompt'
+import { defineTool } from '@ejunz/ea-core/tools'
+import type { AgentOptions } from '@ejunz/ea-core/agent'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
+import type { JsonValue } from '@ejunz/ea-core/session'
+import { assertSubagentMaxDepth, settleRun } from '@ejunz/ea-core/subagent'
+import type { SubagentProvider, SubagentResult, SubagentRun } from '@ejunz/ea-core/subagent'
+import type { JobOutcome } from '@ejunz/ea-core/jobs'
+import type {} from '@ejunz/ea-core/system-prompt'
 
 export const name = 'tool-subagent'
 export const inject = ['tools', 'subagents', 'systemPrompt']
@@ -399,7 +399,7 @@ export function apply(ctx: Context, config: Config): void {
           }
           const jobs = ctx.get('jobs')
           if (jobs === undefined) {
-            throw new Error('background jobs unavailable: load @ejunz/ea/jobs and @ejunz/ea/tool-jobs')
+            throw new Error('background jobs unavailable: load @ejunz/ea-core/jobs and @ejunz/ea-core/tool-jobs')
           }
           // One-shot background child: job preflight finishes before the
           // starter can spawn, and the task-owned signal covers startup.
@@ -466,11 +466,11 @@ export function apply(ctx: Context, config: Config): void {
   }
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/tool-subagent'
+  const PACKAGE_NAME = '@ejunz/ea-core/tool-subagent'
   export const name = 'tool-subagent-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

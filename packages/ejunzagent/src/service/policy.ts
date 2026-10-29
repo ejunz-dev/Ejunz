@@ -1,4 +1,4 @@
-import type { SessionId } from '@ejunz/ea/session'
+import type { SessionId } from '@ejunz/ea-core/session'
 
 export interface SpillPolicyExec {
   /** The agent on whose behalf the call runs, when there is one. */
@@ -16,19 +16,19 @@ import type { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import { TextRetainer, describeOmitted } from '@ejunz/ea/output-retention'
+import { TextRetainer, describeOmitted } from '@ejunz/ea-core/output-retention'
 
-import type { Omitted } from '@ejunz/ea/output-retention'
+import type { Omitted } from '@ejunz/ea-core/output-retention'
 
-import type { SaveTextSpill, SpillRef } from '@ejunz/ea/spill'
+import type { SaveTextSpill, SpillRef } from '@ejunz/ea-core/spill'
 
-import type { SessionId } from '@ejunz/ea/session'
+import type { SessionId } from '@ejunz/ea-core/session'
 
-import type { CallId } from '@ejunz/ea/llm'
+import type { CallId } from '@ejunz/ea-core/llm'
 
-import type { PostToolDecision, ToolExecution } from '@ejunz/ea/tools'
+import type { PostToolDecision, ToolExecution } from '@ejunz/ea-core/tools'
 
 export interface Config {
   /**
@@ -177,11 +177,11 @@ export function apply(ctx: Context, config: Config): void {
 
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/spill-policy'
+  const PACKAGE_NAME = '@ejunz/ea-core/spill-policy'
   export const name = 'spill-policy-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

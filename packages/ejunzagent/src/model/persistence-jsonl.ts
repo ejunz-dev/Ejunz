@@ -1,10 +1,10 @@
 import { join } from 'node:path'
 
-import { decodeStorageRecord, packChunkRuns, SESSION_FORMAT_VERSION } from '@ejunz/ea/session'
+import { decodeStorageRecord, packChunkRuns, SESSION_FORMAT_VERSION } from '@ejunz/ea-core/session'
 
-import type { SessionEvent, SessionHeader, SessionId, StorageRecord } from '@ejunz/ea/session'
+import type { SessionEvent, SessionHeader, SessionId, StorageRecord } from '@ejunz/ea-core/session'
 
-import { SessionFormatUnsupportedError, sessionFormatVersionRefusal } from '@ejunz/ea/session-persistence'
+import { SessionFormatUnsupportedError, sessionFormatVersionRefusal } from '@ejunz/ea-core/session-persistence'
 
 export type JsonlCompression = 'zstd' | 'none'
 
@@ -779,9 +779,9 @@ import {
   type PersistenceBackend, type SessionLocation, type SessionPersistenceSnapshot,
   type SessionInspection, type SessionPersistenceRevision as PersistenceRevision, type SessionRawArtifact,
   type StoredPrefix,
-} from '@ejunz/ea/session-persistence'
+} from '@ejunz/ea-core/session-persistence'
 
-import type { SessionEvent, SessionId, SessionHeader, SessionPreparation } from '@ejunz/ea/session'
+import type { SessionEvent, SessionId, SessionHeader, SessionPreparation } from '@ejunz/ea-core/session'
 
 const DEFAULT_PACK_CHUNKS = true
 
@@ -1700,11 +1700,11 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
 
 export default JsonlSessionPersistence
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/session-persistence-jsonl'
+  const PACKAGE_NAME = '@ejunz/ea-core/session-persistence-jsonl'
   export const name = 'session-persistence-jsonl-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

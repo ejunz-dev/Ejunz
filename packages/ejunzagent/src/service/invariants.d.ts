@@ -3,7 +3,7 @@
  * Every workspace package registers checks from a `./invariant` companion;
  * ordinary package entrypoints stay independent of diagnostics.
  *
- * @module @ejunz/ea/invariants
+ * @module @ejunz/ea-core/invariants
  */
 import { Context, Service } from '@ejunz/cordis';
 import type { Inject } from '@ejunz/cordis';

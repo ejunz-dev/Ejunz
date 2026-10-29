@@ -1,31 +1,31 @@
 /** Platform-neutral assembly of generated Host Remote contributions. */
 
 import type { Context } from '@ejunz/cordis'
-import commandsRemote from '@ejunz/ea/commands/remote'
-import goalsRemote from '@ejunz/ea/goal/remote'
-import dynamicRemote from '@ejunz/ea/cordis-host-runner/remote'
+import commandsRemote from '@ejunz/ea-core/commands/remote'
+import goalsRemote from '@ejunz/ea-core/goal/remote'
+import dynamicRemote from '@ejunz/ea-core/cordis-host-runner/remote'
 import pluginInventoryRemote from '@ejunz/profile-web/host/plugin-inventory/remote'
-import messageFeedbackRemote from '@ejunz/ea/message-feedback/remote'
-import type { TypertClientRemote } from '@ejunz/ea/typert-protocol'
+import messageFeedbackRemote from '@ejunz/ea-core/message-feedback/remote'
+import type { TypertClientRemote } from '@ejunz/ea-core/typert-protocol'
 
-export type { TypertClientRemote as ClientRemote } from '@ejunz/ea/typert-protocol'
+export type { TypertClientRemote as ClientRemote } from '@ejunz/ea-core/typert-protocol'
 export type { PluginInventorySnapshot } from '@ejunz/profile-web/host/plugin-inventory/types'
-export type {} from '@ejunz/ea/commands/remote'
-export type {} from '@ejunz/ea/goal/remote'
+export type {} from '@ejunz/ea-core/commands/remote'
+export type {} from '@ejunz/ea-core/goal/remote'
 export type {} from '@ejunz/profile-web/host/plugin-inventory/remote'
-export type {} from '@ejunz/ea/message-feedback/remote'
+export type {} from '@ejunz/ea-core/message-feedback/remote'
 // The forwarded-event allowlist's selection seat: without it in the consumer's
 // compilation face `TypertRemoteEvent` is `never` and every `$on` call fails.
 export type { ApiRemoteForwardedEvent } from '../types.ts'
 // The owner packages' client-safe `./types` exports supply the `Events`
 // signatures `$on` hands to a listener, so a consumer reads the very
 // declaration the Host emits rather than a flattened restatement of it.
-export type {} from '@ejunz/ea/commands/types'
-export type {} from '@ejunz/ea/cordis-host-runner/types'
-export type {} from '@ejunz/ea/credentials/types'
-export type {} from '@ejunz/ea/llm/types'
-export type {} from '@ejunz/ea/agent-presets/types'
-export type {} from '@ejunz/ea/settings/types'
+export type {} from '@ejunz/ea-core/commands/types'
+export type {} from '@ejunz/ea-core/cordis-host-runner/types'
+export type {} from '@ejunz/ea-core/credentials/types'
+export type {} from '@ejunz/ea-core/llm/types'
+export type {} from '@ejunz/ea-core/agent-presets/types'
+export type {} from '@ejunz/ea-core/settings/types'
 
 /**
  * The carrier's Client-facing types, re-exported so a business package names one
@@ -42,7 +42,7 @@ export type {
   SubagentAddress, SubagentCatalog, JobView, ToolCallView, ToolEventView, ToolResultView,
 } from '@ejunz/profile-web/client/connection/client'
 export type {} from '@ejunz/profile-web/api/gateway/client'
-export type {} from '@ejunz/ea/cordis-host-runner/remote'
+export type {} from '@ejunz/ea-core/cordis-host-runner/remote'
 
 // The payload vocabulary of the selected namespaces, re-exported so a Client
 // contribution can name what it sends and receives without importing a Host
@@ -80,11 +80,11 @@ export type {
   DynamicCordisStopResponse,
   DynamicCordisUndefineReceipt,
   RequestRunOutcome,
-} from '@ejunz/ea/cordis-host-runner/types'
+} from '@ejunz/ea-core/cordis-host-runner/types'
 // The JSON vocabulary those payloads are built from, re-exported for the same
 // reason: a Client contribution names what it sends without importing a Host
 // package, and this assembly is where both planes legitimately meet.
-export type { JsonValue } from '@ejunz/ea/session/types'
+export type { JsonValue } from '@ejunz/ea-core/session/types'
 
 declare module '@ejunz/cordis' {
   interface Context {

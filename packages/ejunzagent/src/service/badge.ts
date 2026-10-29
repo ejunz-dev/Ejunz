@@ -9,7 +9,7 @@ import {
   type SkillCandidate,
   type SkillDefinition,
   type SkillProvider,
-} from '@ejunz/ea/skill'
+} from '@ejunz/ea-core/skill'
 
 const PROVIDER_NAME = 'ea-badge'
 
@@ -59,11 +59,11 @@ export function apply(ctx: Context): void {
   ctx.skills.registerProvider(() => provider)
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/skill-badge'
+  const PACKAGE_NAME = '@ejunz/ea-core/skill-badge'
   export const name = 'skill-badge-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

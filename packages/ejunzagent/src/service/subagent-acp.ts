@@ -15,15 +15,15 @@ import {
   type StopReason,
 } from '@agentclientprotocol/sdk'
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import { SessionId } from '@ejunz/ea/session'
+import { SessionId } from '@ejunz/ea-core/session'
 
-import { AssistantOutputFold } from '@ejunz/ea/subagent'
+import { AssistantOutputFold } from '@ejunz/ea-core/subagent'
 
-import type { SubagentResult, SubagentRun, SubagentStartRequest, SubagentStopReason } from '@ejunz/ea/subagent'
+import type { SubagentResult, SubagentRun, SubagentStartRequest, SubagentStopReason } from '@ejunz/ea-core/subagent'
 
-import type { SubprocessHandle, SubprocessSpawnSpec } from '@ejunz/ea/subprocess'
+import type { SubprocessHandle, SubprocessSpawnSpec } from '@ejunz/ea-core/subprocess'
 
 export type PermissionPolicy = 'allow' | 'reject'
 
@@ -337,9 +337,9 @@ import type {
   SubagentCapabilities,
   SubagentProvider,
   SubagentStartRequest,
-} from '@ejunz/ea/subagent'
+} from '@ejunz/ea-core/subagent'
 
-import { MAX_TIMER_DELAY_MS } from '@ejunz/ea/timeout'
+import { MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
 
 export const name = 'subagent-acp'
 
@@ -480,11 +480,11 @@ export function apply(ctx: Context, config: Config): void {
   ctx.subagents.registerProvider(new AcpProvider(validated.providerName, ctx, validated))
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/subagent-acp'
+  const PACKAGE_NAME = '@ejunz/ea-core/subagent-acp'
   export const name = 'subagent-acp-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

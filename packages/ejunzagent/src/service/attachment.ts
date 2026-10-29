@@ -1,4 +1,4 @@
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
 export type AttachmentId = Branded<'AttachmentId'>
 
@@ -103,11 +103,11 @@ export abstract class AttachmentStore extends Service {
 
 export default AttachmentStore
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/attachment'
+  const PACKAGE_NAME = '@ejunz/ea-core/attachment'
   export const name = 'attachment-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

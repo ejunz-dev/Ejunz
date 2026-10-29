@@ -635,11 +635,11 @@ function validateName(subject: string, value: string): void {
   }
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/typert-protocol'
+  const PACKAGE_NAME = '@ejunz/ea-core/typert-protocol'
   export const name = 'typert-protocol-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

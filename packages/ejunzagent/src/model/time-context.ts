@@ -1,6 +1,6 @@
-import { assertNever } from '@ejunz/ea/llm'
+import { assertNever } from '@ejunz/ea-core/llm'
 
-import type { UserMessage } from '@ejunz/ea/llm'
+import type { UserMessage } from '@ejunz/ea-core/llm'
 
 const IANA_TIME_ZONE = /^[A-Za-z][A-Za-z0-9_+.-]*(?:\/[A-Za-z0-9_+.-]+)+$/
 
@@ -94,11 +94,11 @@ import type { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import type { Agent, PreStepDecision } from '@ejunz/ea/agent'
+import type { Agent, PreStepDecision } from '@ejunz/ea-core/agent'
 
-import { createUserMessage } from '@ejunz/ea/llm'
+import { createUserMessage } from '@ejunz/ea-core/llm'
 
-import type { UserMessage } from '@ejunz/ea/llm'
+import type { UserMessage } from '@ejunz/ea-core/llm'
 
 export const name = 'time-context'
 
@@ -275,11 +275,11 @@ export function apply(ctx: Context, config: Config): void {
   }, { prepend: true })
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/time-context'
+  const PACKAGE_NAME = '@ejunz/ea-core/time-context'
   export const name = 'time-context-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

@@ -11,7 +11,7 @@ import {
   scrubbedParentEnv,
   type SubprocessHandle,
   type SubprocessSpawnSpec,
-} from '@ejunz/ea/subprocess'
+} from '@ejunz/ea-core/subprocess'
 
 const WINDOWS_BATCH_EXECUTABLE_ENV = 'EA_CLAUDE_CODE_EXECUTABLE'
 
@@ -158,9 +158,9 @@ import {
   type SpawnOptions,
 } from '@anthropic-ai/claude-agent-sdk'
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import { SessionId } from '@ejunz/ea/session'
+import { SessionId } from '@ejunz/ea-core/session'
 
 import {
   settleRunResult,
@@ -169,13 +169,13 @@ import {
   type SubagentRun,
   type SubagentStartRequest,
   type SubagentStopReason,
-} from '@ejunz/ea/subagent'
+} from '@ejunz/ea-core/subagent'
 
 import {
   scrubbedParentEnv,
   type SubprocessHandle,
   type SubprocessSpawnSpec,
-} from '@ejunz/ea/subprocess'
+} from '@ejunz/ea-core/subprocess'
 
 export const DEFAULT_DISPOSE_GRACE_MS = 3_000
 
@@ -395,7 +395,7 @@ import type { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { MAX_TIMER_DELAY_MS } from '@ejunz/ea/timeout'
+import { MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
 
 import {
   assertPositiveFinite,
@@ -404,7 +404,7 @@ import {
   type ResolvedSubagentStartRequest,
   type SubagentCapabilities,
   type SubagentProvider,
-} from '@ejunz/ea/subagent'
+} from '@ejunz/ea-core/subagent'
 
 export const name = 'subagent-claude-code'
 
@@ -484,11 +484,11 @@ export function apply(ctx: Context, config: Config): void {
   ctx.subagents.registerProvider(new ClaudeCodeProvider(ctx, resolved))
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/subagent-claude-code'
+  const PACKAGE_NAME = '@ejunz/ea-core/subagent-claude-code'
   export const name = 'subagent-claude-code-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

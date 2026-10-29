@@ -1,4 +1,4 @@
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
 export type CredentialRef = Branded<'CredentialRef'>
 
@@ -140,11 +140,11 @@ export abstract class CredentialProvider extends Service {
 
 export default CredentialProvider
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/credentials'
+  const PACKAGE_NAME = '@ejunz/ea-core/credentials'
   export const name = 'credentials-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

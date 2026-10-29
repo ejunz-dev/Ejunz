@@ -218,11 +218,11 @@ export class Storage extends Service {
 
 export default Storage
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/storage'
+  const PACKAGE_NAME = '@ejunz/ea-core/storage'
   export const name = 'storage-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

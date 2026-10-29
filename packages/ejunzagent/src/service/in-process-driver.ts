@@ -1,10 +1,10 @@
 import type { Context } from '@ejunz/cordis'
 
-import type { ToolSchema } from '@ejunz/ea/llm'
+import type { ToolSchema } from '@ejunz/ea-core/llm'
 
-import type { ToolExecution, ToolRunContext } from '@ejunz/ea/tools'
+import type { ToolExecution, ToolRunContext } from '@ejunz/ea-core/tools'
 
-import { ToolArgsError, validateJsonSchemaValue, type ObjectJsonSchema } from '@ejunz/ea/tools'
+import { ToolArgsError, validateJsonSchemaValue, type ObjectJsonSchema } from '@ejunz/ea-core/tools'
 
 export const STRUCTURED_OUTPUT_TOOL = 'structured_output'
 
@@ -101,13 +101,13 @@ import { randomUUID } from 'node:crypto'
 
 import type { Context } from '@ejunz/cordis'
 
-import { foldConsumedWork } from '@ejunz/ea/agent'
+import { foldConsumedWork } from '@ejunz/ea-core/agent'
 
-import type { Agent, AgentHandle } from '@ejunz/ea/agent'
+import type { Agent, AgentHandle } from '@ejunz/ea-core/agent'
 
-import { SessionId, type SessionEvent, type TurnEndReason } from '@ejunz/ea/session'
+import { SessionId, type SessionEvent, type TurnEndReason } from '@ejunz/ea-core/session'
 
-import { createUserMessage, type ContentBlock } from '@ejunz/ea/llm'
+import { createUserMessage, type ContentBlock } from '@ejunz/ea-core/llm'
 
 import {
   appendDelegatedPolicyOverrides,
@@ -118,7 +118,7 @@ import {
   finalAssistantOutput,
   resolveChildAgentOptions,
   resolveChildDepth,
-} from '@ejunz/ea/subagent'
+} from '@ejunz/ea-core/subagent'
 
 import type {
   ResolvedSubagentStartRequest,
@@ -126,7 +126,7 @@ import type {
   SubagentResult,
   SubagentRun,
   SubagentStopReason,
-} from '@ejunz/ea/subagent'
+} from '@ejunz/ea-core/subagent'
 
 function toStopReason(reason: TurnEndReason | undefined): SubagentStopReason {
   switch (reason?.kind) {
@@ -296,11 +296,11 @@ function readResult(
   return { output, stopReason }
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/subagent-in-process-driver'
+  const PACKAGE_NAME = '@ejunz/ea-core/subagent-in-process-driver'
   export const name = 'subagent-in-process-driver-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

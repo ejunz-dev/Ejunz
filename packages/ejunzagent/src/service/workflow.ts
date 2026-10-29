@@ -1,6 +1,6 @@
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
-import type { SessionId } from '@ejunz/ea/session/types'
+import type { SessionId } from '@ejunz/ea-core/session/types'
 
 export type WorkflowRunId = Branded<'WorkflowRunId'>
 
@@ -83,7 +83,7 @@ export interface WorkflowResultInfo {
   agentsStarted: number
 }
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
 export interface WorkflowStartRequest {
   /** The plain-JS script body (top-level await allowed; ends with `return <json-value>`). */
@@ -115,7 +115,7 @@ export interface WorkflowRun {
 
 import { Context, Service } from '@ejunz/cordis'
 
-import { EjunzAgentError } from '@ejunz/ea/llm'
+import { EjunzAgentError } from '@ejunz/ea-core/llm'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -258,11 +258,11 @@ function renderListenerError(error: unknown): string {
 
 export default WorkflowEngine
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/workflow'
+  const PACKAGE_NAME = '@ejunz/ea-core/workflow'
   export const name = 'workflow-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

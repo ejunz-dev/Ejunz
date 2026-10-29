@@ -1,8 +1,8 @@
-import type { SessionId } from '@ejunz/ea/session/types'
+import type { SessionId } from '@ejunz/ea-core/session/types'
 
 import type {
   WorkflowAgentOutcome, WorkflowRunId, WorkflowStopReason,
-} from '@ejunz/ea/workflow/types'
+} from '@ejunz/ea-core/workflow/types'
 
 export interface ToolWorkflowRunStartData {
   readonly runId: WorkflowRunId
@@ -28,7 +28,7 @@ export interface ToolWorkflowRunEndData {
   readonly stopReason: WorkflowStopReason
 }
 
-declare module '@ejunz/ea/session/types' {
+declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {
     /**
      * Opens one top-level workflow record.
@@ -57,19 +57,19 @@ import type { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { defineTool } from '@ejunz/ea/tools'
+import { defineTool } from '@ejunz/ea-core/tools'
 
-import type { ToolCallView, ToolResultView } from '@ejunz/ea/tools'
+import type { ToolCallView, ToolResultView } from '@ejunz/ea-core/tools'
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import type { JsonValue, Session, SessionEventMap } from '@ejunz/ea/session'
+import type { JsonValue, Session, SessionEventMap } from '@ejunz/ea-core/session'
 
 import type {
   WorkflowResult, WorkflowRun, WorkflowRunId, WorkflowStopReason,
-} from '@ejunz/ea/workflow'
+} from '@ejunz/ea-core/workflow'
 
-import type {} from '@ejunz/ea/system-prompt'
+import type {} from '@ejunz/ea-core/system-prompt'
 
 export const name = 'tool-workflow'
 
@@ -362,11 +362,11 @@ export function apply(ctx: Context, config: Config): void {
   }))
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/tool-workflow'
+  const PACKAGE_NAME = '@ejunz/ea-core/tool-workflow'
   export const name = 'tool-workflow-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

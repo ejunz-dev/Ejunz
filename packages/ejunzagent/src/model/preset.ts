@@ -10,17 +10,17 @@
  * That constraint is the reason the row exists. An agent preset cannot mount
  * the prompt registry itself, so without a row of its own a preset could
  * change an agent's tools but never its identity.
- * @module @ejunz/ea/persona
+ * @module @ejunz/ea-core/persona
  */
 
 import type { Context } from '@ejunz/cordis'
 import z from '@ejunz/schemastery'
-import type {} from '@ejunz/ea/system-prompt'
+import type {} from '@ejunz/ea-core/system-prompt'
 
 // Imported rather than restated: the registry declares the slot this row
 // replaces, and two hardcoded copies would drift into a preset whose persona
 // silently lands beside the deployment's instead of shadowing it.
-import { PERSONA_ORDER, PERSONA_SECTION } from '@ejunz/ea/system-prompt'
+import { PERSONA_ORDER, PERSONA_SECTION } from '@ejunz/ea-core/system-prompt'
 
 export { PERSONA_ORDER, PERSONA_SECTION }
 
@@ -67,11 +67,11 @@ export function apply(ctx: Context, config: Config): void {
   if (!(config.includeRuntimeContext ?? true)) ctx.systemPrompt.suppressRuntimeContext()
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/persona'
+  const PACKAGE_NAME = '@ejunz/ea-core/persona'
   export const name = 'persona-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

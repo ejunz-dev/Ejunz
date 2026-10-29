@@ -2,7 +2,7 @@ import { Context, Service } from '@ejunz/cordis'
 
 import type { ZodType } from 'zod'
 
-import type { Session, SessionEvent } from '@ejunz/ea/session'
+import type { Session, SessionEvent } from '@ejunz/ea-core/session'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -10,9 +10,9 @@ declare module '@ejunz/cordis' {
   }
 }
 
-import type { SessionProjectionMap } from '@ejunz/ea/session-projection/types'
+import type { SessionProjectionMap } from '@ejunz/ea-core/session-projection/types'
 
-export type { SessionProjectionMap } from '@ejunz/ea/session-projection/types'
+export type { SessionProjectionMap } from '@ejunz/ea-core/session-projection/types'
 
 export interface ProjectionDefinition<K extends keyof SessionProjectionMap, S> {
   /** The projection key this unit owns (its `SessionProjectionMap` entry). */
@@ -356,11 +356,11 @@ export default SessionProjectionRegistry
 
 export interface SessionProjectionMap {}
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/session-projection'
+  const PACKAGE_NAME = '@ejunz/ea-core/session-projection'
   export const name = 'session-projection-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

@@ -21,7 +21,7 @@ import type {
 // Value import from the inline-safe wire layer (not the connection plugin):
 // plugin-to-plugin value imports are a bundle purity error.
 import { SESSION_SEARCH_RESULT_LIMIT } from '@ejunz/profile-web/host/apiproxy/api'
-import type { SessionProjectionMap } from '@ejunz/ea/session-projection/types'
+import type { SessionProjectionMap } from '@ejunz/ea-core/session-projection/types'
 import type { SnapshotStore } from '../contract/store.ts'
 import { createSnapshotStore } from '../contract/store.ts'
 import type { SessionFace } from '../contract/session.ts'

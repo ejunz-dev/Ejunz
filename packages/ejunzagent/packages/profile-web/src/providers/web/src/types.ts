@@ -5,7 +5,7 @@
  * @module @ejunz/profile-web/types
  */
 
-import { EjunzAgentError } from '@ejunz/ea/llm'
+import { EjunzAgentError } from '@ejunz/ea-core/llm'
 
 /**
  * What one search-capable backend can return. The model-facing argument is just

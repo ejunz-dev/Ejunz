@@ -4,7 +4,7 @@
  * through the seam, and every write re-reads the document under a
  * cross-process writer lock before patching it as a comment-preserving
  * leaf-level diff.
- * @module @ejunz/ea/settings-file
+ * @module @ejunz/ea-core/settings-file
  */
 
 import { Context, Service } from '@ejunz/cordis'
@@ -13,9 +13,9 @@ import { watch as chokidarWatch } from 'chokidar'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, extname, join, resolve } from 'node:path'
 import { Document, parseDocument } from 'yaml'
-import { withFileLock, writeFileAtomic } from '@ejunz/ea/atomic-write'
-import { canonicalizeWatchPath, resolveEaHome } from '@ejunz/ea/home-paths'
-import { SettingsProvider, deepEqualJson, type SettingsNamespace } from '@ejunz/ea/settings'
+import { withFileLock, writeFileAtomic } from '@ejunz/ea-core/atomic-write'
+import { canonicalizeWatchPath, resolveEaHome } from '@ejunz/ea-core/home-paths'
+import { SettingsProvider, deepEqualJson, type SettingsNamespace } from '@ejunz/ea-core/settings'
 
 /** Plugin config: file location and hot-reload behavior. */
 export interface Config {
@@ -369,11 +369,11 @@ export class FileSettingsProvider extends SettingsProvider {
 
 export default FileSettingsProvider
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/settings-file'
+  const PACKAGE_NAME = '@ejunz/ea-core/settings-file'
   export const name = 'settings-file-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

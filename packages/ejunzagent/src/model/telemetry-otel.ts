@@ -9,13 +9,13 @@
  * capture mode and an outer shutdown deadline: the SDK's export timeout does
  * not bound its preceding `forceFlush()` wait.
  *
- * @module @ejunz/ea/session-telemetry-otel
+ * @module @ejunz/ea-core/session-telemetry-otel
  */
 
 import { createRequire } from 'node:module'
 import z from '@ejunz/schemastery'
 import type { Context } from '@ejunz/cordis'
-import type {} from '@ejunz/ea/command-feedback'
+import type {} from '@ejunz/ea-core/command-feedback'
 import {
   SessionTelemetryBackend,
   SessionTelemetryCoordinator,
@@ -23,9 +23,9 @@ import {
   type SessionTelemetryRecord,
   type SessionTelemetrySeverity,
   type SessionTelemetrySharingStatus,
-} from '@ejunz/ea/session-telemetry'
-import { APP_IDENTITY } from '@ejunz/ea/llm'
-import { getOrCreateAnonymousUserId } from '@ejunz/ea/anonymous-user-id'
+} from '@ejunz/ea-core/session-telemetry'
+import { APP_IDENTITY } from '@ejunz/ea-core/llm'
+import { getOrCreateAnonymousUserId } from '@ejunz/ea-core/anonymous-user-id'
 import {
   BatchLogRecordProcessor,
   LoggerProvider,
@@ -216,8 +216,8 @@ export class OpenTelemetrySessionBackend extends SessionTelemetryBackend {
         }),
       ],
     })
-    const ledger = this.provider.getLogger('@ejunz/ea/session-telemetry-otel', version)
-    const ops = this.provider.getLogger('@ejunz/ea/session-telemetry-otel/ops', version)
+    const ledger = this.provider.getLogger('@ejunz/ea-core/session-telemetry-otel', version)
+    const ops = this.provider.getLogger('@ejunz/ea-core/session-telemetry-otel/ops', version)
     const enqueue: SessionTelemetrySink['emit'] = (record) => {
       const logger: Logger = record.channel === 'ops' ? ops : ledger
       logger.emit({
@@ -300,11 +300,11 @@ export class OpenTelemetrySessionBackend extends SessionTelemetryBackend {
 
 export default OpenTelemetrySessionBackend
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/session-telemetry-otel'
+  const PACKAGE_NAME = '@ejunz/ea-core/session-telemetry-otel'
   export const name = 'session-telemetry-otel-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

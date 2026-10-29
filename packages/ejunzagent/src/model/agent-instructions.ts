@@ -2,7 +2,7 @@ import { relative } from 'node:path'
 
 import z from '@ejunz/schemastery'
 
-import { resolveEaHome } from '@ejunz/ea/home-paths'
+import { resolveEaHome } from '@ejunz/ea-core/home-paths'
 
 const DEFAULT_PROJECT_ROOT_MARKERS = ['.git'] as const
 
@@ -422,11 +422,11 @@ import { stat } from 'node:fs/promises'
 
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
-import type { FileSystem, FsInfo, FsTarget, FsVersion } from '@ejunz/ea/fs'
+import type { FileSystem, FsInfo, FsTarget, FsVersion } from '@ejunz/ea-core/fs'
 
-import { assertNever } from '@ejunz/ea/llm'
+import { assertNever } from '@ejunz/ea-core/llm'
 
-import { eaHomeDisplay } from '@ejunz/ea/home-paths'
+import { eaHomeDisplay } from '@ejunz/ea-core/home-paths'
 
 export interface InstructionFile {
   absolutePath: string
@@ -853,15 +853,15 @@ function userGlobalDisplayPath(eaHome: string): string {
   return `${eaHomeDisplay(eaHome)}/AGENTS.md`
 }
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
-import { createUserMessage } from '@ejunz/ea/llm'
+import { createUserMessage } from '@ejunz/ea-core/llm'
 
-import type { Message } from '@ejunz/ea/llm'
+import type { Message } from '@ejunz/ea-core/llm'
 
-import type { Session, UserMessage } from '@ejunz/ea/session'
+import type { Session, UserMessage } from '@ejunz/ea-core/session'
 
-import type { FileSystem, FsVersion } from '@ejunz/ea/fs'
+import type { FileSystem, FsVersion } from '@ejunz/ea-core/fs'
 
 export const name = 'agent-instructions'
 
@@ -876,7 +876,7 @@ export interface AgentInstructionSource {
   changes: AgentInstructionChange[]
 }
 
-declare module '@ejunz/ea/llm' {
+declare module '@ejunz/ea-core/llm' {
   interface MessageSourceMap {
     'agent-instructions': AgentInstructionSource
   }
@@ -1232,13 +1232,13 @@ import type { Context } from '@ejunz/cordis'
 
 import { isDeepStrictEqual } from 'node:util'
 
-import type { Agent, PreStepDecision } from '@ejunz/ea/agent'
+import type { Agent, PreStepDecision } from '@ejunz/ea-core/agent'
 
-import { createUserMessage } from '@ejunz/ea/llm'
+import { createUserMessage } from '@ejunz/ea-core/llm'
 
-import type { Session, UserMessage } from '@ejunz/ea/session'
+import type { Session, UserMessage } from '@ejunz/ea-core/session'
 
-import type { ToolExecution, ToolExecutionResult, ToolExecutionToken } from '@ejunz/ea/tools'
+import type { ToolExecution, ToolExecutionResult, ToolExecutionToken } from '@ejunz/ea-core/tools'
 
 export { Config, name }
 
@@ -1560,11 +1560,11 @@ export function apply(ctx: Context, config: Config): void {
   })
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/agent-instructions'
+  const PACKAGE_NAME = '@ejunz/ea-core/agent-instructions'
   export const name = 'workspace-context-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

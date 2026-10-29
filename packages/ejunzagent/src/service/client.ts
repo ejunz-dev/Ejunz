@@ -8,11 +8,11 @@ import { z } from 'zod'
 
 import type { Context } from '@ejunz/cordis'
 
-import type { ToolDefinition, ToolExecution } from '@ejunz/ea/tools'
+import type { ToolDefinition, ToolExecution } from '@ejunz/ea-core/tools'
 
-import { assertSupportedJsonSchema } from '@ejunz/ea/tools'
+import { assertSupportedJsonSchema } from '@ejunz/ea-core/tools'
 
-import type { JsonSchemaNode, JsonValue } from '@ejunz/ea/tools'
+import type { JsonSchemaNode, JsonValue } from '@ejunz/ea-core/tools'
 
 export interface ToolBridgeOptions {
   /** Whether a registry conflict is contained or rejects this synchronization. */
@@ -237,9 +237,9 @@ import type { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { MAX_TIMER_DELAY_MS } from '@ejunz/ea/timeout'
+import { MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
 
-import type {} from '@ejunz/ea/tools'
+import type {} from '@ejunz/ea-core/tools'
 
 export const name = 'mcp-client'
 
@@ -378,7 +378,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 
-import { scrubbedParentEnv } from '@ejunz/ea/subprocess'
+import { scrubbedParentEnv } from '@ejunz/ea-core/subprocess'
 
 function buildChildEnv(extra: Record<string, string>): Record<string, string> {
   return { ...scrubbedParentEnv(), ...extra }
@@ -411,7 +411,7 @@ import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/typ
 
 import type { Context } from '@ejunz/cordis'
 
-import { MAX_TIMER_DELAY_MS } from '@ejunz/ea/timeout'
+import { MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
 
 export interface ReconnectConfig {
   /** Reconnect automatically after a lost connection (default true). */
@@ -712,11 +712,11 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
   }
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/mcp-client'
+  const PACKAGE_NAME = '@ejunz/ea-core/mcp-client'
   export const name = 'mcp-client-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

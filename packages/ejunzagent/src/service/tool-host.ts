@@ -1,6 +1,6 @@
-import type { JsonValue } from '@ejunz/ea/tools'
+import type { JsonValue } from '@ejunz/ea-core/tools'
 
-export type { JsonValue } from '@ejunz/ea/tools'
+export type { JsonValue } from '@ejunz/ea-core/tools'
 
 export interface HostToolSpec {
   /** Name the model calls, and the name the tool registry holds. */
@@ -54,7 +54,7 @@ export interface HostToolClient {
   call(name: string, args: HostArguments, context: HostCallContext, signal: AbortSignal): Promise<JsonValue>
 }
 
-import type { JsonValue } from '@ejunz/ea/tools'
+import type { JsonValue } from '@ejunz/ea-core/tools'
 
 function invalid(detail: string): never {
   throw new Error(`host tool catalog is invalid: ${detail}`)
@@ -94,9 +94,9 @@ export function parseHostCatalog(value: JsonValue | undefined): HostCatalog {
   return { tools: parsed, ...(guidance === undefined ? {} : { guidance }) }
 }
 
-import type { LlmDomainRuntime } from '@ejunz/ea/llm'
+import type { LlmDomainRuntime } from '@ejunz/ea-core/llm'
 
-import type { JsonValue } from '@ejunz/ea/tools'
+import type { JsonValue } from '@ejunz/ea-core/tools'
 
 export interface HostToolBridge {
   /**
@@ -237,7 +237,7 @@ export function createHostToolClient(bridge: HostToolBridge): HostToolClient {
 
 import { Context, Service } from '@ejunz/cordis'
 
-import type { JsonValue } from '@ejunz/ea/tools'
+import type { JsonValue } from '@ejunz/ea-core/tools'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -296,9 +296,9 @@ export function attachHostToolClient(ctx: Context, client: HostToolClient): void
   ctx.provider.attach(client)
 }
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import type { JsonValue, ToolDefinition } from '@ejunz/ea/tools'
+import type { JsonValue, ToolDefinition } from '@ejunz/ea-core/tools'
 
 const RUNTIME_TOOL_CALL_TYPE = 'ejunz/runtime-tool-call'
 
@@ -536,11 +536,11 @@ export async function apply(ctx: Context): Promise<void> {
   })
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/tool-host'
+  const PACKAGE_NAME = '@ejunz/ea-core/tool-host'
   export const name = 'tool-host-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

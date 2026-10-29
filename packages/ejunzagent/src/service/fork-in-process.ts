@@ -4,21 +4,21 @@
  * parent's session log — so the child inherits the parent's conversation context instead of
  * starting fresh. The seed ends at the last `turn/end`: the current tool-call turn is
  * unbalanced and cannot be replayed as a valid child session.
- * @module @ejunz/ea/subagent-fork-in-process
+ * @module @ejunz/ea-core/subagent-fork-in-process
  */
 
 import type { Context } from '@ejunz/cordis'
 import z from '@ejunz/schemastery'
-import type { SessionEvent } from '@ejunz/ea/session'
-import type { Agent } from '@ejunz/ea/agent'
+import type { SessionEvent } from '@ejunz/ea-core/session'
+import type { Agent } from '@ejunz/ea-core/agent'
 import type {
   ContinuableCreateRequest,
   ContinuableCreateSpec,
   ResolvedSubagentStartRequest,
   SubagentCapabilities,
   SubagentProvider,
-} from '@ejunz/ea/subagent'
-import { startInProcessRun } from '@ejunz/ea/subagent-in-process-driver'
+} from '@ejunz/ea-core/subagent'
+import { startInProcessRun } from '@ejunz/ea-core/subagent-in-process-driver'
 
 export const name = 'subagent-fork-in-process'
 // `tools` is deliberately NOT injected — same rationale as subagent-spawn-in-process: the
@@ -93,11 +93,11 @@ export function apply(ctx: Context, config: Config): void {
   ctx.subagents.registerProvider(new ForkInProcessProvider(config.providerName))
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/subagent-fork-in-process'
+  const PACKAGE_NAME = '@ejunz/ea-core/subagent-fork-in-process'
   export const name = 'subagent-fork-in-process-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

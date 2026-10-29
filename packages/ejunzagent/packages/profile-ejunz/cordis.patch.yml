@@ -9,13 +9,13 @@
 
 - insert:
     - id: storage-ejunz
-      name: '@ejunz/ea/storage-ejunz'
+      name: '@ejunz/ea-core/storage-ejunz'
 
     - id: session-persistence-ejunz
-      name: '@ejunz/ea/session-persistence-ejunz'
+      name: '@ejunz/ea-core/session-persistence-ejunz'
 
     - id: session-telemetry-otel
-      name: '@ejunz/ea/session-telemetry-otel'
+      name: '@ejunz/ea-core/session-telemetry-otel'
       config:
         mode: !!js process.env.EA_TELEMETRY_MODE || 'DISABLED'
         shutdownTimeoutMillis: 3000

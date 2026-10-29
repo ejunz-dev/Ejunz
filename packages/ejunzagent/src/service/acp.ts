@@ -1,6 +1,6 @@
 import type { ContentBlock as AcpContentBlock } from '@agentclientprotocol/sdk'
 
-import type { TurnEndReason } from '@ejunz/ea/session'
+import type { TurnEndReason } from '@ejunz/ea-core/session'
 
 export function turnEndToStopReason(reason: TurnEndReason): StopReason {
   switch (reason.kind) {
@@ -51,7 +51,7 @@ import { Readable, Writable } from 'node:stream'
 
 import Schema from '@ejunz/schemastery'
 
-import { createUserMessage, errorChain } from '@ejunz/ea/llm'
+import { createUserMessage, errorChain } from '@ejunz/ea-core/llm'
 
 import {
   AgentSideConnection,
@@ -72,11 +72,11 @@ import {
   type Stream,
 } from '@agentclientprotocol/sdk'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
-import { SessionId, type SessionEvent, type TurnEndReason } from '@ejunz/ea/session'
+import { SessionId, type SessionEvent, type TurnEndReason } from '@ejunz/ea-core/session'
 
-import type {} from '@ejunz/ea/user-approval'
+import type {} from '@ejunz/ea-core/user-approval'
 
 export const name = 'acp'
 
@@ -280,7 +280,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
         // No preset composition: the ACP bundle keeps the model-facing rows in
         // the host plane, so this agent reads them from the global layer. A
         // deployment that configures a roster has to join one here first
-        // (@ejunz/ea/agent-presets README, "Composing a child agent").
+        // (@ejunz/ea-core/agent-presets README, "Composing a child agent").
         const handle = await agents.create({
           sessionId,
           meta: { cwd: params.cwd },
@@ -454,11 +454,11 @@ function validateSessionParams(params: NewSessionRequest): void {
   if (params.mcpServers.length > 0) throw invalidParams('mcpServers is not supported')
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/acp'
+  const PACKAGE_NAME = '@ejunz/ea-core/acp'
   export const name = 'acp-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

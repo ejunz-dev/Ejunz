@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { SessionId } from '@ejunz/ea/session/types'
+import type { SessionId } from '@ejunz/ea-core/session/types'
 import { FixtureApiClient } from '../src/client/fixture.ts'
 
 const alpha = 'fx-alpha' as SessionId

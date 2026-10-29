@@ -1,5 +1,5 @@
 /**
- * @ejunz/ea/cmdline — the command line a ea launcher hands to the app
+ * @ejunz/ea-core/cmdline — the command line a ea launcher hands to the app
  * it boots.
  *
  * The launcher parses only its own flags (`--profile`, `--patch`, the config
@@ -13,19 +13,19 @@
  * can inject that service and read it from lazily resolved config —
  * `port: !!js ctx.webStartup.port ?? 3080` — so a flag beats the value written
  * beside it. No row has launcher-level command-line status.
- * @module @ejunz/ea/cmdline
+ * @module @ejunz/ea-core/cmdline
  */
 import type { Command as __m_ext___m_index_0_0_Command } from 'commander';
 
 import type { Context as __m_ext___m_index_1_0_Context } from '@ejunz/cordis';
 
 /**
- * Package-owned invariant companion for `@ejunz/ea/cmdline`.
- * @module @ejunz/ea/cmdline/invariant
+ * Package-owned invariant companion for `@ejunz/ea-core/cmdline`.
+ * @module @ejunz/ea-core/cmdline/invariant
  */
 import type { Context as __m_ext___m_invariant_2_0_Context } from '@ejunz/cordis';
 
-import type * as __m_ext_3__ejunz_ea_invariants from "@ejunz/ea/invariants";
+import type * as __m_ext_3__ejunz_ea_invariants from "@ejunz/ea-core/invariants";
 
 export namespace __m_index {
 /**
@@ -186,7 +186,7 @@ function isCommanderError(error: unknown): error is {
 }
 
 export namespace __m_invariant {
-const PACKAGE_NAME = '@ejunz/ea/cmdline';
+const PACKAGE_NAME = '@ejunz/ea-core/cmdline';
 /** Cordis companion plugin name. */
 export const name = 'cmdline-invariant';
 /** Service required before the companion can register. */

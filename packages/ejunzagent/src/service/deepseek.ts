@@ -118,9 +118,9 @@ export interface WireError {
   error?: { message?: string; type?: string; code?: string }
 }
 
-import { contentHasImage, LlmError } from '@ejunz/ea/llm'
+import { contentHasImage, LlmError } from '@ejunz/ea-core/llm'
 
-import type { ContentBlock, GenerateOptions, Message } from '@ejunz/ea/llm'
+import type { ContentBlock, GenerateOptions, Message } from '@ejunz/ea-core/llm'
 
 export interface RequestDefaults {
   thinking?: 'enabled' | 'disabled' | undefined
@@ -289,7 +289,7 @@ export function serializeRequest(
 
 import { EventSourceParserStream } from 'eventsource-parser/stream'
 
-import { LlmError } from '@ejunz/ea/llm'
+import { LlmError } from '@ejunz/ea-core/llm'
 
 export const DONE = '[DONE]'
 
@@ -307,9 +307,9 @@ export async function* parseSse(
   throw new LlmError('SSE stream ended without [DONE]', 'STREAM_CLOSED')
 }
 
-import { CallId, EMPTY_RESPONSE_CODE, LlmError } from '@ejunz/ea/llm'
+import { CallId, EMPTY_RESPONSE_CODE, LlmError } from '@ejunz/ea-core/llm'
 
-import type { ContentBlock, FinishReason, StreamChunk, TokenUsage } from '@ejunz/ea/llm'
+import type { ContentBlock, FinishReason, StreamChunk, TokenUsage } from '@ejunz/ea-core/llm'
 
 interface OpenBlock {
   index: number
@@ -463,7 +463,7 @@ export async function* translate(payloads: AsyncIterable<string>): AsyncGenerato
   throw new LlmError('SSE payload stream ended without [DONE]', 'STREAM_CLOSED')
 }
 
-import { attributionHeaders, CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError, isQuotaExceededError, LlmAdapter, LlmError, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId } from '@ejunz/ea/llm'
+import { attributionHeaders, CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError, isQuotaExceededError, LlmAdapter, LlmError, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId } from '@ejunz/ea-core/llm'
 
 import type {
   GenerateOptions,
@@ -472,13 +472,13 @@ import type {
   LlmResolvedModelInfo,
   ResolvedRetryPolicy,
   StreamChunk,
-} from '@ejunz/ea/llm'
+} from '@ejunz/ea-core/llm'
 
-import type { CredentialRef } from '@ejunz/ea/credentials'
+import type { CredentialRef } from '@ejunz/ea-core/credentials'
 
-import { idleWatchdog, timeoutOf } from '@ejunz/ea/timeout'
+import { idleWatchdog, timeoutOf } from '@ejunz/ea-core/timeout'
 
-import type { AnonymousUserId } from '@ejunz/ea/anonymous-user-id'
+import type { AnonymousUserId } from '@ejunz/ea-core/anonymous-user-id'
 
 export interface DeepSeekCatalogModel {
   /** Wire model id accepted by the configured endpoint. */
@@ -835,19 +835,19 @@ import type { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { assertUsableApiKey, LlmError, resolveRetryPolicy, RetryPolicySchema } from '@ejunz/ea/llm'
+import { assertUsableApiKey, LlmError, resolveRetryPolicy, RetryPolicySchema } from '@ejunz/ea-core/llm'
 
-import type { RetryPolicyConfig } from '@ejunz/ea/llm'
+import type { RetryPolicyConfig } from '@ejunz/ea-core/llm'
 
-import { credentialRef } from '@ejunz/ea/credentials'
+import { credentialRef } from '@ejunz/ea-core/credentials'
 
-import { launchEnvironmentOf, type LaunchEnvironmentSnapshot } from '@ejunz/ea/launch-environment'
+import { launchEnvironmentOf, type LaunchEnvironmentSnapshot } from '@ejunz/ea-core/launch-environment'
 
-import { deepEqualJson, installSettingsSection, settingsNamespace } from '@ejunz/ea/settings'
+import { deepEqualJson, installSettingsSection, settingsNamespace } from '@ejunz/ea-core/settings'
 
-import { MAX_TIMER_DELAY_MS } from '@ejunz/ea/timeout'
+import { MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
 
-import { getOrCreateAnonymousUserId, type AnonymousUserId } from '@ejunz/ea/anonymous-user-id'
+import { getOrCreateAnonymousUserId, type AnonymousUserId } from '@ejunz/ea-core/anonymous-user-id'
 
 export const name = 'llm-deepseek'
 
@@ -1094,11 +1094,11 @@ export function apply(ctx: Context, config: Config): void {
   })
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/llm-deepseek'
+  const PACKAGE_NAME = '@ejunz/ea-core/llm-deepseek'
   export const name = 'llm-deepseek-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

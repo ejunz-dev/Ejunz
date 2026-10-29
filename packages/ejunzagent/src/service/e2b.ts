@@ -1,7 +1,7 @@
 /**
  * Shared ownership of one E2B sandbox. Capability adapters await the same SDK
  * handle, so filesystem and process operations inhabit one remote Linux world.
- * @module @ejunz/ea/e2b
+ * @module @ejunz/ea-core/e2b
  */
 
 import { randomUUID } from 'node:crypto'
@@ -181,11 +181,11 @@ export class E2BRuntime extends Service {
 
 export default E2BRuntime
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/e2b'
+  const PACKAGE_NAME = '@ejunz/ea-core/e2b'
   export const name = 'e2b-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

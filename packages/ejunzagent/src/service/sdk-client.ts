@@ -70,9 +70,9 @@ export async function disposeRuntimeProcess(
   await forceTerminateWithin(child, graces.disposeGraceMs)
 }
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import type { SessionEvent } from '@ejunz/ea/session'
+import type { SessionEvent } from '@ejunz/ea-core/session'
 
 export interface EjunzAgentNotification {
   /** The JSON-RPC notification method name. */
@@ -141,9 +141,9 @@ import {
   type InitializeParams,
   type InitializeResult,
   type SessionPromptParams,
-} from '@ejunz/ea/sdk-protocol'
+} from '@ejunz/ea-core/sdk-protocol'
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
 const STDERR_TAIL_LIMIT = 400
 
@@ -568,7 +568,7 @@ import { randomUUID } from 'node:crypto'
 
 import { resolve } from 'node:path'
 
-import type { SessionEvent } from '@ejunz/ea/session'
+import type { SessionEvent } from '@ejunz/ea-core/session'
 
 export class EjunzAgent implements AsyncDisposable {
   private clientInstance: EjunzAgentClient
@@ -780,13 +780,13 @@ export function finalResponse(events: SessionEvent[]): string {
   return ''
 }
 
-export { JsonRpcResponseError } from '@ejunz/ea/sdk-protocol'
+export { JsonRpcResponseError } from '@ejunz/ea-core/sdk-protocol'
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/sdk-client'
+  const PACKAGE_NAME = '@ejunz/ea-core/sdk-client'
   export const name = 'sdk-client-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

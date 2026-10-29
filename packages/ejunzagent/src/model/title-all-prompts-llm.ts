@@ -5,8 +5,8 @@ import z from '@ejunz/schemastery'
 import {
   registerSessionTitleLlmProvider,
   SessionTitleLlmConfigFields,
-} from '@ejunz/ea/session-title-llm'
-import type { SessionTitleLlmConfig } from '@ejunz/ea/session-title-llm'
+} from '@ejunz/ea-core/session-title-llm'
+import type { SessionTitleLlmConfig } from '@ejunz/ea-core/session-title-llm'
 
 export const name = 'session-title-all-prompts-llm'
 export const inject = ['sessionTitle', 'llm', 'sessions']
@@ -35,11 +35,11 @@ export function apply(ctx: Context, config: Config): void {
   registerSessionTitleLlmProvider(ctx, config, name, 'all-prompts', messages => messages)
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/session-title-all-prompts-llm'
+  const PACKAGE_NAME = '@ejunz/ea-core/session-title-all-prompts-llm'
   export const name = 'session-title-all-prompts-llm-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

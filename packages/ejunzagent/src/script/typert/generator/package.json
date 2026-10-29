@@ -1,0 +1,49 @@
+{
+  "name": "@ejunz/typert-generator",
+  "description": "TypeScript project analyzer and model-driven Typert artifact generator",
+  "version": "0.1.2-rc.5",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ejunz-dev/ejunz-agent.git",
+    "directory": "src/script/typert/generator"
+  },
+  "type": "module",
+  "main": "lib/types/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/types/index.js"
+    },
+    "./tsdown": {
+      "types": "./lib/types/tsdown-plugin.d.ts",
+      "default": "./lib/types/tsdown-plugin.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/types/invariant.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/types/**/*.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "AGPL-3.0-only",
+  "dependencies": {
+    "@jridgewell/gen-mapping": "^0.3.13",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/ea-core": "workspace:^"
+  },
+  "devDependencies": {
+    "@ejunz/cordis": "workspace:^",
+    "@ejunz/ea-core": "workspace:^",
+    "zod": "^4.4.3"
+  }
+}

@@ -1,6 +1,6 @@
 import type { z } from 'zod'
 
-import type { InvocationDescriptor } from '@ejunz/ea/typert-protocol'
+import type { InvocationDescriptor } from '@ejunz/ea-core/typert-protocol'
 
 export type TypertFace = 'host' | 'client'
 
@@ -120,7 +120,7 @@ import type {
   TypertRegistryChange,
   TypertRegistryListener,
   TypertRegistryContract,
-} from '@ejunz/ea/typert-protocol'
+} from '@ejunz/ea-core/typert-protocol'
 
 export function typertKey(packageName: string, name: string): string {
   return `${packageName}#${name}`
@@ -783,9 +783,9 @@ export default TypertRegistry
 
 import type { z } from 'zod'
 
-import type { TypertDisposer } from '@ejunz/ea/typert-protocol'
+import type { TypertDisposer } from '@ejunz/ea-core/typert-protocol'
 
-declare module '@ejunz/ea/typert-protocol' {
+declare module '@ejunz/ea-core/typert-protocol' {
   interface TypertRegistryContract {
     register(contribution: TypertContribution): TypertDisposer
     get(key: string): TypertSchemaRecord | undefined
@@ -797,11 +797,11 @@ declare module '@ejunz/ea/typert-protocol' {
   }
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/typert-registry'
+  const PACKAGE_NAME = '@ejunz/ea-core/typert-registry'
   export const name = 'typert-registry-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

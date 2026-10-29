@@ -1,4 +1,4 @@
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
 export type ApprovalRequestId = Branded<'ApprovalRequestId'>
 
@@ -14,17 +14,17 @@ import { Context, Service } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
-import { createUserMessage, type CallId } from '@ejunz/ea/llm'
+import { createUserMessage, type CallId } from '@ejunz/ea-core/llm'
 
-import { scopeTarget } from '@ejunz/ea/scope'
+import { scopeTarget } from '@ejunz/ea-core/scope'
 
-import type { Scoped } from '@ejunz/ea/scope'
+import type { Scoped } from '@ejunz/ea-core/scope'
 
-import type { Session, SessionEvent } from '@ejunz/ea/session'
+import type { Session, SessionEvent } from '@ejunz/ea-core/session'
 
-import type {} from '@ejunz/ea/system-prompt'
+import type {} from '@ejunz/ea-core/system-prompt'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -35,7 +35,7 @@ declare module '@ejunz/cordis' {
     /**
      * Ask composed answerers for one decision. Return an outcome to claim the
      * request or call `next()`; failure yields the fail-closed default.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners receive only that agent.
      * @param req - the pending decision (agent, tool identity, reason, signal).
      * @mode waterfall
      */
@@ -43,7 +43,7 @@ declare module '@ejunz/cordis' {
   }
 }
 
-declare module '@ejunz/ea/session/types' {
+declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {
     /**
      * An approval question was put to the answerer chain — log-only audit
@@ -308,11 +308,11 @@ export class ApprovalService extends Service {
 
 export default ApprovalService
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/user-approval'
+  const PACKAGE_NAME = '@ejunz/ea-core/user-approval'
   export const name = 'user-approval-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

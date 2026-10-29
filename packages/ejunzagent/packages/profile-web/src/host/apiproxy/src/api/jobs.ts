@@ -4,7 +4,7 @@
  * per push.
  */
 
-import type { JobId } from '@ejunz/ea/jobs/brand'
+import type { JobId } from '@ejunz/ea-core/jobs/brand'
 
 /**
  * One background job as the client sees it.

@@ -1,15 +1,15 @@
 /**
  * Semantic durability checkpoints for model requests, top-level tool dispatch,
  * and completed agent steps.
- * @module @ejunz/ea/session-checkpoint-policy
+ * @module @ejunz/ea-core/session-checkpoint-policy
  */
 
 import type { Context } from '@ejunz/cordis'
-import type { Session } from '@ejunz/ea/session'
-import type { StreamChunk } from '@ejunz/ea/llm'
-import { TOOL_ABORTED_BEFORE_DISPATCH, type ToolExecutionResult } from '@ejunz/ea/tools'
-import type { PreStepDecision } from '@ejunz/ea/agent'
-import type {} from '@ejunz/ea/session-persistence'
+import type { Session } from '@ejunz/ea-core/session'
+import type { StreamChunk } from '@ejunz/ea-core/llm'
+import { TOOL_ABORTED_BEFORE_DISPATCH, type ToolExecutionResult } from '@ejunz/ea-core/tools'
+import type { PreStepDecision } from '@ejunz/ea-core/agent'
+import type {} from '@ejunz/ea-core/session-persistence'
 
 /** Cordis plugin name used by Loader diagnostics. */
 export const name = 'session-checkpoint-policy'
@@ -82,11 +82,11 @@ export function apply(ctx: Context): void {
   })
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/session-checkpoint-policy'
+  const PACKAGE_NAME = '@ejunz/ea-core/session-checkpoint-policy'
   export const name = 'session-checkpoint-policy-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

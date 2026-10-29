@@ -1,8 +1,8 @@
-import type { TodoItem } from '@ejunz/ea/session/types'
+import type { TodoItem } from '@ejunz/ea-core/session/types'
 
-export type { TodoItem } from '@ejunz/ea/session/types'
+export type { TodoItem } from '@ejunz/ea-core/session/types'
 
-declare module '@ejunz/ea/session-projection/types' {
+declare module '@ejunz/ea-core/session-projection/types' {
   interface SessionProjectionMap {
     /**
      * The agent's current whole todo list (the latest `todo/write` snapshot),
@@ -21,11 +21,11 @@ import { z as zod } from 'zod'
 
 import type { ZodType } from 'zod'
 
-import { defineTool } from '@ejunz/ea/tools'
+import { defineTool } from '@ejunz/ea-core/tools'
 
-import type { TodoItem } from '@ejunz/ea/session'
+import type { TodoItem } from '@ejunz/ea-core/session'
 
-import type {} from '@ejunz/ea/session-projection'
+import type {} from '@ejunz/ea-core/session-projection'
 
 export const name = 'tool-todo'
 
@@ -207,11 +207,11 @@ export function apply(ctx: Context, config: Config): void {
   }))
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/tool-todo'
+  const PACKAGE_NAME = '@ejunz/ea-core/tool-todo'
   export const name = 'tool-todo-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

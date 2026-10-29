@@ -8,7 +8,7 @@
  * App flags are not the launcher's business: the invocation's inner arguments
  * are provided to the tree through `ctx.cmdlineArgs`, where any injected app
  * plugin may read the same immutable snapshot.
- * @module @ejunz/ea/profile-boot
+ * @module @ejunz/ea-core/profile-boot
  */
 
 import { writeFileSync } from 'node:fs'
@@ -28,14 +28,14 @@ import {
   PROFILE_PATCH_FILENAME,
   watchUserPatches,
   type Profile,
-} from '@ejunz/ea/app-boot'
-import { resolveEaHome } from '@ejunz/ea/home-paths'
+} from '@ejunz/ea-core/app-boot'
+import { resolveEaHome } from '@ejunz/ea-core/home-paths'
 
 /** Shipped agent-preset root beside this app's own config. */
 const SHIPPED_PRESET_ROOT = cliAssetPath('config/agent-presets/')
 
-import { EA_LAUNCH_ENVIRONMENT_KEY, type LaunchEnvironmentSnapshot } from '@ejunz/ea/launch-environment'
-import { provideCmdline } from '@ejunz/ea/cmdline'
+import { EA_LAUNCH_ENVIRONMENT_KEY, type LaunchEnvironmentSnapshot } from '@ejunz/ea-core/launch-environment'
+import { provideCmdline } from '@ejunz/ea-core/cmdline'
 import { createProcessShutdown, type ProcessShutdown } from './process-shutdown.ts'
 
 // Cordis exposes FiberState as a const enum, so keep the runtime value local.

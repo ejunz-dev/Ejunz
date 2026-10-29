@@ -1,4 +1,4 @@
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
 export type LspProviderId = Branded<'LspProviderId'>
 
@@ -89,7 +89,7 @@ export interface LspService {
 
 import { Context, Service } from '@ejunz/cordis'
 
-import { EjunzAgentError } from '@ejunz/ea/llm'
+import { EjunzAgentError } from '@ejunz/ea-core/llm'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -192,11 +192,11 @@ function normalizeExtension(ext: string): string {
 
 export default Lsp
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/lsp'
+  const PACKAGE_NAME = '@ejunz/ea-core/lsp'
   export const name = 'lsp-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

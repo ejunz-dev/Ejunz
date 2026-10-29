@@ -1,6 +1,6 @@
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
-import type {} from '@ejunz/ea/session/types'
+import type {} from '@ejunz/ea-core/session/types'
 
 export type ScheduleId = Branded<'ScheduleId'>
 
@@ -173,7 +173,7 @@ export type ScheduleDeleteResult =
 
 export type ScheduleDeleteValue = ScheduleDeleteResult | ScheduleToolError
 
-declare module '@ejunz/ea/session/types' {
+declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {
     /**
      * Versioned Schedule mutation. The owning package validates the complete
@@ -183,7 +183,7 @@ declare module '@ejunz/ea/session/types' {
   }
 }
 
-import type { SessionEvent } from '@ejunz/ea/session'
+import type { SessionEvent } from '@ejunz/ea-core/session'
 
 export const SCHEDULE_CHANGE_VERSION = 1 as const
 
@@ -888,7 +888,7 @@ export function renderEveryReminderBatchFraming(
 
 import type { Context } from '@ejunz/cordis'
 
-import type { Session } from '@ejunz/ea/session'
+import type { Session } from '@ejunz/ea-core/session'
 
 export class SchedulePersistenceError extends Error {
   /**
@@ -910,7 +910,7 @@ export async function flushSchedulePersistence(ctx: Context, session: Session): 
   }
 }
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
 const tails = new WeakMap<Agent, Promise<void>>()
 
@@ -928,9 +928,9 @@ export async function runScheduleTransaction<T>(agent: Agent, operation: () => P
 
 import type { Context } from '@ejunz/cordis'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
-import { createUserMessage } from '@ejunz/ea/llm'
+import { createUserMessage } from '@ejunz/ea-core/llm'
 
 export const MAX_TIMER_DELAY_MS = 2_147_483_647
 
@@ -1235,13 +1235,13 @@ export class ScheduleRuntime {
 
 import type { Context } from '@ejunz/cordis'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import { defineTool } from '@ejunz/ea/tools'
+import { defineTool } from '@ejunz/ea-core/tools'
 
-import type { GenericCallView } from '@ejunz/ea/tools'
+import type { GenericCallView } from '@ejunz/ea-core/tools'
 
 const SHARED_VIEW_PROPERTIES = {
   id: { type: 'string', required: true },
@@ -1657,9 +1657,9 @@ export function registerScheduleTools(
 
 import type { Context } from '@ejunz/cordis'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
-import type {} from '@ejunz/ea/session-persistence'
+import type {} from '@ejunz/ea-core/session-persistence'
 
 export const name = 'schedule'
 
@@ -1706,11 +1706,11 @@ export function apply(ctx: Context): void {
   }, 'schedule.lifecycle()')
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/schedule'
+  const PACKAGE_NAME = '@ejunz/ea-core/schedule'
   export const name = 'tool-schedule-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

@@ -5,12 +5,12 @@
  *
  * Embedded boots install it from the configuration the owning Ejunz host
  * passes in directly.
- * @module @ejunz/ea/host-tools
+ * @module @ejunz/ea-core/host-tools
  */
 
 import type { Context } from '@ejunz/cordis'
-import { createHostToolBridge, createHostToolClient } from '@ejunz/ea/tool-host'
-import * as ToolHost from '@ejunz/ea/tool-host'
+import { createHostToolBridge, createHostToolClient } from '@ejunz/ea-core/tool-host'
+import * as ToolHost from '@ejunz/ea-core/tool-host'
 
 /** Where this application reaches the host that owns its sessions. */
 export interface HostToolBridgeConfig {

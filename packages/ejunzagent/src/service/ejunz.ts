@@ -8,7 +8,7 @@ import {
   type KvUnit,
   type KvUnitDescriptor,
   type StorageBackend,
-} from '@ejunz/ea/storage'
+} from '@ejunz/ea-core/storage'
 
 export const name = 'storage-ejunz'
 export const inject = ['storage']
@@ -136,11 +136,11 @@ export function apply(ctx: Context, config: Config): void {
   ctx.provide(storageBackendServiceKey('ejunz'), backend)
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/storage-ejunz'
+  const PACKAGE_NAME = '@ejunz/ea-core/storage-ejunz'
   export const name = 'storage-ejunz-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

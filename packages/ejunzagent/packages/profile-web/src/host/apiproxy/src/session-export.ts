@@ -21,10 +21,10 @@
 
 import { Zip, ZipDeflate } from 'fflate'
 import type { Context } from '@ejunz/cordis'
-import type { AttachmentStore, ImageAttachmentRef } from '@ejunz/ea/attachment'
-import type { SessionLineageNode, SessionQueryEngine } from '@ejunz/ea/session-query'
-import type { SessionId, SessionStore } from '@ejunz/ea/session'
-import type { SessionPersistence, SessionRawArtifact } from '@ejunz/ea/session-persistence'
+import type { AttachmentStore, ImageAttachmentRef } from '@ejunz/ea-core/attachment'
+import type { SessionLineageNode, SessionQueryEngine } from '@ejunz/ea-core/session-query'
+import type { SessionId, SessionStore } from '@ejunz/ea-core/session'
+import type { SessionPersistence, SessionRawArtifact } from '@ejunz/ea-core/session-persistence'
 
 /** Valid fflate DEFLATE levels accepted by session-log export. */
 export type SessionLogCompressionLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9

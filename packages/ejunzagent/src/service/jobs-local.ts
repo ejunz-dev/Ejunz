@@ -6,20 +6,20 @@
  * Registrations outlive producer and controller fibers. Agent or service
  * disposal cancels live work and awaits compliant producers; a throwing
  * teardown cancel force-fails only the record and reports a possible orphan.
- * @module @ejunz/ea/jobs-local
+ * @module @ejunz/ea-core/jobs-local
  */
 
 import { Context } from '@ejunz/cordis'
 import z from '@ejunz/schemastery'
-import type { Agent } from '@ejunz/ea/agent'
-import { AnonymousEntries, ScopedLayers, scopeOf } from '@ejunz/ea/scope'
-import type { ScopeLayer } from '@ejunz/ea/scope'
-import { deadline, timeoutOf } from '@ejunz/ea/timeout'
-import { JobRegistry, JobId } from '@ejunz/ea/jobs'
+import type { Agent } from '@ejunz/ea-core/agent'
+import { AnonymousEntries, ScopedLayers, scopeOf } from '@ejunz/ea-core/scope'
+import type { ScopeLayer } from '@ejunz/ea-core/scope'
+import { deadline, timeoutOf } from '@ejunz/ea-core/timeout'
+import { JobRegistry, JobId } from '@ejunz/ea-core/jobs'
 import type {
   JobDoneListener, JobKind, JobOutcome, JobRead, JobSnapshot, JobStart, JobStatus,
   JobsChangedListener,
-} from '@ejunz/ea/jobs'
+} from '@ejunz/ea-core/jobs'
 
 /** Timeout code that distinguishes a bounded wait from caller cancellation. */
 export const TASK_WAIT_TIMEOUT = 'TASK_WAIT_TIMEOUT'
@@ -85,7 +85,7 @@ class JobLayer implements ScopeLayer {
 
 /**
  * The in-memory `jobs` registry. See the Service Definition contract in
- * `@ejunz/ea/jobs` for the ownership, isolation, and lifecycle
+ * `@ejunz/ea-core/jobs` for the ownership, isolation, and lifecycle
  * semantics this implementation honors.
  */
 export class LocalJobRegistry extends JobRegistry {
@@ -130,7 +130,7 @@ export class LocalJobRegistry extends JobRegistry {
 
   start(spec: JobStart): JobId {
     if (!this.servesOwner(spec.owner)) {
-      throw new Error('background jobs unavailable: no job controller serves this agent (load @ejunz/ea/tool-jobs in its composition)')
+      throw new Error('background jobs unavailable: no job controller serves this agent (load @ejunz/ea-core/tool-jobs in its composition)')
     }
     if (spec.kind.length === 0) throw new Error('invalid job kind: expected a non-empty string')
     if (spec.label.length === 0) throw new Error('invalid job label: expected a non-empty string')
@@ -449,7 +449,7 @@ export class LocalJobRegistry extends JobRegistry {
     const ownerId = owner.id
     const agents = this.selfCtx.get('agents')
     if (agents === undefined) {
-      throw new Error('background job ownership requires the agent registry (load @ejunz/ea/agent)')
+      throw new Error('background job ownership requires the agent registry (load @ejunz/ea-core/agent)')
     }
     if (agents.get(ownerId) !== owner) {
       throw new Error(`agent "${ownerId}" is not the registered agent instance (background job owner must be live)`)
@@ -533,11 +533,11 @@ export class LocalJobRegistry extends JobRegistry {
 
 export default LocalJobRegistry
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/jobs-local'
+  const PACKAGE_NAME = '@ejunz/ea-core/jobs-local'
   export const name = 'jobs-local-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

@@ -1,6 +1,6 @@
-import { EjunzAgentError } from '@ejunz/ea/llm'
+import { EjunzAgentError } from '@ejunz/ea-core/llm'
 
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
 export type FsTargetKey = Branded<'FsTargetKey'>
 
@@ -309,11 +309,11 @@ export abstract class FileSystem extends Service {
 
 export default FileSystem
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/fs'
+  const PACKAGE_NAME = '@ejunz/ea-core/fs'
   export const name = 'fs-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

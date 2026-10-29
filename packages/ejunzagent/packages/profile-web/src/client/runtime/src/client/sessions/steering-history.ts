@@ -1,7 +1,7 @@
 /** Reconstruct durable steering identity from the event-sourced agent inbox. */
 
-import type { SessionEvent } from '@ejunz/ea/session/types'
-import type { InboxTarget } from '@ejunz/ea/agent/types'
+import type { SessionEvent } from '@ejunz/ea-core/session/types'
+import type { InboxTarget } from '@ejunz/ea-core/agent/types'
 
 /** Minimal pending identity retained while replaying durable inbox splices. */
 interface PendingIdentity {

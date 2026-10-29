@@ -482,15 +482,15 @@ import type { CacheRetention, ModelThinkingLevel, Provider, ThinkingBudgets, Tra
 
 import z from '@ejunz/schemastery'
 
-import { credentialRef } from '@ejunz/ea/credentials'
+import { credentialRef } from '@ejunz/ea-core/credentials'
 
-import type { CredentialRef } from '@ejunz/ea/credentials'
+import type { CredentialRef } from '@ejunz/ea-core/credentials'
 
-import { MAX_TIMER_DELAY_MS } from '@ejunz/ea/timeout'
+import { MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
 
-import { resolveRetryPolicy, RetryPolicySchema } from '@ejunz/ea/llm'
+import { resolveRetryPolicy, RetryPolicySchema } from '@ejunz/ea-core/llm'
 
-import type { ResolvedRetryPolicy, RetryPolicyConfig } from '@ejunz/ea/llm'
+import type { ResolvedRetryPolicy, RetryPolicyConfig } from '@ejunz/ea-core/llm'
 
 export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300_000
 
@@ -773,9 +773,9 @@ export function resolveProfiles(
   return resolved
 }
 
-import { LlmError } from '@ejunz/ea/llm'
+import { LlmError } from '@ejunz/ea-core/llm'
 
-import type { Message, ModelMessageSource } from '@ejunz/ea/llm'
+import type { Message, ModelMessageSource } from '@ejunz/ea-core/llm'
 
 import type { Api, AssistantMessage, Usage as PiUsage } from '@earendil-works/pi-ai'
 
@@ -965,11 +965,11 @@ export function toPiAssistant(message: Message): AssistantMessage {
     : replayedAssistant(message, source, source.replayState)
 }
 
-import { CallId, contentHasImage, LlmError } from '@ejunz/ea/llm'
+import { CallId, contentHasImage, LlmError } from '@ejunz/ea-core/llm'
 
-import type { ContentBlock, GenerateOptions, Message } from '@ejunz/ea/llm'
+import type { ContentBlock, GenerateOptions, Message } from '@ejunz/ea-core/llm'
 
-import type { AttachmentStore } from '@ejunz/ea/attachment'
+import type { AttachmentStore } from '@ejunz/ea-core/attachment'
 
 import type { Context as PiContext, ImageContent, Message as PiMessage, TextContent, Tool as PiTool } from '@earendil-works/pi-ai'
 
@@ -1136,9 +1136,9 @@ async function toPiContextWithImages(options: GenerateOptions, attachments: Atta
   return piContext(options, messages)
 }
 
-import { CallId, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, isContextWindowExceededError, isQuotaExceededError, LlmError, QUOTA_EXCEEDED_CODE } from '@ejunz/ea/llm'
+import { CallId, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, isContextWindowExceededError, isQuotaExceededError, LlmError, QUOTA_EXCEEDED_CODE } from '@ejunz/ea-core/llm'
 
-import type { FinishReason, StreamChunk, TokenUsage } from '@ejunz/ea/llm'
+import type { FinishReason, StreamChunk, TokenUsage } from '@ejunz/ea-core/llm'
 
 import { isContextOverflow } from '@earendil-works/pi-ai'
 
@@ -1324,7 +1324,7 @@ import {
   LlmAdapter,
   LlmError,
   ReasoningEffortId,
-} from '@ejunz/ea/llm'
+} from '@ejunz/ea-core/llm'
 
 import type {
   GenerateOptions,
@@ -1334,11 +1334,11 @@ import type {
   ReasoningEffortId as ReasoningEffortIdType,
   ResolvedRetryPolicy,
   StreamChunk,
-} from '@ejunz/ea/llm'
+} from '@ejunz/ea-core/llm'
 
-import type { AttachmentStore } from '@ejunz/ea/attachment'
+import type { AttachmentStore } from '@ejunz/ea-core/attachment'
 
-import { idleWatchdog, timeoutOf } from '@ejunz/ea/timeout'
+import { idleWatchdog, timeoutOf } from '@ejunz/ea-core/timeout'
 
 interface PiAiSnapshot {
   /** The resolved profiles this collection was built from, used as its identity. */
@@ -1621,11 +1621,11 @@ export class PiAiAdapter extends LlmAdapter {
   }
 }
 
-import { INVALID_CREDENTIAL_CODE, LlmError, normalizeApiKey } from '@ejunz/ea/llm'
+import { INVALID_CREDENTIAL_CODE, LlmError, normalizeApiKey } from '@ejunz/ea-core/llm'
 
-import type { LlmDiscoveredModel, LlmModelDiscoveryRequest } from '@ejunz/ea/llm'
+import type { LlmDiscoveredModel, LlmModelDiscoveryRequest } from '@ejunz/ea-core/llm'
 
-import { attributionHeaders } from '@ejunz/ea/llm'
+import { attributionHeaders } from '@ejunz/ea-core/llm'
 
 const LISTABLE_PROTOCOLS: ReadonlySet<string> = new Set([
   'openai-completions',
@@ -1830,13 +1830,13 @@ export async function discoverModels(
 
 import type { Context } from '@ejunz/cordis'
 
-import { launchEnvironmentOf } from '@ejunz/ea/launch-environment'
+import { launchEnvironmentOf } from '@ejunz/ea-core/launch-environment'
 
-import { assertUsableApiKey, LlmError } from '@ejunz/ea/llm'
+import { assertUsableApiKey, LlmError } from '@ejunz/ea-core/llm'
 
-import type { AdapterRegistrationHandle, DirectoryRegistrationHandle, LlmConfigurableProvider } from '@ejunz/ea/llm'
+import type { AdapterRegistrationHandle, DirectoryRegistrationHandle, LlmConfigurableProvider } from '@ejunz/ea-core/llm'
 
-import { deepEqualJson, installSettingsSection, settingsNamespace } from '@ejunz/ea/settings'
+import { deepEqualJson, installSettingsSection, settingsNamespace } from '@ejunz/ea-core/settings'
 
 export const name = 'llm-pi-ai'
 
@@ -2100,11 +2100,11 @@ export function apply(ctx: Context, config: Config): void {
   })
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/llm-pi-ai'
+  const PACKAGE_NAME = '@ejunz/ea-core/llm-pi-ai'
   export const name = 'llm-pi-ai-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

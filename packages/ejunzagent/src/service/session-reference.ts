@@ -40,9 +40,9 @@ export function stringifyTagSafeJson(value: unknown): string {
   return serialized.replaceAll('<', '\\u003c')
 }
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import type { SessionId, UserMessage } from '@ejunz/ea/session'
+import type { SessionId, UserMessage } from '@ejunz/ea-core/session'
 
 export interface SessionReferenceSource {
   kind: 'session-reference'
@@ -63,7 +63,7 @@ export interface SessionReferenceSource {
   }[]
 }
 
-declare module '@ejunz/ea/llm' {
+declare module '@ejunz/ea-core/llm' {
   interface MessageSourceMap {
     'session-reference': SessionReferenceSource
   }
@@ -99,13 +99,13 @@ export interface ReferencedConversationItem {
   text: string
 }
 
-import { isCompactCheckpointSource } from '@ejunz/ea/compaction'
+import { isCompactCheckpointSource } from '@ejunz/ea-core/compaction'
 
-import type { SessionSurfaceSnapshot } from '@ejunz/ea/session-query'
+import type { SessionSurfaceSnapshot } from '@ejunz/ea-core/session-query'
 
-import { assertNever } from '@ejunz/ea/llm'
+import { assertNever } from '@ejunz/ea-core/llm'
 
-import { TextRetainer } from '@ejunz/ea/output-retention'
+import { TextRetainer } from '@ejunz/ea-core/output-retention'
 
 interface ProjectedItem extends ReferencedConversationItem {
   checkpoint: boolean
@@ -259,7 +259,7 @@ function truncateWithNotice(text: string, maxOutputBytes: number): { text: strin
   return best
 }
 
-import { SessionId, type SessionId as SessionIdType } from '@ejunz/ea/session'
+import { SessionId, type SessionId as SessionIdType } from '@ejunz/ea-core/session'
 
 export const SESSION_REFERENCE_SCHEME = 'ea-session:'
 
@@ -337,15 +337,15 @@ import { Context, Service } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
-import { createUserMessage } from '@ejunz/ea/llm'
+import { createUserMessage } from '@ejunz/ea-core/llm'
 
-import type { ContentBlock, UserMessage } from '@ejunz/ea/llm'
+import type { ContentBlock, UserMessage } from '@ejunz/ea-core/llm'
 
-import type { SessionId } from '@ejunz/ea/session'
+import type { SessionId } from '@ejunz/ea-core/session'
 
-import type { SessionSurfaceSnapshot, SessionTitleObservationResult } from '@ejunz/ea/session-query'
+import type { SessionSurfaceSnapshot, SessionTitleObservationResult } from '@ejunz/ea-core/session-query'
 
 const PROMPT_PREFIX = `## Referenced sessions
 
@@ -591,11 +591,11 @@ function cancelled(signal: AbortSignal): SessionReferenceError {
 
 export default SessionReferenceResolver
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/session-reference'
+  const PACKAGE_NAME = '@ejunz/ea-core/session-reference'
   export const name = 'session-reference-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

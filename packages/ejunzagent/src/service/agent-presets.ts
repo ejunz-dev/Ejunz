@@ -140,9 +140,9 @@ import { chmod, cp, readdir, readFile, rm, stat } from 'node:fs/promises'
 
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
-import { writeFileAtomic } from '@ejunz/ea/atomic-write'
+import { writeFileAtomic } from '@ejunz/ea-core/atomic-write'
 
-import { expandHomePath } from '@ejunz/ea/home-paths'
+import { expandHomePath } from '@ejunz/ea-core/home-paths'
 
 export class InvalidPresetIdError extends Error {
   constructor(
@@ -275,7 +275,7 @@ import { load } from 'js-yaml'
 
 import { entryListSchema } from '@ejunz/cordis-plugin-include'
 
-import { expandHomePath } from '@ejunz/ea/home-paths'
+import { expandHomePath } from '@ejunz/ea-core/home-paths'
 
 export const COMPOSITION_FILE = 'agent.cordis.yml'
 
@@ -391,7 +391,7 @@ import { Include } from '@ejunz/cordis-plugin-include'
 
 import type { EntryTree } from '@ejunz/cordis-plugin-loader'
 
-import { scopeOf, scopeParentOf, type ScopeKey } from '@ejunz/ea/scope'
+import { scopeOf, scopeParentOf, type ScopeKey } from '@ejunz/ea-core/scope'
 
 interface MountedTree {
   /** The rows the composition created. */
@@ -626,7 +626,7 @@ export async function mountPreset(agentCtx: Context, preset: AgentPreset): Promi
   }
 }
 
-import type { SessionId } from '@ejunz/ea/session/types'
+import type { SessionId } from '@ejunz/ea-core/session/types'
 
 declare module '@ejunz/cordis' {
   interface Events {
@@ -643,9 +643,9 @@ declare module '@ejunz/cordis' {
 
 export {}
 
-import type { SessionEvent, SessionHeader } from '@ejunz/ea/session'
+import type { SessionEvent, SessionHeader } from '@ejunz/ea-core/session'
 
-declare module '@ejunz/ea/session/types' {
+declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {
     /**
      * The session's agent preset was chosen after creation, while the session
@@ -678,13 +678,13 @@ import { Context, Service } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { bindScopeParent, createScope, scopeOf, type Scope, type ScopeKey, type ScopeParentBinding } from '@ejunz/ea/scope'
+import { bindScopeParent, createScope, scopeOf, type Scope, type ScopeKey, type ScopeParentBinding } from '@ejunz/ea-core/scope'
 
-import type {} from '@ejunz/ea/agent'
+import type {} from '@ejunz/ea-core/agent'
 
-import { settingsNamespace, type SettingsScope, type default as SettingsService } from '@ejunz/ea/settings'
+import { settingsNamespace, type SettingsScope, type default as SettingsService } from '@ejunz/ea-core/settings'
 
-import { eaHomePath } from '@ejunz/ea/home-paths'
+import { eaHomePath } from '@ejunz/ea-core/home-paths'
 
 export const SETTINGS_NAMESPACE = 'agent-presets'
 
@@ -1191,11 +1191,11 @@ interface StandingMount {
 
 export default AgentPresets
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/agent-presets'
+  const PACKAGE_NAME = '@ejunz/ea-core/agent-presets'
   export const name = 'agent-presets-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

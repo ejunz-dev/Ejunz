@@ -4,19 +4,19 @@
  * producers. It also delivers unreported completions to the owning agent:
  * injected into a busy owner's next step, or opening a turn on an idle one
  * under the default `wakeup` delivery, bounded per owner.
- * @module @ejunz/ea/tool-jobs
+ * @module @ejunz/ea-core/tool-jobs
  */
 
 import type { Context } from '@ejunz/cordis'
 import z from '@ejunz/schemastery'
-import { boundContextSummary, createUserMessage, type ContentBlock } from '@ejunz/ea/llm'
-import { TextRetainer } from '@ejunz/ea/output-retention'
-import { defineTool } from '@ejunz/ea/tools'
-import type { GenericCallView, ToolDefinition, ToolExecution } from '@ejunz/ea/tools'
-import { JobId } from '@ejunz/ea/jobs'
-import type { JobSnapshot } from '@ejunz/ea/jobs'
-import type {} from '@ejunz/ea/system-prompt'
-import type { Agent } from '@ejunz/ea/agent'
+import { boundContextSummary, createUserMessage, type ContentBlock } from '@ejunz/ea-core/llm'
+import { TextRetainer } from '@ejunz/ea-core/output-retention'
+import { defineTool } from '@ejunz/ea-core/tools'
+import type { GenericCallView, ToolDefinition, ToolExecution } from '@ejunz/ea-core/tools'
+import { JobId } from '@ejunz/ea-core/jobs'
+import type { JobSnapshot } from '@ejunz/ea-core/jobs'
+import type {} from '@ejunz/ea-core/system-prompt'
+import type { Agent } from '@ejunz/ea-core/agent'
 
 export const name = 'tool-jobs'
 export const inject = ['tools', 'jobs', 'systemPrompt']
@@ -401,11 +401,11 @@ export function apply(ctx: Context, config: Config): void {
   }))
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/tool-jobs'
+  const PACKAGE_NAME = '@ejunz/ea-core/tool-jobs'
   export const name = 'tool-jobs-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

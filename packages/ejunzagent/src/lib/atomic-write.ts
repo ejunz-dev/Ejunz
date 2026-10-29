@@ -7,7 +7,7 @@
  * writers of one file through a `wx`-created `<file>.lock` sibling, so a
  * read-modify-write cycle can never resurrect a state another writer just
  * replaced; readers stay lock-free because the rename commit is atomic.
- * @module @ejunz/ea/atomic-write
+ * @module @ejunz/ea-core/atomic-write
  */
 
 import { randomBytes } from 'node:crypto'
@@ -117,11 +117,11 @@ export async function withFileLock<T>(
   }
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/atomic-write'
+  const PACKAGE_NAME = '@ejunz/ea-core/atomic-write'
   export const name = 'atomic-write-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

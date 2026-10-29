@@ -1,14 +1,14 @@
-import { createUserMessage } from '@ejunz/ea/llm'
+import { createUserMessage } from '@ejunz/ea-core/llm'
 
-import type { ContextSnapshotSection } from '@ejunz/ea/llm'
+import type { ContextSnapshotSection } from '@ejunz/ea-core/llm'
 
-import type { Session, UserMessage } from '@ejunz/ea/session'
+import type { Session, UserMessage } from '@ejunz/ea-core/session'
 
-import { isReplacementSurfaceEvent } from '@ejunz/ea/session'
+import { isReplacementSurfaceEvent } from '@ejunz/ea-core/session'
 
 import type { Context } from '@ejunz/cordis'
 
-const SOURCE = '@ejunz/ea/system-prompt'
+const SOURCE = '@ejunz/ea-core/system-prompt'
 
 const CLEARED = 'Current runtime context: none. Earlier runtime-context snapshots no longer apply.'
 
@@ -76,11 +76,11 @@ export class RuntimeContextProjection {
 
 import type { Context } from '@ejunz/cordis'
 
-import { assertNever, createToolResultMessage, type ToolCallBlock } from '@ejunz/ea/llm'
+import { assertNever, createToolResultMessage, type ToolCallBlock } from '@ejunz/ea-core/llm'
 
-import type { Session, UserMessage } from '@ejunz/ea/session'
+import type { Session, UserMessage } from '@ejunz/ea-core/session'
 
-import { TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER, type ToolExecutionInput, type ToolExecutionMode, type ToolExecutionResult, type ToolRunContext } from '@ejunz/ea/tools'
+import { TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER, type ToolExecutionInput, type ToolExecutionMode, type ToolExecutionResult, type ToolRunContext } from '@ejunz/ea-core/tools'
 
 interface PlannedCall {
   block: ToolCallBlock
@@ -329,11 +329,11 @@ import type {
   InboxTarget,
   PreStepDecision,
   RequestErrorAction,
-} from '@ejunz/ea/agent'
+} from '@ejunz/ea-core/agent'
 
-import { Inbox, agentEvents, assembleContextFor } from '@ejunz/ea/agent'
+import { Inbox, agentEvents, assembleContextFor } from '@ejunz/ea-core/agent'
 
-import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@ejunz/ea/llm'
+import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@ejunz/ea-core/llm'
 
 import {
   BlockAssembler,
@@ -342,19 +342,19 @@ import {
   deepFreeze,
   errorChain,
   markAgentLoopRequest,
-} from '@ejunz/ea/llm'
+} from '@ejunz/ea-core/llm'
 
-import type { Scope } from '@ejunz/ea/scope'
+import type { Scope } from '@ejunz/ea-core/scope'
 
-import { createScope } from '@ejunz/ea/scope'
+import { createScope } from '@ejunz/ea-core/scope'
 
-import type { EpochHeader, RequestContext, Session, SessionId, TurnEndReason, UserMessage } from '@ejunz/ea/session'
+import type { EpochHeader, RequestContext, Session, SessionId, TurnEndReason, UserMessage } from '@ejunz/ea-core/session'
 
-import { canonicalHeader, headerEquals } from '@ejunz/ea/session'
+import { canonicalHeader, headerEquals } from '@ejunz/ea-core/session'
 
-import { joinContextSections, renderContextSections, renderPrompt } from '@ejunz/ea/system-prompt'
+import { joinContextSections, renderContextSections, renderPrompt } from '@ejunz/ea-core/system-prompt'
 
-import type { PromptAssembly } from '@ejunz/ea/system-prompt'
+import type { PromptAssembly } from '@ejunz/ea-core/system-prompt'
 
 import type { Context } from '@ejunz/cordis'
 
@@ -834,7 +834,7 @@ import { randomUUID } from 'node:crypto'
 
 import z from '@ejunz/schemastery'
 
-import { emitAgentEvent } from '@ejunz/ea/agent'
+import { emitAgentEvent } from '@ejunz/ea-core/agent'
 
 import type {
   Agent,
@@ -845,21 +845,21 @@ import type {
   CreateAgentOptions,
   ResumeAgentOptions,
   SessionStartSource,
-} from '@ejunz/ea/agent'
+} from '@ejunz/ea-core/agent'
 
-import { errorChain } from '@ejunz/ea/llm'
+import { errorChain } from '@ejunz/ea-core/llm'
 
-import { installSettingsSection, settingsNamespace } from '@ejunz/ea/settings'
+import { installSettingsSection, settingsNamespace } from '@ejunz/ea-core/settings'
 
-import { SessionId, SessionPreparation } from '@ejunz/ea/session'
+import { SessionId, SessionPreparation } from '@ejunz/ea-core/session'
 
-import type { Session, SessionHeader } from '@ejunz/ea/session'
+import type { Session, SessionHeader } from '@ejunz/ea-core/session'
 
-import type {} from '@ejunz/ea/system-prompt'
+import type {} from '@ejunz/ea-core/system-prompt'
 
-import type {} from '@ejunz/ea/tools'
+import type {} from '@ejunz/ea-core/tools'
 
-import type { SessionPersistence } from '@ejunz/ea/session-persistence'
+import type { SessionPersistence } from '@ejunz/ea-core/session-persistence'
 
 const INACTIVE_STATES: ReadonlySet<FiberState> = new Set([
   FiberState.UNLOADING,
@@ -1523,11 +1523,11 @@ export class AgentLoop extends Service implements AgentFactory {
 
 export default AgentLoop
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/agent-loop'
+  const PACKAGE_NAME = '@ejunz/ea-core/agent-loop'
   export const name = 'agent-loop-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

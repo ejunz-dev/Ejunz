@@ -2,7 +2,7 @@
  * Shared timeout arithmetic, signal fusion, and classification. The library
  * only notifies through abort signals; each capability still owns the mechanism
  * that stops its work and translates timeout reasons into public outcomes.
- * @module @ejunz/ea/timeout
+ * @module @ejunz/ea-core/timeout
  */
 
 /**
@@ -189,11 +189,11 @@ export function timeoutOf(x: AbortSignal | { reason?: unknown }, code?: string):
   return code === undefined || reason.code === code ? reason : undefined
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/timeout'
+  const PACKAGE_NAME = '@ejunz/ea-core/timeout'
   export const name = 'timeout-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

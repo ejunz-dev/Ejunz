@@ -1,13 +1,13 @@
 /**
  * E2B provider for the filesystem capability seam. Paths, contents, and
  * atomic staging files remain inside the shared remote sandbox.
- * @module @ejunz/ea/fs-e2b
+ * @module @ejunz/ea-core/fs-e2b
  */
 
 import { createHash, randomUUID } from 'node:crypto'
 import { Buffer } from 'node:buffer'
 import { posix } from 'node:path'
-import { FileSystem, FsError, FsTargetKey, FsVersion } from '@ejunz/ea/fs'
+import { FileSystem, FsError, FsTargetKey, FsVersion } from '@ejunz/ea-core/fs'
 import type {
   FsDirEntry,
   FsEditOutcome,
@@ -17,15 +17,15 @@ import type {
   FsTarget,
   FsWriteIntent,
   FsWriteOutcome,
-} from '@ejunz/ea/fs'
+} from '@ejunz/ea-core/fs'
 import {
   CommandExitError,
   e2bControlEnvs,
   FileNotFoundError,
   FileType,
   quoteE2BShellArg,
-} from '@ejunz/ea/e2b'
-import type { EntryInfo, Sandbox } from '@ejunz/ea/e2b'
+} from '@ejunz/ea-core/e2b'
+import type { EntryInfo, Sandbox } from '@ejunz/ea-core/e2b'
 
 const VERSION_METADATA_KEY = 'ea-version'
 const BINARY_SAMPLE_BYTES = 8192
@@ -581,11 +581,11 @@ export class E2BFileSystem extends FileSystem {
 
 export default E2BFileSystem
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/fs-e2b'
+  const PACKAGE_NAME = '@ejunz/ea-core/fs-e2b'
   export const name = 'fs-e2b-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

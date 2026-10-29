@@ -99,7 +99,7 @@ export function isEjunzAgentError(value: unknown): value is EjunzAgentError {
   return value instanceof EjunzAgentError
 }
 
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
 export type MessageId = Branded<'MessageId'>
 
@@ -369,7 +369,7 @@ export function isTokenDelta(chunk: StreamChunk): boolean {
   }
 }
 
-import type { ImageAttachmentRef } from '@ejunz/ea/attachment'
+import type { ImageAttachmentRef } from '@ejunz/ea-core/attachment'
 
 declare module '@ejunz/cordis' {
   interface Events {
@@ -917,7 +917,7 @@ export function contentHasImage(content: readonly ContentBlock[]): boolean {
 
 import z from '@ejunz/schemastery'
 
-import { MAX_TIMER_DELAY_MS } from '@ejunz/ea/timeout'
+import { MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
 
 const DEFAULT_MAX_RETRIES = 2
 
@@ -2023,11 +2023,11 @@ interface AdapterRegistration {
 
 export default LlmRuntime
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/llm'
+  const PACKAGE_NAME = '@ejunz/ea-core/llm'
   export const name = 'llm-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

@@ -27,7 +27,7 @@
  *   web bodies). `head` / `tail` / `headTail`, preserving UTF-8 boundaries at
  *   {@link TextRetainer.finish}.
  *
- * @module @ejunz/ea/output-retention
+ * @module @ejunz/ea-core/output-retention
  */
 
 /**
@@ -442,11 +442,11 @@ export function formatRetentionNotice(
     .join(' ')
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/output-retention'
+  const PACKAGE_NAME = '@ejunz/ea-core/output-retention'
   export const name = 'output-retention-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

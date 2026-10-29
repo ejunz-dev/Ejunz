@@ -5,35 +5,35 @@
  * deployments still choose the LLM adapter and entry-point-specific services.
  * The plugin intentionally exposes named exports only because Loader default
  * unwrapping would discard its `Config` schema (see docs/postmortem/0001).
- * @module @ejunz/ea/agent-spine-demo
+ * @module @ejunz/ea-core/agent-spine-demo
  */
 
 import type { Context } from '@ejunz/cordis'
 import Timer from '@ejunz/cordis-plugin-timer'
 import z from '@ejunz/schemastery'
-import LlmRuntime from '@ejunz/ea/llm'
-import SessionStore from '@ejunz/ea/session'
-import SessionTitleService, { type Config as SessionTitleConfig } from '@ejunz/ea/session-title'
-import SystemPrompt, { type Config as SystemPromptConfig } from '@ejunz/ea/system-prompt'
-import ToolRuntime from '@ejunz/ea/tools'
-import SkillRegistry, { type Config as SkillRegistryConfig } from '@ejunz/ea/skill'
-import * as SkillFileSystem from '@ejunz/ea/skill-filesystem'
-import AgentRegistry from '@ejunz/ea/agent'
-import GoalService, { type Config as GoalDomainConfig } from '@ejunz/ea/goal'
-import * as goalSession from '@ejunz/ea/goal-round-driver'
-import * as toolGoal from '@ejunz/ea/tool-goal'
-import LocalJobRegistry, { type Config as JobsConfig } from '@ejunz/ea/jobs-local'
-import InvariantRegistry, { type Config as InvariantConfig } from '@ejunz/ea/invariants'
-import * as sessionInvariant from '@ejunz/ea/session/invariant'
-import * as agentInvariant from '@ejunz/ea/agent/invariant'
-import * as scopeInvariant from '@ejunz/ea/scope/invariant'
-import * as agentLoopInvariant from '@ejunz/ea/agent-loop/invariant'
-import * as workspaceContext from '@ejunz/ea/agent-instructions'
-import * as toolSkill from '@ejunz/ea/tool-skill'
-import * as toolJobs from '@ejunz/ea/tool-jobs'
-import AgentLoop, { type Config as AgentLoopConfig } from '@ejunz/ea/agent-loop'
-import * as llmRetry from '@ejunz/ea/llm-retry'
-import { resolveEaHome } from '@ejunz/ea/home-paths'
+import LlmRuntime from '@ejunz/ea-core/llm'
+import SessionStore from '@ejunz/ea-core/session'
+import SessionTitleService, { type Config as SessionTitleConfig } from '@ejunz/ea-core/session-title'
+import SystemPrompt, { type Config as SystemPromptConfig } from '@ejunz/ea-core/system-prompt'
+import ToolRuntime from '@ejunz/ea-core/tools'
+import SkillRegistry, { type Config as SkillRegistryConfig } from '@ejunz/ea-core/skill'
+import * as SkillFileSystem from '@ejunz/ea-core/skill-filesystem'
+import AgentRegistry from '@ejunz/ea-core/agent'
+import GoalService, { type Config as GoalDomainConfig } from '@ejunz/ea-core/goal'
+import * as goalSession from '@ejunz/ea-core/goal-round-driver'
+import * as toolGoal from '@ejunz/ea-core/tool-goal'
+import LocalJobRegistry, { type Config as JobsConfig } from '@ejunz/ea-core/jobs-local'
+import InvariantRegistry, { type Config as InvariantConfig } from '@ejunz/ea-core/invariants'
+import * as sessionInvariant from '@ejunz/ea-core/session/invariant'
+import * as agentInvariant from '@ejunz/ea-core/agent/invariant'
+import * as scopeInvariant from '@ejunz/ea-core/scope/invariant'
+import * as agentLoopInvariant from '@ejunz/ea-core/agent-loop/invariant'
+import * as workspaceContext from '@ejunz/ea-core/agent-instructions'
+import * as toolSkill from '@ejunz/ea-core/tool-skill'
+import * as toolJobs from '@ejunz/ea-core/tool-jobs'
+import AgentLoop, { type Config as AgentLoopConfig } from '@ejunz/ea-core/agent-loop'
+import * as llmRetry from '@ejunz/ea-core/llm-retry'
+import { resolveEaHome } from '@ejunz/ea-core/home-paths'
 
 export const name = 'agent-spine-demo'
 
@@ -244,10 +244,10 @@ export function apply(ctx: Context, config: Config): void {
 
 
 import type { Context as InvariantContext } from '@ejunz/cordis'
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/agent-spine-demo'
+  const PACKAGE_NAME = '@ejunz/ea-core/agent-spine-demo'
   export const name = 'agent-spine-demo-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

@@ -1,14 +1,14 @@
 /**
  * Human-facing `/compact` command over the backend-independent compaction seam.
- * @module @ejunz/ea/command-compact
+ * @module @ejunz/ea-core/command-compact
  */
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 
 
 import type { Context } from '@ejunz/cordis'
-import { ManualCompactionError } from '@ejunz/ea/compaction'
-import type { CommandInvocation, CommandResult } from '@ejunz/ea/commands'
+import { ManualCompactionError } from '@ejunz/ea-core/compaction'
+import type { CommandInvocation, CommandResult } from '@ejunz/ea-core/commands'
 
 export const name = 'command-compact'
 export const inject = ['commands', 'compaction']
@@ -110,7 +110,7 @@ export function apply(ctx: Context): void {
 
 /** Invariant companion namespace for the module subpath. */
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/command-compact'
+  const PACKAGE_NAME = '@ejunz/ea-core/command-compact'
   
   /** Cordis companion plugin name. */
   export const name = 'command-compact-invariant'

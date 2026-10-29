@@ -32,7 +32,7 @@
  * as the user's environment layer; a store that doubled as the environment
  * layer would shadow non-secret entries behind its precedence, making them
  * silently unreachable.
- * @module @ejunz/ea/credentials-local
+ * @module @ejunz/ea-core/credentials-local
  */
 
 import { Context, Service } from '@ejunz/cordis'
@@ -41,12 +41,12 @@ import { watch as chokidarWatch } from 'chokidar'
 import { mkdir, readFile, stat } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { Document, parseDocument, type YAMLError } from 'yaml'
-import { withFileLock, writeFileAtomic } from '@ejunz/ea/atomic-write'
-import { canonicalizeWatchPath, resolveEaHome } from '@ejunz/ea/home-paths'
-import { launchEnvironmentOf } from '@ejunz/ea/launch-environment'
-import { CredentialProvider, credentialRef } from '@ejunz/ea/credentials'
-import type { CredentialInfo, CredentialRef, ResolvedCredential } from '@ejunz/ea/credentials'
-import type { LaunchEnvironmentEntry } from '@ejunz/ea/launch-environment'
+import { withFileLock, writeFileAtomic } from '@ejunz/ea-core/atomic-write'
+import { canonicalizeWatchPath, resolveEaHome } from '@ejunz/ea-core/home-paths'
+import { launchEnvironmentOf } from '@ejunz/ea-core/launch-environment'
+import { CredentialProvider, credentialRef } from '@ejunz/ea-core/credentials'
+import type { CredentialInfo, CredentialRef, ResolvedCredential } from '@ejunz/ea-core/credentials'
+import type { LaunchEnvironmentEntry } from '@ejunz/ea-core/launch-environment'
 
 /** Basename of the credentials document inside the ejunzAgent home. */
 export const CREDENTIALS_FILENAME = '.credentials.yaml'
@@ -495,11 +495,11 @@ export class LocalCredentialProvider extends CredentialProvider {
 
 export default LocalCredentialProvider
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/credentials-local'
+  const PACKAGE_NAME = '@ejunz/ea-core/credentials-local'
   export const name = 'credentials-local-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

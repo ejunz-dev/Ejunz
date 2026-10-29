@@ -10,8 +10,8 @@ import {
   createToolResultMessage,
   createUserMessage,
   isTokenDelta,
-} from '@ejunz/ea/llm/message'
-import { CallId } from '@ejunz/ea/llm/brand'
+} from '@ejunz/ea-core/llm/message'
+import { CallId } from '@ejunz/ea-core/llm/brand'
 import type {
   AssistantMessage,
   ContentBlock,
@@ -19,18 +19,18 @@ import type {
   TokenUsage,
   ToolResultMessage,
   UserMessage,
-} from '@ejunz/ea/llm'
-import type { AttachmentIdType, ImageAttachmentRef } from '@ejunz/ea/attachment'
+} from '@ejunz/ea-core/llm'
+import type { AttachmentIdType, ImageAttachmentRef } from '@ejunz/ea-core/attachment'
 import type {
   SessionEvent,
   SessionId,
   TodoItem,
-} from '@ejunz/ea/session/types'
+} from '@ejunz/ea-core/session/types'
 // Type-only: the brand constructor is host-side; the fixture casts at its
 // wire-fabrication boundary (the schema layer's one-cast-point posture).
-import type { CommandId } from '@ejunz/ea/commands/brand'
-import type { CommandDescriptor, CommandExecution, CommandResult } from '@ejunz/ea/commands/types'
-import { deriveEventMessage, foldSurface } from '@ejunz/ea/session/surface'
+import type { CommandId } from '@ejunz/ea-core/commands/brand'
+import type { CommandDescriptor, CommandExecution, CommandResult } from '@ejunz/ea-core/commands/types'
+import { deriveEventMessage, foldSurface } from '@ejunz/ea-core/session/surface'
 import type {
   ApiProxy, ClientRequest, ClientResponse, HistoryEntry, HostFrame, MuxFrame, RpcReceipt,
   ModelProviderGroup, ModelSelection, RpcRequest, RpcResponse, RpcResult, ServerRequest, ServerResponse, SessionSummary,

@@ -128,9 +128,9 @@ export abstract class SessionTelemetryBackend extends Service implements Session
 
 import type { Context } from '@ejunz/cordis'
 
-import type { Session, SessionEvent } from '@ejunz/ea/session'
+import type { Session, SessionEvent } from '@ejunz/ea-core/session'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
 export type SessionTelemetryCapture = 'live' | 'on-demand'
 
@@ -396,11 +396,11 @@ function identityOf(session: Session, event: SessionEvent): Record<string, strin
   return attributes
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/session-telemetry'
+  const PACKAGE_NAME = '@ejunz/ea-core/session-telemetry'
   export const name = 'session-telemetry-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

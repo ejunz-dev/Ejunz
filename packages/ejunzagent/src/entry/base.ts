@@ -1,16 +1,16 @@
 /**
  * Base profile-bundle module. The patch artifact is declared by the root EA
  * package's `ea.bundle.patch` manifest field; this module carries no runtime API.
- * @module @ejunz/ea/base
+ * @module @ejunz/ea-core/base
  */
 
 import type { Context } from '@ejunz/cordis'
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 
 export {}
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea'
+  const PACKAGE_NAME = '@ejunz/ea-core'
   export const name = 'base-bundle-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

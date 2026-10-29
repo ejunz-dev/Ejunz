@@ -18,7 +18,7 @@
  * package can brand its ids without depending on an unrelated capability
  * package.
  *
- * @module @ejunz/ea/brand
+ * @module @ejunz/ea-core/brand
  */
 
 declare const BRAND: unique symbol
@@ -26,11 +26,11 @@ declare const BRAND: unique symbol
 /** A string carrying a compile-time-only brand `B`. */
 export type Branded<B extends string> = string & { readonly [BRAND]: B }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/brand'
+  const PACKAGE_NAME = '@ejunz/ea-core/brand'
   export const name = 'brand-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

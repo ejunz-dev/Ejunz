@@ -182,11 +182,11 @@ export abstract class SubprocessRuntime extends Service {
 
 export default SubprocessRuntime
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/subprocess'
+  const PACKAGE_NAME = '@ejunz/ea-core/subprocess'
   export const name = 'subprocess-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

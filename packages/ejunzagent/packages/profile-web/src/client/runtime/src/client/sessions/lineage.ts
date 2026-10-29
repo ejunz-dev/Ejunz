@@ -3,7 +3,7 @@
 // Orphaned lineage degrades to root level; cycles fail soft and emit as roots.
 
 import type { SessionId, SessionSummary } from '@ejunz/profile-web/api/remotes/client'
-import type { SessionProjectionMap } from '@ejunz/ea/session-projection/types'
+import type { SessionProjectionMap } from '@ejunz/ea-core/session-projection/types'
 import type { PendingInteractionStatus } from './pending.ts'
 
 /** Host list summary enriched with the latest mux-projected durable title. */

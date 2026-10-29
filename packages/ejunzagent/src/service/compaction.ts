@@ -1,4 +1,4 @@
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
 export type CompactionId = Branded<'CompactionId'>
 
@@ -6,9 +6,9 @@ export function CompactionId(id: string): CompactionId {
   return id as CompactionId
 }
 
-import type { MessageSource } from '@ejunz/ea/llm/message'
+import type { MessageSource } from '@ejunz/ea-core/llm/message'
 
-import type { CommandId } from '@ejunz/ea/commands/brand'
+import type { CommandId } from '@ejunz/ea-core/commands/brand'
 
 const COMPACT_CHECKPOINT_MARKER = Object.freeze({ kind: 'plugin', plugin: 'compact' } as const)
 
@@ -32,13 +32,13 @@ export function isCompactCheckpointSource(source: MessageSource): boolean {
   return source.kind === 'plugin' && source.plugin === COMPACT_CHECKPOINT_MARKER.plugin
 }
 
-import type { ContentBlock, TokenUsage } from '@ejunz/ea/llm'
+import type { ContentBlock, TokenUsage } from '@ejunz/ea-core/llm'
 
-import type { CommandId } from '@ejunz/ea/commands/brand'
+import type { CommandId } from '@ejunz/ea-core/commands/brand'
 
 export type { CompactionId }
 
-declare module '@ejunz/ea/session/types' {
+declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {
     /**
      * Marks the start of a compaction — log-only, holds the lock until
@@ -142,7 +142,7 @@ export interface CompactionResult {
   shadowedTokenCount: number
 }
 
-import type { Session, SessionEvent } from '@ejunz/ea/session'
+import type { Session, SessionEvent } from '@ejunz/ea-core/session'
 
 interface BalanceCache {
   /** Surface rewrite generation this state describes. */
@@ -247,9 +247,9 @@ export function toolPairingBalancedAfter(session: Session, seq: number): boolean
 
 import { Context, Service } from '@ejunz/cordis'
 
-import type { Session } from '@ejunz/ea/session'
+import type { Session } from '@ejunz/ea-core/session'
 
-import type { CommandId } from '@ejunz/ea/commands/brand'
+import type { CommandId } from '@ejunz/ea-core/commands/brand'
 
 export type CompactionTrigger = 'pressure' | 'context-overflow'
 
@@ -379,11 +379,11 @@ export abstract class CompactionEngine extends Service {
 
 export default CompactionEngine
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/compaction'
+  const PACKAGE_NAME = '@ejunz/ea-core/compaction'
   export const name = 'compaction-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

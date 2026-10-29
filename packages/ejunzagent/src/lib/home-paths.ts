@@ -1,7 +1,7 @@
 /**
  * Shared filesystem path helpers for EjunzAgent user data.
  *
- * @module @ejunz/ea/home-paths
+ * @module @ejunz/ea-core/home-paths
  */
 
 import { opendir, realpath } from 'node:fs/promises'
@@ -111,11 +111,11 @@ export function eaHomeDisplay(resolvedHome: string): string {
   return resolvedHome === resolve(defaultEaHome()) ? DEFAULT_EA_HOME_DISPLAY : `$${EA_HOME_ENV}`
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/home-paths'
+  const PACKAGE_NAME = '@ejunz/ea-core/home-paths'
   export const name = 'home-paths-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

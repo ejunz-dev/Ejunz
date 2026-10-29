@@ -22,7 +22,7 @@
  * that do not use a `./typert` artifact (hand-written wire schemas,
  * tests, non-loader compositions).
  *
- * @module @ejunz/ea/typert-loader
+ * @module @ejunz/ea-core/typert-loader
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -32,8 +32,8 @@ import { pathToFileURL } from 'node:url'
 import type { Context } from '@ejunz/cordis'
 import z from '@ejunz/schemastery'
 import type {} from '@ejunz/cordis-plugin-loader'
-import type {} from '@ejunz/ea/typert-registry'
-import type { TypertContribution } from '@ejunz/ea/typert-registry/types'
+import type {} from '@ejunz/ea-core/typert-registry'
+import type { TypertContribution } from '@ejunz/ea-core/typert-registry/types'
 
 /** The package.json exports key naming a package's host-face typert artifact. */
 export const TYPERT_HOST_EXPORT = './typert'
@@ -450,11 +450,11 @@ function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/typert-loader'
+  const PACKAGE_NAME = '@ejunz/ea-core/typert-loader'
   export const name = 'typert-loader-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

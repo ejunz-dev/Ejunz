@@ -1,6 +1,6 @@
-import type { ContentBlock, Message } from '@ejunz/ea/llm'
+import type { ContentBlock, Message } from '@ejunz/ea-core/llm'
 
-import type { EpochHeader } from '@ejunz/ea/session'
+import type { EpochHeader } from '@ejunz/ea-core/session'
 
 const CHARS_PER_TOKEN = 4
 
@@ -51,11 +51,11 @@ export function estimateHeader(header: EpochHeader | undefined): number {
   return estimateSystemTokens(header) + estimateToolsTokens(header)
 }
 
-import { deriveEventMessage, isSurfaceEvent } from '@ejunz/ea/session'
+import { deriveEventMessage, isSurfaceEvent } from '@ejunz/ea-core/session'
 
-import type { SessionEvent } from '@ejunz/ea/session'
+import type { SessionEvent } from '@ejunz/ea-core/session'
 
-import type {} from '@ejunz/ea/compaction'
+import type {} from '@ejunz/ea-core/compaction'
 
 export interface ShadowPriceClaim {
   /** Declared inclusive first surface-node seq of the priced range. */
@@ -139,7 +139,7 @@ export interface ContextBreakdownProjection {
   messageTokens: number
 }
 
-declare module '@ejunz/ea/session-projection/types' {
+declare module '@ejunz/ea-core/session-projection/types' {
   interface SessionProjectionMap {
     /** Provider-reported usage accumulated across the complete durable log. */
     tokenUsage: TokenUsageProjection
@@ -152,9 +152,9 @@ declare module '@ejunz/ea/session-projection/types' {
 
 import { z } from 'zod'
 
-import { canonicalHeader } from '@ejunz/ea/session'
+import { canonicalHeader } from '@ejunz/ea-core/session'
 
-import type { ProjectionDefinition } from '@ejunz/ea/session-projection'
+import type { ProjectionDefinition } from '@ejunz/ea-core/session-projection'
 
 interface ContextBreakdownState {
   systemTokens: number
@@ -200,7 +200,7 @@ ProjectionDefinition<'contextBreakdown', ContextBreakdownState> = {
   stateVersion: 2,
 }
 
-import type { TokenUsage } from '@ejunz/ea/llm'
+import type { TokenUsage } from '@ejunz/ea-core/llm'
 
 export type TokenMeterConfig = Record<string, never>
 
@@ -233,11 +233,11 @@ export interface TokenSurfaceNode {
 
 import { z } from 'zod'
 
-import type { TokenUsage } from '@ejunz/ea/llm'
+import type { TokenUsage } from '@ejunz/ea-core/llm'
 
-import type { SessionEvent } from '@ejunz/ea/session'
+import type { SessionEvent } from '@ejunz/ea-core/session'
 
-import type { ProjectionDefinition } from '@ejunz/ea/session-projection'
+import type { ProjectionDefinition } from '@ejunz/ea-core/session-projection'
 
 interface UsageSample {
   turn: number
@@ -395,9 +395,9 @@ ProjectionDefinition<'contextPressure', ContextPressureState> = {
   stateVersion: 4,
 }
 
-import { deriveEventMessage } from '@ejunz/ea/session'
+import { deriveEventMessage } from '@ejunz/ea-core/session'
 
-import type { SurfaceEvent } from '@ejunz/ea/session'
+import type { SurfaceEvent } from '@ejunz/ea-core/session'
 
 export interface SurfaceTokenFold {
   /** Heuristic price of the event's own message; 0 when it derives none. */
@@ -437,15 +437,15 @@ import { Context, Service } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { BlockAssembler, deepFreeze } from '@ejunz/ea/llm'
+import { BlockAssembler, deepFreeze } from '@ejunz/ea-core/llm'
 
-import type { Message, TokenUsage } from '@ejunz/ea/llm'
+import type { Message, TokenUsage } from '@ejunz/ea-core/llm'
 
-import type { EpochHeader, Session, SessionEvent } from '@ejunz/ea/session'
+import type { EpochHeader, Session, SessionEvent } from '@ejunz/ea-core/session'
 
-import { canonicalHeader, headerEquals, isSurfaceEvent } from '@ejunz/ea/session'
+import { canonicalHeader, headerEquals, isSurfaceEvent } from '@ejunz/ea-core/session'
 
-import type {} from '@ejunz/ea/session-projection'
+import type {} from '@ejunz/ea-core/session-projection'
 
 interface MeasurementAnchor {
   readonly header: EpochHeader | undefined
@@ -730,11 +730,11 @@ export class TokenMeter extends Service {
 
 export default TokenMeter
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/token-meter'
+  const PACKAGE_NAME = '@ejunz/ea-core/token-meter'
   export const name = 'token-meter-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

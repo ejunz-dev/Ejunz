@@ -1,6 +1,6 @@
 import { Context } from '@ejunz/cordis'
 import z from '@ejunz/schemastery'
-import type { SessionEvent, SessionId, SessionHeader } from '@ejunz/ea/session'
+import type { SessionEvent, SessionId, SessionHeader } from '@ejunz/ea-core/session'
 import {
   DEFAULT_PREPARED_SESSION_CACHE_SIZE,
   DEFAULT_WRITE_BATCH_MAX_DELAY_MS,
@@ -12,7 +12,7 @@ import {
   type SessionPersistenceSnapshot,
   type SessionLocation,
   type StoredPrefix,
-} from '@ejunz/ea/session-persistence'
+} from '@ejunz/ea-core/session-persistence'
 
 export interface Config {
   origin: string
@@ -184,11 +184,11 @@ export class EjunzSessionPersistence extends SessionPersistence implements Persi
 
 export default EjunzSessionPersistence
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/session-persistence-ejunz'
+  const PACKAGE_NAME = '@ejunz/ea-core/session-persistence-ejunz'
   export const name = 'session-persistence-ejunz-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

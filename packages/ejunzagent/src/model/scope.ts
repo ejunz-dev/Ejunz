@@ -390,11 +390,11 @@ export function scopedSubjectResolverFor(event: string): ScopedSubjectResolver |
 }
 // @ea-scoped-events-generated-end
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/scope'
+  const PACKAGE_NAME = '@ejunz/ea-core/scope'
   export const name = 'scope-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

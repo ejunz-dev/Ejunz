@@ -1,6 +1,6 @@
 export {}
 
-declare module '@ejunz/ea/session-projection/types' {
+declare module '@ejunz/ea-core/session-projection/types' {
   interface SessionProjectionMap {
     /**
      * The session's current normalized title — the latest `session/title`
@@ -78,18 +78,18 @@ import z from '@ejunz/schemastery'
 
 import { z as zod } from 'zod'
 
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
-import { assertNever, deepFreeze, isAgentLoopRequest } from '@ejunz/ea/llm'
+import { assertNever, deepFreeze, isAgentLoopRequest } from '@ejunz/ea-core/llm'
 
-import type { GenerateOptions } from '@ejunz/ea/llm'
+import type { GenerateOptions } from '@ejunz/ea-core/llm'
 
 import type {
   Session,
   SessionEvent,
-} from '@ejunz/ea/session'
+} from '@ejunz/ea-core/session'
 
-import type {} from '@ejunz/ea/session-projection'
+import type {} from '@ejunz/ea-core/session-projection'
 
 export type SessionTitleProviderId = Branded<'SessionTitleProviderId'>
 
@@ -147,7 +147,7 @@ declare module '@ejunz/cordis' {
   }
 }
 
-declare module '@ejunz/ea/session/types' {
+declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {
     /**
      * Latest-wins session title snapshot. Log-only: it never enters the model
@@ -817,11 +817,11 @@ export class SessionTitleService extends Service {
 
 export default SessionTitleService
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/session-title'
+  const PACKAGE_NAME = '@ejunz/ea-core/session-title'
   export const name = 'session-title-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

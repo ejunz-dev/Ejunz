@@ -7,7 +7,7 @@
  * removed or bundle-less dependency leaves it). Reconciling by installed
  * state, not by dependency diff, means `update` activates a package that
  * gained its `ea.bundle` declaration in a newer version.
- * @module @ejunz/ea/plugin
+ * @module @ejunz/ea-core/plugin
  */
 
 import { spawnSync } from 'node:child_process'
@@ -22,7 +22,7 @@ import {
   resolveProfileDir,
   writeProfileManifest,
   type ProfileManifest,
-} from '@ejunz/ea/app-boot'
+} from '@ejunz/ea-core/app-boot'
 import { INSTALL_ANCHOR } from '../service/profile-boot.ts'
 
 const NAME = 'ea'

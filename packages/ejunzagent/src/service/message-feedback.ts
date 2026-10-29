@@ -1,8 +1,8 @@
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
-import type { MessageId } from '@ejunz/ea/llm/brand'
+import type { MessageId } from '@ejunz/ea-core/llm/brand'
 
-import type { SessionId } from '@ejunz/ea/session/types'
+import type { SessionId } from '@ejunz/ea-core/session/types'
 
 export type MessageFeedbackVersion = Branded<'MessageFeedbackVersion'>
 
@@ -124,11 +124,11 @@ export type MessageFeedbackDeleteResult =
 
 import { z } from 'zod'
 
-import type { MessageId } from '@ejunz/ea/llm/brand'
+import type { MessageId } from '@ejunz/ea-core/llm/brand'
 
-import type { SessionId } from '@ejunz/ea/session/types'
+import type { SessionId } from '@ejunz/ea-core/session/types'
 
-import { defineDomain, domainTable } from '@ejunz/ea/storage'
+import { defineDomain, domainTable } from '@ejunz/ea-core/storage'
 
 const nonNegativeSafeInteger = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 
@@ -205,15 +205,15 @@ import { Context, Service } from '@ejunz/cordis'
 
 import s from '@ejunz/schemastery'
 
-import { deriveEventMessage, isAppendSurfaceEvent } from '@ejunz/ea/session/surface'
+import { deriveEventMessage, isAppendSurfaceEvent } from '@ejunz/ea-core/session/surface'
 
-import type { SessionHeader, SessionId } from '@ejunz/ea/session/types'
+import type { SessionHeader, SessionId } from '@ejunz/ea-core/session/types'
 
-import type { SessionInspection } from '@ejunz/ea/session-persistence'
+import type { SessionInspection } from '@ejunz/ea-core/session-persistence'
 
-import type { KvTable } from '@ejunz/ea/storage'
+import type { KvTable } from '@ejunz/ea-core/storage'
 
-import { TypertRemoteService, Remote } from '@ejunz/ea/typert-protocol'
+import { TypertRemoteService, Remote } from '@ejunz/ea-core/typert-protocol'
 
 export interface Config {
   /** Maximum UTF-8 byte length accepted for one note. */
@@ -534,11 +534,11 @@ export class MessageFeedbackService extends TypertRemoteService {
 
 export default MessageFeedbackService
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/message-feedback'
+  const PACKAGE_NAME = '@ejunz/ea-core/message-feedback'
   export const name = 'message-feedback-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

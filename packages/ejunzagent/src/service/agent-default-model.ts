@@ -1,14 +1,14 @@
 /**
  * Default model selection for an Agent without a session-specific selection.
  *
- * @module @ejunz/ea/agent-default-model
+ * @module @ejunz/ea-core/agent-default-model
  */
 
 import { Context, Service } from '@ejunz/cordis'
 import z from '@ejunz/schemastery'
-import type { ModelSelection } from '@ejunz/ea/agent'
-import { ReasoningEffortId } from '@ejunz/ea/llm'
-import { installSettingsSection, settingsNamespace } from '@ejunz/ea/settings'
+import type { ModelSelection } from '@ejunz/ea-core/agent'
+import { ReasoningEffortId } from '@ejunz/ea-core/llm'
+import { installSettingsSection, settingsNamespace } from '@ejunz/ea-core/settings'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -106,11 +106,11 @@ export class AgentDefaultModelConfig extends Service {
 
 export default AgentDefaultModelConfig
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/agent-default-model'
+  const PACKAGE_NAME = '@ejunz/ea-core/agent-default-model'
   export const name = 'agent-default-model-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

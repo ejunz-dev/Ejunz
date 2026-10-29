@@ -40,14 +40,13 @@
     }
   },
   "dependencies": {
-    "@ejunz/ea": "workspace:^",
     "@ejunz/profile-web": "workspace:^",
     "js-yaml": "^4.2.0"
   },
   "peerDependencies": {
-    "@ejunz/ea": "workspace:^"
+    "@ejunz/ea-core": "workspace:^"
   },
   "devDependencies": {
-    "@ejunz/ea": "workspace:^"
+    "@ejunz/ea-core": "workspace:^"
   }
 }

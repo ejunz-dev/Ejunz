@@ -6,12 +6,12 @@
  * handler and mux/host downlinks directly, and disposes the root context to
  * stop the instance. Signal handling, fail-loud policy, and patch watching
  * remain with the process owner.
- * @module @ejunz/ea/embed
+ * @module @ejunz/ea-core/embed
  */
 
 import type { Context } from '@ejunz/cordis'
 import { cliAssetPath } from '../lib/cli-paths.ts'
-import { loadLayeredEnv } from '@ejunz/ea/app-boot'
+import { loadLayeredEnv } from '@ejunz/ea-core/app-boot'
 // Activate the Context merges this surface reads (`connection`, `apiProxy`).
 import type {} from '@ejunz/profile-web/client/connection'
 import type {} from '@ejunz/profile-web/host/apiproxy'

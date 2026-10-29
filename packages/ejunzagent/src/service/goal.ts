@@ -1,4 +1,4 @@
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
 export type GoalId = Branded<'GoalId'>
 
@@ -71,7 +71,7 @@ export interface GoalProjection {
   readonly updatedAt: number
 }
 
-declare module '@ejunz/ea/session-projection/types' {
+declare module '@ejunz/ea-core/session-projection/types' {
   interface SessionProjectionMap {
     /**
      * The session's current goal (the latest `goal/change` whole value), or
@@ -83,7 +83,7 @@ declare module '@ejunz/ea/session-projection/types' {
   }
 }
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
 export type GoalOperation =
   | 'create'
@@ -122,13 +122,13 @@ export interface GoalMessageSource {
   readonly round: number
 }
 
-declare module '@ejunz/ea/llm' {
+declare module '@ejunz/ea-core/llm' {
   interface MessageSourceMap {
     goal: GoalMessageSource
   }
 }
 
-declare module '@ejunz/ea/session/types' {
+declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {
     /**
      * Complete post-mutation goal state or clear tombstone.
@@ -173,16 +173,16 @@ declare module '@ejunz/cordis' {
     /**
      * Goal mutation accepted by one live agent. The matching `goal/change`
      * session event has already committed. Listener failures are contained.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners receive only that agent.
      * @param payload.agent - agent whose session owns the goal.
      * @param payload.change - fresh current projection or clear tombstone.
      * @mode emit
      */
-    'goal/changed'(this: import('@ejunz/ea/scope').Scoped<Agent>, payload: { agent: Agent; change: GoalChanged }): void
+    'goal/changed'(this: import('@ejunz/ea-core/scope').Scoped<Agent>, payload: { agent: Agent; change: GoalChanged }): void
   }
 }
 
-import { EjunzAgentError } from '@ejunz/ea/llm'
+import { EjunzAgentError } from '@ejunz/ea-core/llm'
 
 export const GOAL_CHANGE_VERSION = 1
 
@@ -202,9 +202,9 @@ export class GoalError extends EjunzAgentError {
   }
 }
 
-import type { MessageSource } from '@ejunz/ea/llm'
+import type { MessageSource } from '@ejunz/ea-core/llm'
 
-import type { SessionEvent } from '@ejunz/ea/session'
+import type { SessionEvent } from '@ejunz/ea-core/session'
 
 const SNAPSHOT_OPERATIONS: ReadonlySet<Exclude<GoalOperation, 'clear'>> = new Set([
   'create',
@@ -511,15 +511,15 @@ import { z as zod } from 'zod'
 
 import type { ZodType } from 'zod'
 
-import { agentEvents } from '@ejunz/ea/agent'
+import { agentEvents } from '@ejunz/ea-core/agent'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
-import type { Session, SessionEvent } from '@ejunz/ea/session'
+import type { Session, SessionEvent } from '@ejunz/ea-core/session'
 
-import { TypertRemoteService, Remote } from '@ejunz/ea/typert-protocol'
+import { TypertRemoteService, Remote } from '@ejunz/ea-core/typert-protocol'
 
-import type {} from '@ejunz/ea/session-projection'
+import type {} from '@ejunz/ea-core/session-projection'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -1033,11 +1033,11 @@ export class GoalService extends TypertRemoteService {
 
 export default GoalService
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/goal'
+  const PACKAGE_NAME = '@ejunz/ea-core/goal'
   export const name = 'goal-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

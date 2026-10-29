@@ -74,9 +74,9 @@ import { resolve } from 'node:path'
 
 import z from '@ejunz/schemastery'
 
-import { SpillLocator, SpillStore } from '@ejunz/ea/spill'
+import { SpillLocator, SpillStore } from '@ejunz/ea-core/spill'
 
-import type { SaveTextSpill, SpillRef } from '@ejunz/ea/spill'
+import type { SaveTextSpill, SpillRef } from '@ejunz/ea-core/spill'
 
 export interface Config {
   /**
@@ -117,11 +117,11 @@ export class LocalSpillStore extends SpillStore {
 
 export default LocalSpillStore
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/spill-local'
+  const PACKAGE_NAME = '@ejunz/ea-core/spill-local'
   export const name = 'spill-local-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

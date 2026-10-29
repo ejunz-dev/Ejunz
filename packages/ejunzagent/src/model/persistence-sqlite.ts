@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import { DatabaseSync } from 'node:sqlite'
 
-import type { SessionEvent, SessionId, SessionHeader, SurfaceOp } from '@ejunz/ea/session'
+import type { SessionEvent, SessionId, SessionHeader, SurfaceOp } from '@ejunz/ea-core/session'
 
 export const SCHEMA_VERSION = 15
 
@@ -227,9 +227,9 @@ import {
   type PersistenceBackend, type SessionLocation, type SessionPersistenceSnapshot,
   type SessionInspection, type SessionPersistenceRevision as PersistenceRevision,
   type StoredPrefix, type StoredSuffix,
-} from '@ejunz/ea/session-persistence'
+} from '@ejunz/ea-core/session-persistence'
 
-import type { SessionEvent, SurfaceEventType, SessionId, SessionHeader, SessionPreparation } from '@ejunz/ea/session'
+import type { SessionEvent, SurfaceEventType, SessionId, SessionHeader, SessionPreparation } from '@ejunz/ea-core/session'
 
 function envelopeBindings(event: SessionEvent): [string | null, string | null, number | null] {
   const se = event as SessionEvent<SurfaceEventType>
@@ -596,11 +596,11 @@ export class SqliteSessionPersistence extends SessionPersistence implements Pers
 
 export default SqliteSessionPersistence
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/session-persistence-sqlite'
+  const PACKAGE_NAME = '@ejunz/ea-core/session-persistence-sqlite'
   export const name = 'session-persistence-sqlite-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

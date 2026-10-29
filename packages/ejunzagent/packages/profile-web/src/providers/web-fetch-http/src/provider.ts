@@ -10,7 +10,7 @@
 
 import { WebError } from '@ejunz/profile-web'
 import type { WebFetchBody, WebFetchProvider, WebFetchRequest, WebFetchResult } from '@ejunz/profile-web'
-import { deadline, timeoutOf } from '@ejunz/ea/timeout'
+import { deadline, timeoutOf } from '@ejunz/ea-core/timeout'
 import { classifyContentType, decoderForCharset, isSameOrigin, parseCharset, validateFetchUrl } from './policy.ts'
 
 /** Resolved provider limits (the plugin's schemastery Config supplies defaults). */

@@ -1,4 +1,4 @@
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
 export type ToolCallKind = 'read' | 'edit' | 'delete' | 'move' | 'search' | 'execute' | 'fetch' | 'other'
 
@@ -232,9 +232,9 @@ export interface WebFetchResultView {
   truncated: boolean
 }
 
-import { assertNever, EjunzAgentError } from '@ejunz/ea/llm'
+import { assertNever, EjunzAgentError } from '@ejunz/ea-core/llm'
 
-import { isJsonValue, type JsonValue } from '@ejunz/ea/session'
+import { isJsonValue, type JsonValue } from '@ejunz/ea-core/session'
 
 export type JsonSchemaScalar = string | number | boolean | null
 
@@ -807,11 +807,11 @@ export function validateJsonSchemaValue(schema: JsonSchemaNode, value: unknown, 
   return checkValue(schema, value, path)
 }
 
-import { EjunzAgentError } from '@ejunz/ea/llm'
+import { EjunzAgentError } from '@ejunz/ea-core/llm'
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import type { JsonValue } from '@ejunz/ea/session'
+import type { JsonValue } from '@ejunz/ea-core/session'
 
 export interface ValueSchemaAnnotations {
   /** Human-readable description projected into JSON Schema and generated types. */
@@ -1348,9 +1348,9 @@ export function defineTool<const S extends ParameterSchemaSpec, const O extends 
   return tool
 }
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import type { JsonValue } from '@ejunz/ea/session'
+import type { JsonValue } from '@ejunz/ea-core/session'
 
 const CONTENT_VALUE_SCHEMA = { type: 'array', items: { type: 'json' } } as const
 
@@ -1383,25 +1383,25 @@ import { Context, Service } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { AnonymousEntries, NamedEntries, ScopedLayers, scopeOf, scopeTarget } from '@ejunz/ea/scope'
+import { AnonymousEntries, NamedEntries, ScopedLayers, scopeOf, scopeTarget } from '@ejunz/ea-core/scope'
 
-import type { ScopeKey, ScopeLayer, Scoped } from '@ejunz/ea/scope'
+import type { ScopeKey, ScopeLayer, Scoped } from '@ejunz/ea-core/scope'
 
-import type { CallId, ContentBlock, ToolSchema } from '@ejunz/ea/llm'
+import type { CallId, ContentBlock, ToolSchema } from '@ejunz/ea-core/llm'
 
-import { assertNever, deepFreeze, EjunzAgentError } from '@ejunz/ea/llm'
+import { assertNever, deepFreeze, EjunzAgentError } from '@ejunz/ea-core/llm'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
-import { snapshotJsonValue } from '@ejunz/ea/session'
+import { snapshotJsonValue } from '@ejunz/ea-core/session'
 
-import type { JsonValue, UserMessage } from '@ejunz/ea/session'
+import type { JsonValue, UserMessage } from '@ejunz/ea-core/session'
 
-import type { ToolProviderResult } from '@ejunz/ea/system-prompt'
+import type { ToolProviderResult } from '@ejunz/ea-core/system-prompt'
 
-import type {} from '@ejunz/ea/user-approval'
+import type {} from '@ejunz/ea-core/user-approval'
 
-export type { JsonValue } from '@ejunz/ea/session'
+export type { JsonValue } from '@ejunz/ea-core/session'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -1414,7 +1414,7 @@ declare module '@ejunz/cordis' {
      * approval support turns `ask` into denial. Async gates must observe
      * `exec.signal`; the registry rechecks cancellation after they settle but
      * never abandons their promise.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent's calls.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners receive only that agent's calls.
      * @param exec - the pending call (name, parsed arguments, caller agent).
      * @mode waterfall
      */
@@ -1425,7 +1425,7 @@ declare module '@ejunz/cordis' {
      * identity remains immutable. The registry re-fuses the original caller
      * signal before the body, so replacement cannot detach caller cancellation;
      * wrappers must still restore their signal and reach quiescence.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent's calls.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners receive only that agent's calls.
      * @param exec - the allowed call about to dispatch (name, parsed arguments, caller agent, signal).
      * @mode waterfall
      */
@@ -1436,7 +1436,7 @@ declare module '@ejunz/cordis' {
      * listeners must observe `exec.signal`; after they settle, caller
      * cancellation replaces only a successful accepted outcome with the code
      * selected by whether the tool body was invoked.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent's calls.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners receive only that agent's calls.
      * @param exec - the call that just ran (name, parsed arguments, caller agent).
      * @param result - the dispatch outcome a listener may accept, replace, or block.
      * @mode waterfall
@@ -1444,7 +1444,7 @@ declare module '@ejunz/cordis' {
     'tools/post-execute'(this: Scoped<ToolRuntime>, exec: ToolExecution, result: Readonly<ToolExecutionResult>, next: () => Promise<PostToolDecision>): Promise<PostToolDecision>
     /**
      * Observe the frozen, lossless-JSON final outcome. Listener failures are contained.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): keyed by `exec.agent`.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): keyed by `exec.agent`.
      * @param exec - the execution object that traversed the pipeline.
      * @param result - a deep-frozen snapshot of the final returned result.
      * @mode emit
@@ -1500,7 +1500,7 @@ export interface ToolDefinition extends ToolSchema {
   finalizeContent?(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): ContentBlock[] | undefined
   /**
    * Cooperative tool-call timeout budget in milliseconds. Omit for no deadline.
-   * Enforced by `@ejunz/ea/tool-call-timeout-policy` (a `tools/execute` wrapper); it
+   * Enforced by `@ejunz/ea-core/tool-call-timeout-policy` (a `tools/execute` wrapper); it
    * is NEVER sent to the model — `schemas()` whitelists only name/description/
    * parameters. Declaring it asserts this tool forwards `exec.signal` to a
    * cooperative implementation that can reach quiescence when the signal aborts.
@@ -1623,7 +1623,7 @@ export interface ToolRuntimeScheduler {
   finish(exec: ToolRunContext, result: ToolExecutionResult): ToolExecutionResult
 }
 
-export const TOOL_RUNTIME_SCHEDULER: unique symbol = Symbol('@ejunz/ea/tools.scheduler')
+export const TOOL_RUNTIME_SCHEDULER: unique symbol = Symbol('@ejunz/ea-core/tools.scheduler')
 
 export const TOOL_ABORTED = 'ABORTED'
 
@@ -2663,11 +2663,11 @@ function toolAbortedBeforeDispatchResult(prior?: ToolExecutionResult): ToolExecu
 
 export default ToolRuntime
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/tools'
+  const PACKAGE_NAME = '@ejunz/ea-core/tools'
   export const name = 'tools-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

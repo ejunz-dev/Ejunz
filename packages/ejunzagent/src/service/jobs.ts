@@ -1,4 +1,4 @@
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
 export type JobId = Branded<'JobId'>
 
@@ -6,9 +6,9 @@ export function JobId(id: string): JobId {
   return id as JobId
 }
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
-import type { SessionId } from '@ejunz/ea/session'
+import type { SessionId } from '@ejunz/ea-core/session'
 
 export type JobStatus = 'running' | 'stopping' | 'completed' | 'killed' | 'failed'
 
@@ -127,7 +127,7 @@ export type JobsChangedListener = (owner: Agent | undefined) => void
 
 import { Context, Service } from '@ejunz/cordis'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -141,7 +141,7 @@ export abstract class JobRegistry extends Service {
     // would register a ctx.jobs with no method implementations and fail far
     // from the misconfiguration. Fail loud at load instead.
     if (new.target === JobRegistry) {
-      throw new Error('@ejunz/ea/jobs is the abstract job registry seam; load an implementation such as @ejunz/ea/jobs-local instead')
+      throw new Error('@ejunz/ea-core/jobs is the abstract job registry seam; load an implementation such as @ejunz/ea-core/jobs-local instead')
     }
     super(ctx, 'jobs')
   }
@@ -254,11 +254,11 @@ export abstract class JobRegistry extends Service {
 
 export default JobRegistry
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/jobs'
+  const PACKAGE_NAME = '@ejunz/ea-core/jobs'
   export const name = 'jobs-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

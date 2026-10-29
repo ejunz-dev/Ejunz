@@ -1,4 +1,4 @@
-import type { CallId } from '@ejunz/ea/llm'
+import type { CallId } from '@ejunz/ea-core/llm'
 
 export interface ToolResultPruneConfig {
   /** Prune when total text exceeds this many Unicode code points. Defaults to `8192`. */
@@ -35,7 +35,7 @@ export interface PruneResult {
   readonly charsRemoved: number
 }
 
-import { deepFreeze } from '@ejunz/ea/llm'
+import { deepFreeze } from '@ejunz/ea-core/llm'
 
 export const PRUNE_MARKER = '\n\n[... tool result middle pruned ...]\n\n'
 
@@ -102,15 +102,15 @@ import { Context, Service } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { freezeMessage } from '@ejunz/ea/llm'
+import { freezeMessage } from '@ejunz/ea-core/llm'
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import type { Session, SessionEvent, ToolResultMessage } from '@ejunz/ea/session'
+import type { Session, SessionEvent, ToolResultMessage } from '@ejunz/ea-core/session'
 
-import type {} from '@ejunz/ea/compaction'
+import type {} from '@ejunz/ea-core/compaction'
 
-import type {} from '@ejunz/ea/token-meter'
+import type {} from '@ejunz/ea-core/token-meter'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -268,11 +268,11 @@ export class ToolResultPruner extends Service {
 
 export default ToolResultPruner
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/compaction-tool-result-pruner'
+  const PACKAGE_NAME = '@ejunz/ea-core/compaction-tool-result-pruner'
   export const name = 'compaction-tool-result-pruner-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

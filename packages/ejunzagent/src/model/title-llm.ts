@@ -1,25 +1,25 @@
 /**
  * Shared route, framing, timeout, assembly, and validation policy for
  * model-backed session-title providers.
- * @module @ejunz/ea/session-title-llm
+ * @module @ejunz/ea-core/session-title-llm
  */
 
 import type { Context } from '@ejunz/cordis'
 import z from '@ejunz/schemastery'
-import { createUserMessage, BlockAssembler, deepFreeze } from '@ejunz/ea/llm'
-import type { FinishReason, GenerateOptions, Message } from '@ejunz/ea/llm'
-import { deadline, MAX_TIMER_DELAY_MS } from '@ejunz/ea/timeout'
+import { createUserMessage, BlockAssembler, deepFreeze } from '@ejunz/ea-core/llm'
+import type { FinishReason, GenerateOptions, Message } from '@ejunz/ea-core/llm'
+import { deadline, MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
 import {
   normalizeSessionTitle,
   SessionTitleProviderId,
-} from '@ejunz/ea/session-title'
+} from '@ejunz/ea-core/session-title'
 import type {
   SessionTitleAutomaticMode,
   SessionTitleModelProvenance,
   SessionTitleProviderRequest,
   SessionTitleProviderResult,
   SessionTitleUserMessage,
-} from '@ejunz/ea/session-title'
+} from '@ejunz/ea-core/session-title'
 
 /** Exact model-visible request recorded before one auxiliary title dispatch. */
 export interface SessionTitleLlmRequestEventData {
@@ -37,7 +37,7 @@ export interface SessionTitleLlmRequestEventData {
   readonly maxTokens: number
 }
 
-declare module '@ejunz/ea/session/types' {
+declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {
     /** Log-only pre-dispatch record of one session-title model request. */
     'session/title-llm-request': SessionTitleLlmRequestEventData
@@ -293,11 +293,11 @@ export async function generateSessionTitleWithLlm(
   }
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/session-title-llm'
+  const PACKAGE_NAME = '@ejunz/ea-core/session-title-llm'
   export const name = 'session-title-llm-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

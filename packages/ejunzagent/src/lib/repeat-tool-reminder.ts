@@ -3,16 +3,16 @@
  * with logged model context without vetoing or rewriting calls. Configuration
  * and chain semantics live in the package README; rationale lives in the
  * repeat-tool-reminder Agent Note.
- * @module @ejunz/ea/repeat-tool-reminder
+ * @module @ejunz/ea-core/repeat-tool-reminder
  */
 
 import type { Context } from '@ejunz/cordis'
 import z from '@ejunz/schemastery'
-import type { Agent, PreStepDecision } from '@ejunz/ea/agent'
-import { createUserMessage } from '@ejunz/ea/llm'
-import type { MessageSource } from '@ejunz/ea/llm'
-import type { UserMessage } from '@ejunz/ea/session'
-import type { PostToolDecision, ToolExecution } from '@ejunz/ea/tools'
+import type { Agent, PreStepDecision } from '@ejunz/ea-core/agent'
+import { createUserMessage } from '@ejunz/ea-core/llm'
+import type { MessageSource } from '@ejunz/ea-core/llm'
+import type { UserMessage } from '@ejunz/ea-core/session'
+import type { PostToolDecision, ToolExecution } from '@ejunz/ea-core/tools'
 
 export const name = 'repeat-tool-reminder'
 
@@ -232,11 +232,11 @@ export function apply(ctx: Context, config: Config): void {
   })
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/repeat-tool-reminder'
+  const PACKAGE_NAME = '@ejunz/ea-core/repeat-tool-reminder'
   export const name = 'repeat-tool-reminder-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

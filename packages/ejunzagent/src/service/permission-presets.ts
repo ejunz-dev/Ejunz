@@ -14,7 +14,7 @@ export interface PermissionSelect {
   currentValue: string
 }
 
-declare module '@ejunz/ea/session-projection/types' {
+declare module '@ejunz/ea-core/session-projection/types' {
   interface SessionProjectionMap {
     /**
      * The session's approval preset select, folded from the preset and
@@ -32,17 +32,17 @@ import z from '@ejunz/schemastery'
 
 import { z as zod } from 'zod'
 
-import type { Session, SessionEvent } from '@ejunz/ea/session'
+import type { Session, SessionEvent } from '@ejunz/ea-core/session'
 
-import type { ApprovalPolicy } from '@ejunz/ea/user-approval'
+import type { ApprovalPolicy } from '@ejunz/ea-core/user-approval'
 
-import { APPROVAL_POLICIES, effectiveApprovalPolicy, setApprovalPolicy } from '@ejunz/ea/user-approval'
+import { APPROVAL_POLICIES, effectiveApprovalPolicy, setApprovalPolicy } from '@ejunz/ea-core/user-approval'
 
-import { installSettingsSection, settingsNamespace } from '@ejunz/ea/settings'
+import { installSettingsSection, settingsNamespace } from '@ejunz/ea-core/settings'
 
-import type {} from '@ejunz/ea/session-projection'
+import type {} from '@ejunz/ea-core/session-projection'
 
-import type {} from '@ejunz/ea/commands'
+import type {} from '@ejunz/ea-core/commands'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -50,7 +50,7 @@ declare module '@ejunz/cordis' {
   }
 }
 
-declare module '@ejunz/ea/session/types' {
+declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {
     /**
      * Records the selected preset as durable, log-only user intent. The approval
@@ -388,11 +388,11 @@ export class PermissionPresetService extends Service {
 
 export default PermissionPresetService
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/permission-presets'
+  const PACKAGE_NAME = '@ejunz/ea-core/permission-presets'
   export const name = 'permission-presets-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

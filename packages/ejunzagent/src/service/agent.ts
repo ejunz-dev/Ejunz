@@ -1,4 +1,4 @@
-import type { SessionEvent, TurnEndReason } from '@ejunz/ea/session'
+import type { SessionEvent, TurnEndReason } from '@ejunz/ea-core/session'
 
 export interface ConsumedWork {
   /**
@@ -75,11 +75,11 @@ export function foldConsumedWork(events: readonly SessionEvent[]): ConsumedWork 
   return { ...end === undefined ? {} : { end }, droppedUnrun }
 }
 
-import type { UserMessage } from '@ejunz/ea/llm/types'
+import type { UserMessage } from '@ejunz/ea-core/llm/types'
 
 export type InboxTarget = 'next-turn' | 'next-step'
 
-declare module '@ejunz/ea/session/types' {
+declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {
     /**
      * One normalized mutation of an agent's durable pending-message lists.
@@ -96,9 +96,9 @@ declare module '@ejunz/ea/session/types' {
   }
 }
 
-import type { MessageId } from '@ejunz/ea/llm'
+import type { MessageId } from '@ejunz/ea-core/llm'
 
-import type { Session, SessionEventMap, UserMessage } from '@ejunz/ea/session'
+import type { Session, SessionEventMap, UserMessage } from '@ejunz/ea-core/session'
 
 type InboxState = Record<InboxTarget, UserMessage[]>
 
@@ -310,17 +310,17 @@ export class Inbox {
 
 import type { Context } from '@ejunz/cordis'
 
-import type { Scoped } from '@ejunz/ea/scope'
+import type { Scoped } from '@ejunz/ea-core/scope'
 
-import type { LlmCallConfig, LlmFailure, ResolvedRetryPolicy } from '@ejunz/ea/llm'
+import type { LlmCallConfig, LlmFailure, ResolvedRetryPolicy } from '@ejunz/ea-core/llm'
 
-import type { AgentCancelCause, Session, SessionId, UserMessage } from '@ejunz/ea/session'
+import type { AgentCancelCause, Session, SessionId, UserMessage } from '@ejunz/ea-core/session'
 
-export type { AgentCancelCause } from '@ejunz/ea/session'
+export type { AgentCancelCause } from '@ejunz/ea-core/session'
 
-import type {} from '@ejunz/ea/system-prompt'
+import type {} from '@ejunz/ea-core/system-prompt'
 
-declare module '@ejunz/ea/system-prompt' {
+declare module '@ejunz/ea-core/system-prompt' {
   interface AssembleContext {
     /** Agent for this assembly; absent on diagnostics. When present, `scope` must identify the same agent. */
     agent?: Agent
@@ -447,7 +447,7 @@ declare module '@ejunz/cordis' {
      * rejection is reported. Detach requested during dispatch waits until every
      * creation listener has observed the stable entry.
      * @param payload.agent - the newly registered agent with its live session and completed setup.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners receive only that agent.
      * @mode emit
      */
     'agent/created'(this: Scoped<Agent>, payload: { agent: Agent }): void
@@ -456,7 +456,7 @@ declare module '@ejunz/cordis' {
      * and scoped-registration unwind, but before session detachment. Custom
      * registry users own their driver-ordering contract.
      * @param payload.agent - the exact agent removed from the registry.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners receive only that agent.
      * @mode emit
      */
     'agent/disposed'(this: Scoped<Agent>, payload: { agent: Agent }): void
@@ -466,7 +466,7 @@ declare module '@ejunz/cordis' {
      * driver remains scheduled or active.
      * @param payload.agent - the agent whose status flipped.
      * @param payload.status - the status just entered (the transition's destination).
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners receive only that agent.
      * @mode emit
      */
     'agent/status'(this: Scoped<Agent>, payload: { agent: Agent; status: AgentStatus }): void
@@ -474,7 +474,7 @@ declare module '@ejunz/cordis' {
      * One message entered the live inbox.
      * @param payload.agent - the agent whose inbox changed.
      * @param payload.message - the inserted message.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners receive only that agent.
      * @mode emit
      */
     'agent/inbox/inserted'(this: Scoped<Agent>, payload: { agent: Agent; message: UserMessage }): void
@@ -485,7 +485,7 @@ declare module '@ejunz/cordis' {
      * @param payload.agent - the agent whose inbox changed.
      * @param payload.message - the claimed message.
      * @param payload.turn - the owning turn.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners receive only that agent.
      * @mode emit
      */
     'agent/inbox/claimed'(this: Scoped<Agent>, payload: { agent: Agent; message: UserMessage; turn: number }): void
@@ -493,7 +493,7 @@ declare module '@ejunz/cordis' {
      * One message was discarded from the live inbox.
      * @param payload.agent - the agent whose inbox changed.
      * @param payload.message - the discarded message.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners receive only that agent.
      * @mode emit
      */
     'agent/inbox/discarded'(this: Scoped<Agent>, payload: { agent: Agent; message: UserMessage }): void
@@ -505,7 +505,7 @@ declare module '@ejunz/cordis' {
      * driver starts.
      * @param payload.agent - the agent whose session lifecycle began.
      * @param payload.source - why the session started (fresh startup, resume, …).
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners receive only that agent.
      * @mode emit
      */
     'agent/session-start'(this: Scoped<Agent>, payload: { agent: Agent; source: SessionStartSource }): void
@@ -519,7 +519,7 @@ declare module '@ejunz/cordis' {
      * @param payload.turn - the turn that will own the step.
      * @param payload.step - the step proposed by the loop.
      * @param payload.signal - the current turn's cancellation signal.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners receive only that agent.
      * @mode waterfall
      */
     'agent/pre-step'(this: Scoped<Agent>, payload: { agent: Agent; messages: UserMessage[]; turn: number; step: number; signal: AbortSignal }, next: () => Promise<PreStepDecision>): Promise<PreStepDecision>
@@ -532,7 +532,7 @@ declare module '@ejunz/cordis' {
      * @param payload.turn - the open turn number.
      * @param payload.step - the step whose request this is.
      * @param payload.signal - the current turn's explicit abort signal.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners receive only that agent.
      * @mode waterfall
     */
     'agent/request'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; signal: AbortSignal }, next: () => Promise<LlmCallConfig>): Promise<LlmCallConfig>
@@ -548,7 +548,7 @@ declare module '@ejunz/cordis' {
      * @param payload.failure - serializable facts normalized at the final adapter boundary.
      * @param payload.retryPolicy - the policy of the adapter registration that served the failed request.
      * @param payload.signal - the turn abort signal.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners receive only that agent.
      * @mode waterfall
      */
     'agent/request-error'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; provider: string; failure: LlmFailure; retryPolicy: ResolvedRetryPolicy | undefined; signal: AbortSignal }, next: () => Promise<RequestErrorAction>): Promise<RequestErrorAction>
@@ -566,7 +566,7 @@ declare module '@ejunz/cordis' {
      * @param payload.agent - the agent whose turn is at its stop boundary.
      * @param payload.turn - the turn about to close.
      * @param payload.signal - the current turn's explicit abort signal.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners receive only that agent.
      * @mode serial
      */
     'agent/turn-stopping'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; signal: AbortSignal }): Promise<void> | void
@@ -578,7 +578,7 @@ declare module '@ejunz/cordis' {
      * @param payload.turn - the turn in which the failure surfaced.
      * @param payload.step - the step at which the failure surfaced.
      * @param payload.error - the failure, verbatim.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent.
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): agent-scoped listeners receive only that agent.
      * @mode emit
      */
     'agent/error'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; step: number; error: unknown }): void
@@ -587,11 +587,11 @@ declare module '@ejunz/cordis' {
 
 import type { Context, Events } from '@ejunz/cordis'
 
-import { scopeTarget } from '@ejunz/ea/scope'
+import { scopeTarget } from '@ejunz/ea-core/scope'
 
-import type { Scoped } from '@ejunz/ea/scope'
+import type { Scoped } from '@ejunz/ea-core/scope'
 
-import type { AssembleContext } from '@ejunz/ea/system-prompt'
+import type { AssembleContext } from '@ejunz/ea-core/system-prompt'
 
 type Params<F> = F extends (...args: infer P) => unknown ? P : never
 
@@ -704,7 +704,7 @@ export function assembleContextFor(agent: Agent, signal?: AbortSignal): Assemble
 
 import type { Context } from '@ejunz/cordis'
 
-import type { LlmCallConfig, ReasoningEffortId } from '@ejunz/ea/llm'
+import type { LlmCallConfig, ReasoningEffortId } from '@ejunz/ea-core/llm'
 
 export interface ModelSelection {
   /** Registered provider route. */
@@ -778,15 +778,15 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { isPromise } from 'node:util/types'
 
-import { scopeTarget } from '@ejunz/ea/scope'
+import { scopeTarget } from '@ejunz/ea-core/scope'
 
-import type { Scoped } from '@ejunz/ea/scope'
+import type { Scoped } from '@ejunz/ea-core/scope'
 
-import type { SessionEvent, SessionId } from '@ejunz/ea/session'
+import type { SessionEvent, SessionId } from '@ejunz/ea-core/session'
 
-import type { TypertContext, TypertLookup } from '@ejunz/ea/typert-protocol'
+import type { TypertContext, TypertLookup } from '@ejunz/ea-core/typert-protocol'
 
-declare module '@ejunz/ea/typert-protocol' {
+declare module '@ejunz/ea-core/typert-protocol' {
   interface TypertLookupMap {
     agent: TypertLookup<Agent, SessionId>
   }
@@ -978,13 +978,13 @@ export class AgentRegistry extends Service {
       typeCtx.typert.lookups.register('agent', {
         parameter: 'agent',
         wire: 'agentId',
-        hostTypeSymbol: '@ejunz/ea/agent#Agent',
-        wireTypeSymbol: '@ejunz/ea/session/types#SessionId',
+        hostTypeSymbol: '@ejunz/ea-core/agent#Agent',
+        wireTypeSymbol: '@ejunz/ea-core/session/types#SessionId',
         resolve: sessionId => this.get(sessionId),
       })
       typeCtx.typert.contexts.registerHost('agent', {
         wire: 'agentId',
-        wireTypeSymbol: '@ejunz/ea/session/types#SessionId',
+        wireTypeSymbol: '@ejunz/ea-core/session/types#SessionId',
         resolve: sessionId => this.get(sessionId)?.ctx,
       })
     })
@@ -1414,11 +1414,11 @@ export class AgentRegistry extends Service {
 
 export default AgentRegistry
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/agent'
+  const PACKAGE_NAME = '@ejunz/ea-core/agent'
   export const name = 'agent-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

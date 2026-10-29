@@ -32,9 +32,9 @@ async function fsyncDirectory(path: string): Promise<void> {
   }
 }
 
-import { StorageError } from '@ejunz/ea/storage'
+import { StorageError } from '@ejunz/ea-core/storage'
 
-import type { KvUnitDescriptor } from '@ejunz/ea/storage'
+import type { KvUnitDescriptor } from '@ejunz/ea-core/storage'
 
 export interface UnitState {
   version: number
@@ -100,9 +100,9 @@ export function parse(text: string, descriptor: KvUnitDescriptor): UnitState {
 
 import { readFile } from 'node:fs/promises'
 
-import { StorageError } from '@ejunz/ea/storage'
+import { StorageError } from '@ejunz/ea-core/storage'
 
-import type { KvUnit, KvUnitDescriptor } from '@ejunz/ea/storage'
+import type { KvUnit, KvUnitDescriptor } from '@ejunz/ea-core/storage'
 
 export async function openJsonUnit(
   descriptor: KvUnitDescriptor,
@@ -231,9 +231,9 @@ import type { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { StorageError, UNIT_NAME_RE, storageBackendServiceKey } from '@ejunz/ea/storage'
+import { StorageError, UNIT_NAME_RE, storageBackendServiceKey } from '@ejunz/ea-core/storage'
 
-import type { KvFacet, KvUnit, KvUnitDescriptor, StorageBackend } from '@ejunz/ea/storage'
+import type { KvFacet, KvUnit, KvUnitDescriptor, StorageBackend } from '@ejunz/ea-core/storage'
 
 export const name = 'storage-json'
 
@@ -321,11 +321,11 @@ export function apply(ctx: Context, config: Config) {
   ctx.provide(storageBackendServiceKey('json'), backend)
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/storage-json'
+  const PACKAGE_NAME = '@ejunz/ea-core/storage-json'
   export const name = 'storage-json-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

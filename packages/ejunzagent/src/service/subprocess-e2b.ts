@@ -2,11 +2,11 @@ import { Buffer } from 'node:buffer'
 
 import { posix } from 'node:path'
 
-import { e2bControlEnvs } from '@ejunz/ea/e2b'
+import { e2bControlEnvs } from '@ejunz/ea-core/e2b'
 
-import type { Sandbox } from '@ejunz/ea/e2b'
+import type { Sandbox } from '@ejunz/ea-core/e2b'
 
-import { SENSITIVE_ENV_PATTERN } from '@ejunz/ea/subprocess'
+import { SENSITIVE_ENV_PATTERN } from '@ejunz/ea-core/subprocess'
 
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
 
@@ -85,7 +85,7 @@ export function serializeRemoteEnvironment(
 
 import { Buffer } from 'node:buffer'
 
-import type { SubprocessOutputRead, SubprocessOutputReader } from '@ejunz/ea/subprocess'
+import type { SubprocessOutputRead, SubprocessOutputReader } from '@ejunz/ea-core/subprocess'
 
 const BASE64_TEXT = /^[A-Za-z0-9+/]+={0,2}$/u
 
@@ -211,9 +211,9 @@ export class E2BOutputReader implements SubprocessOutputReader {
   }
 }
 
-import { CommandExitError, e2bControlEnvs, SandboxNotFoundError } from '@ejunz/ea/e2b'
+import { CommandExitError, e2bControlEnvs, SandboxNotFoundError } from '@ejunz/ea-core/e2b'
 
-import type { Sandbox } from '@ejunz/ea/e2b'
+import type { Sandbox } from '@ejunz/ea-core/e2b'
 
 export function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
@@ -279,9 +279,9 @@ import {
   FileNotFoundError,
   SandboxNotFoundError,
   quoteE2BShellArg,
-} from '@ejunz/ea/e2b'
+} from '@ejunz/ea-core/e2b'
 
-import type { CommandHandle, CommandResult, Sandbox } from '@ejunz/ea/e2b'
+import type { CommandHandle, CommandResult, Sandbox } from '@ejunz/ea-core/e2b'
 
 import type {
   SubprocessCollect,
@@ -289,9 +289,9 @@ import type {
   SubprocessOutcome,
   SubprocessOutputMode,
   SubprocessSpawnSpec,
-} from '@ejunz/ea/subprocess'
+} from '@ejunz/ea-core/subprocess'
 
-import type E2BRuntime from '@ejunz/ea/e2b'
+import type E2BRuntime from '@ejunz/ea-core/e2b'
 
 const OUTPUT_ENCODER_SOURCE = [
   '(async () => {',
@@ -974,16 +974,16 @@ import { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { SubprocessRuntime } from '@ejunz/ea/subprocess'
+import { SubprocessRuntime } from '@ejunz/ea-core/subprocess'
 
-import { MAX_TIMER_DELAY_MS } from '@ejunz/ea/timeout'
+import { MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
 
 import type {
   SubprocessHandle,
   SubprocessSpawnSpec,
-} from '@ejunz/ea/subprocess'
+} from '@ejunz/ea-core/subprocess'
 
-import { e2bControlEnvs, quoteE2BShellArg } from '@ejunz/ea/e2b'
+import { e2bControlEnvs, quoteE2BShellArg } from '@ejunz/ea-core/e2b'
 
 export interface Config {
   /** Remote status/liveness poll cadence in milliseconds; each tick is one control-plane request. */
@@ -1105,11 +1105,11 @@ export class E2BSubprocessRuntime extends SubprocessRuntime {
 
 export default E2BSubprocessRuntime
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/subprocess-e2b'
+  const PACKAGE_NAME = '@ejunz/ea-core/subprocess-e2b'
   export const name = 'subprocess-e2b-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

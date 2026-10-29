@@ -186,7 +186,8 @@
     }
   },
   "files": [
-    "lib/**",
+    "lib/**/*.js",
+    "lib/**/*.d.ts",
     "cordis.patch.yml"
   ],
   "dependencies": {
@@ -203,12 +204,12 @@
   "peerDependencies": {
     "@ejunz/cordis": "workspace:^",
     "@ejunz/cordis-plugin-loader": "workspace:^",
-    "@ejunz/ea": "workspace:^"
+    "@ejunz/ea-core": "workspace:^"
   },
   "devDependencies": {
     "@ejunz/cordis": "workspace:^",
     "@ejunz/cordis-plugin-loader": "workspace:^",
-    "@ejunz/ea": "workspace:^",
+    "@ejunz/ea-core": "workspace:^",
     "@types/turndown": "^5.0.6",
     "@types/ws": "^8.18.1"
   },
@@ -222,7 +223,7 @@
         "entry": "src/api/gateway/src/client/index.ts",
         "clientFile": "api-gateway.js",
         "inject": [
-          "@ejunz/ea/typert-registry",
+          "@ejunz/ea-core/typert-registry",
           "@ejunz/profile-web/client/connection"
         ],
         "platform": "web",
@@ -252,7 +253,7 @@
         "clientFile": "client-runtime.js",
         "inject": [
           "@ejunz/profile-web/client/connection",
-          "@ejunz/ea/typert-registry",
+          "@ejunz/ea-core/typert-registry",
           "@ejunz/profile-web/api/remotes"
         ],
         "platform": "web",

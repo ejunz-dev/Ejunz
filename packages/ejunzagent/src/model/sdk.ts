@@ -261,11 +261,11 @@ function abortError(reason: unknown): Error {
   return reason instanceof Error ? reason : new Error(`JSON-RPC request aborted: ${String(reason)}`)
 }
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import type { SessionEvent } from '@ejunz/ea/session'
+import type { SessionEvent } from '@ejunz/ea-core/session'
 
-import type { SubagentStopReason } from '@ejunz/ea/subagent'
+import type { SubagentStopReason } from '@ejunz/ea-core/subagent'
 
 export interface InitializeParams {
   /** Working directory recorded on every SDK-created session's header. */
@@ -348,11 +348,11 @@ export interface EjunzAgentSdkRequestMap {
   'shutdown': { params: undefined; result: Record<string, never> }
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/sdk'
+  const PACKAGE_NAME = '@ejunz/ea-core/sdk'
   export const name = 'sdk-protocol-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

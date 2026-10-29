@@ -3,12 +3,12 @@
  * The tool pauses until a UI provider returns a human answer, then feeds that
  * answer back into the agent loop as an ordinary tool result.
  *
- * @module @ejunz/ea/tool-ask-user
+ * @module @ejunz/ea-core/tool-ask-user
  */
 
 import type { Context } from '@ejunz/cordis'
-import { defineTool } from '@ejunz/ea/tools'
-import '@ejunz/ea/user-questions'
+import { defineTool } from '@ejunz/ea-core/tools'
+import '@ejunz/ea-core/user-questions'
 
 export const name = 'tool-ask-user'
 export const inject = ['tools', 'userQuestions']
@@ -100,11 +100,11 @@ export function apply(ctx: Context): void {
   }))
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/tool-ask-user'
+  const PACKAGE_NAME = '@ejunz/ea-core/tool-ask-user'
   export const name = 'tool-ask-user-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

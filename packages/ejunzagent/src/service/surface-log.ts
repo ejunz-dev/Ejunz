@@ -5,7 +5,7 @@
  * open — before the application it is about to boot exists, so it owns a logger
  * of its own: the same cordis logger and console exporter every mounted plugin
  * logs through, which is why these lines read like the rest of the agent's.
- * @module @ejunz/ea/surface-log
+ * @module @ejunz/ea-core/surface-log
  */
 
 import { Context } from '@ejunz/cordis'

@@ -19,7 +19,7 @@
 # The preset's own persona, shadowing the deployment default for this agent.
 # The model identity is resolved from the agent's own route.
 - id: persona
-  name: '@ejunz/ea/persona'
+  name: '@ejunz/ea-core/persona'
   config:
     text: >-
       You are a coding agent powered by the {{model}} model.
@@ -32,14 +32,14 @@
 # The shared task registry is host-owned; this preset contributes only its
 # model-facing controls.
 - id: tool-jobs
-  name: '@ejunz/ea/tool-jobs'
+  name: '@ejunz/ea-core/tool-jobs'
 
 # ── skills ──────────────────────────────────────────────────────────────────
 
 # The tool may use deployment-provided catalogs; no local filesystem provider
 # is registered for this preset.
 - id: tool-skill
-  name: '@ejunz/ea/tool-skill'
+  name: '@ejunz/ea-core/tool-skill'
 
 # ── goals ───────────────────────────────────────────────────────────────────
 
@@ -50,7 +50,7 @@
 # registry is keyed by session anyway, so one host instance serves every
 # session. What a preset chooses is whether its agent can call the goal tool.
 - id: tool-goal
-  name: '@ejunz/ea/tool-goal'
+  name: '@ejunz/ea-core/tool-goal'
 
 # ── plan mode ───────────────────────────────────────────────────────────────
 
@@ -63,7 +63,7 @@
     planMode: true
   config:
     - id: plan-mode
-      name: '@ejunz/ea/plan-mode'
+      name: '@ejunz/ea-core/plan-mode'
       config:
         section: |
               You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
@@ -97,13 +97,13 @@
     toolResultPruner: true
   config:
     - id: compaction-basic
-      name: '@ejunz/ea/compaction-basic'
+      name: '@ejunz/ea-core/compaction-basic'
 
     - id: command-compact
-      name: '@ejunz/ea/command-compact'
+      name: '@ejunz/ea-core/command-compact'
 
     - id: tool-result-pruner
-      name: '@ejunz/ea/compaction-tool-result-pruner'
+      name: '@ejunz/ea-core/compaction-tool-result-pruner'
       config:
         thresholdChars: 8192
         headChars: 4096
@@ -124,10 +124,10 @@
 # ── remaining model-facing rows ─────────────────────────────────────────────
 
 - id: tool-ask-user
-  name: '@ejunz/ea/tool-ask-user'
+  name: '@ejunz/ea-core/tool-ask-user'
 
 - id: tool-todo
-  name: '@ejunz/ea/tool-todo'
+  name: '@ejunz/ea-core/tool-todo'
   config:
     allowParallelInProgress: true
 

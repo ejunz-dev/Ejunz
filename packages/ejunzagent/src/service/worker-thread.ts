@@ -112,11 +112,11 @@ function materializeObject(value: object, path: string, seen: Set<object>): Reco
   return out
 }
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import type { ObjectJsonSchema } from '@ejunz/ea/tools'
+import type { ObjectJsonSchema } from '@ejunz/ea-core/tools'
 
-import type { WorkflowMeta } from '@ejunz/ea/workflow'
+import type { WorkflowMeta } from '@ejunz/ea-core/workflow'
 
 export interface WorkerLimits {
   /** Concurrent `agent()` ceiling (already auto-resolved; ≥ 1). */
@@ -185,22 +185,22 @@ export interface ChildPort {
 
 import * as vm from 'node:vm'
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import { SessionId } from '@ejunz/ea/session'
+import { SessionId } from '@ejunz/ea-core/session'
 
-import { assertObjectJsonSchema, JsonSchemaError } from '@ejunz/ea/tools'
+import { assertObjectJsonSchema, JsonSchemaError } from '@ejunz/ea-core/tools'
 
-import type { ObjectJsonSchema } from '@ejunz/ea/tools'
+import type { ObjectJsonSchema } from '@ejunz/ea-core/tools'
 
-import { isFatalWorkflowError, WorkflowError } from '@ejunz/ea/workflow'
+import { isFatalWorkflowError, WorkflowError } from '@ejunz/ea-core/workflow'
 
 import type {
   WorkflowAgentEndInfo,
   WorkflowAgentInfo,
   WorkflowMeta,
   WorkflowResult,
-} from '@ejunz/ea/workflow'
+} from '@ejunz/ea-core/workflow'
 
 export interface ExecutionObserver {
   phase(title: string): void
@@ -651,7 +651,7 @@ export class WorkflowExecution {
   }
 }
 
-import type { WorkflowAgentEndInfo, WorkflowAgentInfo, WorkflowResult } from '@ejunz/ea/workflow'
+import type { WorkflowAgentEndInfo, WorkflowAgentInfo, WorkflowResult } from '@ejunz/ea-core/workflow'
 
 export enum WorkerToHostType {
   /** The startup handshake: the session is listening and awaits {@link HostToWorkerType.Go}. */
@@ -741,17 +741,17 @@ import { fileURLToPath } from 'node:url'
 
 import type { Context } from '@ejunz/cordis'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
-import { assertNever } from '@ejunz/ea/llm'
+import { assertNever } from '@ejunz/ea-core/llm'
 
-import { snapshotJsonValue } from '@ejunz/ea/session'
+import { snapshotJsonValue } from '@ejunz/ea-core/session'
 
-import type SubagentRuntime from '@ejunz/ea/subagent'
+import type SubagentRuntime from '@ejunz/ea-core/subagent'
 
-import type { SubagentRun } from '@ejunz/ea/subagent'
+import type { SubagentRun } from '@ejunz/ea-core/subagent'
 
-import type { WorkflowAgentEndInfo, WorkflowAgentInfo, WorkflowMeta, WorkflowResult, WorkflowRun, WorkflowRunId } from '@ejunz/ea/workflow'
+import type { WorkflowAgentEndInfo, WorkflowAgentInfo, WorkflowMeta, WorkflowResult, WorkflowRun, WorkflowRunId } from '@ejunz/ea-core/workflow'
 
 interface ChildRecord {
   readonly run: SubagentRun
@@ -1319,9 +1319,9 @@ function sleep(ms: number): Promise<void> {
   })
 }
 
-import { WorkflowError } from '@ejunz/ea/workflow'
+import { WorkflowError } from '@ejunz/ea-core/workflow'
 
-import type { WorkflowMeta, WorkflowPhase } from '@ejunz/ea/workflow'
+import type { WorkflowMeta, WorkflowPhase } from '@ejunz/ea-core/workflow'
 
 function validateMetaShape(meta: unknown): { meta?: WorkflowMeta; violations: string[] } {
   const violations: string[] = []
@@ -1395,9 +1395,9 @@ import type { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import WorkflowEngine, { WorkflowError, WorkflowRunId } from '@ejunz/ea/workflow'
+import WorkflowEngine, { WorkflowError, WorkflowRunId } from '@ejunz/ea-core/workflow'
 
-import type { WorkflowRun, WorkflowRunInfo, WorkflowStartRequest } from '@ejunz/ea/workflow'
+import type { WorkflowRun, WorkflowRunInfo, WorkflowStartRequest } from '@ejunz/ea-core/workflow'
 
 export interface Config {
   /** The `ctx.subagents` provider children run on (default `spawn`). */
@@ -1559,7 +1559,7 @@ export default WorkerThreadWorkflowEngine
 
 import type { MessagePort } from 'node:worker_threads'
 
-import { assertNever } from '@ejunz/ea/llm'
+import { assertNever } from '@ejunz/ea-core/llm'
 
 interface PendingChild {
   started: PromiseWithResolvers<string>
@@ -1710,11 +1710,11 @@ import { parentPort, workerData } from 'node:worker_threads'
 
 void runWorkerSession(requireParentPort(parentPort), workerData as WorkerInit)
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/workflow-worker-thread'
+  const PACKAGE_NAME = '@ejunz/ea-core/workflow-worker-thread'
   export const name = 'workflow-worker-thread-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

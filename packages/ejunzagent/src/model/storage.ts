@@ -40,7 +40,7 @@ export class DomainError extends Error {
 
 import type { ZodType } from 'zod'
 
-import { UNIT_NAME_RE, type KvUnitDescriptor } from '@ejunz/ea/storage'
+import { UNIT_NAME_RE, type KvUnitDescriptor } from '@ejunz/ea-core/storage'
 
 export interface DomainGlobalSpec<G> {
   /** Validates the stored global at the durable boundary. */
@@ -148,7 +148,7 @@ declare module '@ejunz/cordis' {
 
 import type { Context } from '@ejunz/cordis'
 
-import type { KvUnit } from '@ejunz/ea/storage'
+import type { KvUnit } from '@ejunz/ea-core/storage'
 
 export interface DomainGlobal<G> {
   /**
@@ -480,9 +480,9 @@ import type { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { storageBackendServiceKey } from '@ejunz/ea/storage'
+import { storageBackendServiceKey } from '@ejunz/ea-core/storage'
 
-declare module '@ejunz/ea/storage' {
+declare module '@ejunz/ea-core/storage' {
   interface StorageForms {
     domain: DomainFacility
   }
@@ -656,11 +656,11 @@ export function apply(ctx: Context, config: Config): Promise<void> {
   return Promise.resolve(fiber).then(() => {})
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/storage'
+  const PACKAGE_NAME = '@ejunz/ea-core/storage'
   export const name = 'storage-domain-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

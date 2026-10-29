@@ -1,12 +1,12 @@
 /** Read-only projection of the current Cordis Loader plugin entries. */
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 import type { Context, FiberState } from '@ejunz/cordis'
-import type {} from '@ejunz/ea/agent-presets'
+import type {} from '@ejunz/ea-core/agent-presets'
 import type {} from '@ejunz/cordis-plugin-loader'
-import type {} from '@ejunz/ea/tools'
-import type {} from '@ejunz/ea/tool-host'
-import { TypertRemoteService, Remote } from '@ejunz/ea/typert-protocol'
+import type {} from '@ejunz/ea-core/tools'
+import type {} from '@ejunz/ea-core/tool-host'
+import { TypertRemoteService, Remote } from '@ejunz/ea-core/typert-protocol'
 // Typert-generated ./typert and ./remote artifacts import Zod at runtime.
 import type {} from 'zod'
 import type {

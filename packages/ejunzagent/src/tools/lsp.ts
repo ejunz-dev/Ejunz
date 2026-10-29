@@ -1,6 +1,6 @@
-import type { GenericCallView } from '@ejunz/ea/tools'
+import type { GenericCallView } from '@ejunz/ea-core/tools'
 
-import type { LspHover, LspLocation, LspOperation, LspPosition } from '@ejunz/ea/lsp'
+import type { LspHover, LspLocation, LspOperation, LspPosition } from '@ejunz/ea-core/lsp'
 
 import { posix, win32 } from 'node:path'
 
@@ -137,7 +137,7 @@ export function presentLspCall(args: LspToolArgs): GenericCallView {
   }
 }
 
-import type { ToolExecution } from '@ejunz/ea/tools'
+import type { ToolExecution } from '@ejunz/ea-core/tools'
 
 export function sessionCwd(exec: ToolExecution): string | undefined {
   return exec.agent?.session.header.cwd
@@ -147,17 +147,17 @@ import type { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { defineTool } from '@ejunz/ea/tools'
+import { defineTool } from '@ejunz/ea-core/tools'
 
-import { assertNever } from '@ejunz/ea/llm'
+import { assertNever } from '@ejunz/ea-core/llm'
 
-import { LspError } from '@ejunz/ea/lsp'
+import { LspError } from '@ejunz/ea-core/lsp'
 
-import type {} from '@ejunz/ea/lsp'
+import type {} from '@ejunz/ea-core/lsp'
 
-import type {} from '@ejunz/ea/system-prompt'
+import type {} from '@ejunz/ea-core/system-prompt'
 
-import { MAX_TIMER_DELAY_MS } from '@ejunz/ea/timeout'
+import { MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
 
 export const name = 'tool-lsp'
 
@@ -348,11 +348,11 @@ function assertTimer(name: string, value: number): void {
   }
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/tool-lsp'
+  const PACKAGE_NAME = '@ejunz/ea-core/tool-lsp'
   export const name = 'tool-lsp-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

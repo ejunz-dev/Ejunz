@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
-import { SessionId } from '@ejunz/ea/session'
+import { SessionId } from '@ejunz/ea-core/session'
 
-import { defineDomain, domainTable } from '@ejunz/ea/storage'
+import { defineDomain, domainTable } from '@ejunz/ea-core/storage'
 
 export const checkpointRow = z.object({
   ver: z.number().int().nonnegative(),
@@ -34,15 +34,15 @@ import { Context, Service } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { snapshotJsonValue } from '@ejunz/ea/session'
+import { snapshotJsonValue } from '@ejunz/ea-core/session'
 
-import type { Session, SessionEvent, SessionHeader, SessionId } from '@ejunz/ea/session'
+import type { Session, SessionEvent, SessionHeader, SessionId } from '@ejunz/ea-core/session'
 
-import type {} from '@ejunz/ea/session-persistence'
+import type {} from '@ejunz/ea-core/session-persistence'
 
-import type { ProjectionCheckpoint, ProjectionSnapshot } from '@ejunz/ea/session-projection'
+import type { ProjectionCheckpoint, ProjectionSnapshot } from '@ejunz/ea-core/session-projection'
 
-import type { KvTable } from '@ejunz/ea/storage'
+import type { KvTable } from '@ejunz/ea-core/storage'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -298,11 +298,11 @@ function identityMatches(stored: CheckpointIdentity, expected: CheckpointIdentit
 
 export default SessionProjectionCache
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/session-projection-cache'
+  const PACKAGE_NAME = '@ejunz/ea-core/session-projection-cache'
   export const name = 'session-projection-cache-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

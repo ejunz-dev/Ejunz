@@ -1,4 +1,4 @@
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
 export type SessionPersistenceRevision = Branded<'SessionPersistenceRevision'>
 
@@ -8,11 +8,11 @@ export function SessionPersistenceRevision(value: string): SessionPersistenceRev
 
 import { Context, Service } from '@ejunz/cordis'
 
-import { SessionPreparation } from '@ejunz/ea/session'
+import { SessionPreparation } from '@ejunz/ea-core/session'
 
-import type { SessionEvent, SessionId, SessionHeader } from '@ejunz/ea/session'
+import type { SessionEvent, SessionId, SessionHeader } from '@ejunz/ea-core/session'
 
-export type { SessionHeader } from '@ejunz/ea/session'
+export type { SessionHeader } from '@ejunz/ea-core/session'
 
 export interface SessionPersistenceSnapshot {
   /** Detached metadata for one materialized session. */
@@ -211,7 +211,7 @@ export abstract class SessionPersistence extends Service {
 
 export default SessionPersistence
 
-import type { Session, SessionId } from '@ejunz/ea/session'
+import type { Session, SessionId } from '@ejunz/ea-core/session'
 
 interface PreparedSource {
   readonly session: Session
@@ -545,7 +545,7 @@ function rejectObservation(reject: (reason?: unknown) => void, reason: unknown):
   reject(reason)
 }
 
-import type { SessionEvent } from '@ejunz/ea/session'
+import type { SessionEvent } from '@ejunz/ea-core/session'
 
 export interface SessionWriteBehindOptions {
   /** Maximum intentional batching wait after an idle queue receives work. */
@@ -705,11 +705,11 @@ import {
   SessionPreparation,
   snapshotJsonValue,
   snapshotSessionEvent,
-} from '@ejunz/ea/session'
+} from '@ejunz/ea-core/session'
 
-import type { Session, SessionEvent, SessionId, SessionHeader } from '@ejunz/ea/session'
+import type { Session, SessionEvent, SessionId, SessionHeader } from '@ejunz/ea-core/session'
 
-import { MAX_TIMER_DELAY_MS } from '@ejunz/ea/timeout'
+import { MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
 
 export const DEFAULT_PREPARED_SESSION_CACHE_SIZE = 5
 
@@ -1967,11 +1967,11 @@ export class PersistenceCoordinator<TornMarker = unknown> {
   }
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/session-persistence'
+  const PACKAGE_NAME = '@ejunz/ea-core/session-persistence'
   export const name = 'session-persistence-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

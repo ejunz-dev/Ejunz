@@ -14,7 +14,7 @@ yarn ea --profile ejunz  # start the Ejunz-integrated profile
 ## Production
 
 ```sh
-npm install -g @ejunz/ea
+npm install -g @ejunz/ea-core
 ea --profile web
 ea --profile ejunz
 ```

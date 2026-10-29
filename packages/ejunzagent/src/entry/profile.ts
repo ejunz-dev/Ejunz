@@ -19,7 +19,7 @@
  * flat fallback directory `$EA_HOME/profiles/node_modules` (one symlink per
  * package the installation's app and bundles depend on) makes every in-box
  * plugin Node-resolvable from any profile through the ordinary parent-walk.
- * @module @ejunz/ea/app-boot/profile
+ * @module @ejunz/ea-core/app-boot/profile
  */
 
 import { createRequire } from 'node:module'
@@ -29,7 +29,7 @@ import {
 import { basename, dirname, join, resolve } from 'node:path'
 import type { EntryOptions } from '@ejunz/cordis-plugin-loader'
 import { applyEntryPatches, type PatchOptions } from '@ejunz/cordis-plugin-include'
-import { resolveEaHome } from '@ejunz/ea/home-paths'
+import { resolveEaHome } from '@ejunz/ea-core/home-paths'
 import { loadOverlayPatches } from './app-boot.ts'
 
 /** Directory under the EjunzAgent home holding every profile. */
@@ -113,12 +113,12 @@ export function resolveProfileDir(name: string, home: string = resolveEaHome()):
 
 /** The shipped profile templates auto-initialized on first use, by name. */
 export const PROFILE_TEMPLATES: Record<string, readonly string[]> = {
-  web: ['@ejunz/ea', '@ejunz/profile-web'],
-  ejunz: ['@ejunz/ea', '@ejunz/profile-web', '@ejunz/profile-ejunz'],
+  web: ['@ejunz/ea-core', '@ejunz/profile-web'],
+  ejunz: ['@ejunz/ea-core', '@ejunz/profile-web', '@ejunz/profile-ejunz'],
 }
 
 /** The bundle list a `ea plugin` init uses for a name with no shipped template. */
-export const DEFAULT_PROFILE_BUNDLES: readonly string[] = ['@ejunz/ea']
+export const DEFAULT_PROFILE_BUNDLES: readonly string[] = ['@ejunz/ea-core']
 
 const PROFILE_PATCH_TEMPLATE = `# Your patch layer for this ea profile, applied after every bundle layer:
 # a top-level YAML array of loader patch entries (id-targeted config
@@ -319,7 +319,7 @@ function packageDirFromAnchor(anchor: string, packageName: string): string | und
 /**
  * Resolve one bundle package's directory: installation anchor first, then the
  * profile directory. The installation-first order is the contract that
- * `@ejunz/ea` (and every other in-box bundle) always comes from
+ * `@ejunz/ea-core` (and every other in-box bundle) always comes from
  * the same installation as the running ea, never from a profile-local copy.
  * Resolution does not require the package to export `./package.json`.
  * @param binName - the diagnostic prefix on the thrown error.

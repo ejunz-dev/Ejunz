@@ -1,4 +1,4 @@
-import { EjunzAgentError } from '@ejunz/ea/llm'
+import { EjunzAgentError } from '@ejunz/ea-core/llm'
 
 export const SESSION_QUERY_READ_WINDOW_MAX = 50
 
@@ -40,7 +40,7 @@ export class SessionQueryError extends EjunzAgentError {
   }
 }
 
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
 export type SessionSearchCursor = Branded<'SessionSearchCursor'>
 
@@ -54,9 +54,9 @@ import type {
   SessionHeader,
   SessionId,
   SurfaceEvent,
-} from '@ejunz/ea/session'
+} from '@ejunz/ea-core/session'
 
-import type { SessionTitleSnapshot } from '@ejunz/ea/session-title'
+import type { SessionTitleSnapshot } from '@ejunz/ea-core/session-title'
 
 export type SessionEventSurface = 'current' | 'shadowed' | 'log-only'
 
@@ -286,7 +286,7 @@ export interface SessionSearchHit extends SessionRecord {
   bestMatch: SessionEventSearchHit
 }
 
-import type { SessionHeader } from '@ejunz/ea/session'
+import type { SessionHeader } from '@ejunz/ea-core/session'
 
 export function assertSessionHeadersCompatible(a: SessionHeader, b: SessionHeader): void {
   if (
@@ -307,9 +307,9 @@ export function assertSessionHeadersCompatible(a: SessionHeader, b: SessionHeade
 
 import type { Context, Fiber } from '@ejunz/cordis'
 
-import type { Session, SessionEvent, SessionHeader, SessionId } from '@ejunz/ea/session'
+import type { Session, SessionEvent, SessionHeader, SessionId } from '@ejunz/ea-core/session'
 
-import SessionPersistence, { SessionPersistenceCorruptionError } from '@ejunz/ea/session-persistence'
+import SessionPersistence, { SessionPersistenceCorruptionError } from '@ejunz/ea-core/session-persistence'
 
 export interface LogicalSession {
   /** Cloned source header. */
@@ -608,7 +608,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'unknown error'
 }
 
-import type { SessionEvent } from '@ejunz/ea/session'
+import type { SessionEvent } from '@ejunz/ea-core/session'
 
 export function extractSessionEventText(event: SessionEvent): string {
   switch (event.type) {
@@ -686,9 +686,9 @@ function joinText(parts: readonly string[]): string {
   return parts.map(part => part.trim()).filter(Boolean).join('\n')
 }
 
-import { foldSurface } from '@ejunz/ea/session'
+import { foldSurface } from '@ejunz/ea-core/session'
 
-import type { SessionEvent, SessionId } from '@ejunz/ea/session'
+import type { SessionEvent, SessionId } from '@ejunz/ea-core/session'
 
 export function buildSessionEventRecords(
   sessionId: SessionId,
@@ -951,9 +951,9 @@ function isRuntimeArray(value: unknown): boolean {
   return Array.isArray(value)
 }
 
-import { foldSurface, isSurfaceEvent, snapshotSessionEvent } from '@ejunz/ea/session'
+import { foldSurface, isSurfaceEvent, snapshotSessionEvent } from '@ejunz/ea-core/session'
 
-import type { SessionEvent, SessionId, SurfaceEvent, SurfaceEventType } from '@ejunz/ea/session'
+import type { SessionEvent, SessionId, SurfaceEvent, SurfaceEventType } from '@ejunz/ea-core/session'
 
 interface EventLogAnalysis {
   records: SessionEventRecord[]
@@ -1168,11 +1168,11 @@ function cloneRecord(record: SessionRecord): SessionRecord {
 
 import { Context, Service } from '@ejunz/cordis'
 
-import { Session, snapshotSessionEvent, type SessionId } from '@ejunz/ea/session'
+import { Session, snapshotSessionEvent, type SessionId } from '@ejunz/ea-core/session'
 
-import { foldSessionTitle } from '@ejunz/ea/session-title'
+import { foldSessionTitle } from '@ejunz/ea-core/session-title'
 
-import type { SessionTitleSnapshot } from '@ejunz/ea/session-title'
+import type { SessionTitleSnapshot } from '@ejunz/ea-core/session-title'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -1460,11 +1460,11 @@ export abstract class SessionQueryEngine extends Service {
 
 export default SessionQueryEngine
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/session-query'
+  const PACKAGE_NAME = '@ejunz/ea-core/session-query'
   export const name = 'session-query-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

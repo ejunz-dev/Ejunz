@@ -49,9 +49,9 @@ export interface AskUserQuestionAnswer {
 
 import { Context, Service } from '@ejunz/cordis'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
-import { EjunzAgentError } from '@ejunz/ea/llm'
+import { EjunzAgentError } from '@ejunz/ea-core/llm'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -173,11 +173,11 @@ export class UserQuestionService extends Service {
 
 export default UserQuestionService
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/user-questions'
+  const PACKAGE_NAME = '@ejunz/ea-core/user-questions'
   export const name = 'user-questions-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

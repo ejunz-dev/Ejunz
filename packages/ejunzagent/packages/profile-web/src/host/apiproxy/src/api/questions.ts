@@ -5,8 +5,8 @@
  * echoing that rpcId, with no resource id in the payload (rpcId suffices).
  */
 
-import type { AskUserQuestionAnswer } from '@ejunz/ea/user-questions/types'
-import type { SessionId } from '@ejunz/ea/session/types'
+import type { AskUserQuestionAnswer } from '@ejunz/ea-core/user-questions/types'
+import type { SessionId } from '@ejunz/ea-core/session/types'
 
 /**
  * Question answer payload (the result.value slot of a client-response):

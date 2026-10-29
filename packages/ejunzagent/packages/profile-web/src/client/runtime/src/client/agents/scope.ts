@@ -18,7 +18,7 @@
 import { Context as CordisContext } from '@ejunz/cordis'
 import type { Context, Fiber } from '@ejunz/cordis'
 import type { SessionId } from '@ejunz/profile-web/api/remotes/client'
-import type { TypertClientRemote, TypertRemoteScopeApi } from '@ejunz/ea/typert-protocol'
+import type { TypertClientRemote, TypertRemoteScopeApi } from '@ejunz/ea-core/typert-protocol'
 
 /** Client Cordis Context carrying one Agent identity and its scoped Remote namespaces. */
 export type AgentContext = Omit<Context, 'remote'> & {

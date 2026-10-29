@@ -2,19 +2,19 @@ import type { Context } from '@ejunz/cordis'
 
 import { resolve } from 'node:path'
 
-import type { Agent, AgentHandle } from '@ejunz/ea/agent'
+import type { Agent, AgentHandle } from '@ejunz/ea-core/agent'
 
-import { createUserMessage } from '@ejunz/ea/llm'
+import { createUserMessage } from '@ejunz/ea-core/llm'
 
-import { carrierKeyOf, type Scoped } from '@ejunz/ea/scope'
+import { carrierKeyOf, type Scoped } from '@ejunz/ea-core/scope'
 
-import { SessionId } from '@ejunz/ea/session'
+import { SessionId } from '@ejunz/ea-core/session'
 
-import type SubagentRuntime from '@ejunz/ea/subagent'
+import type SubagentRuntime from '@ejunz/ea-core/subagent'
 
-import type { SubagentRunEndInfo } from '@ejunz/ea/subagent'
+import type { SubagentRunEndInfo } from '@ejunz/ea-core/subagent'
 
-import * as LlmDeepSeek from '@ejunz/ea/llm-deepseek'
+import * as LlmDeepSeek from '@ejunz/ea-core/llm-deepseek'
 
 import type {
   InitializeParams,
@@ -25,7 +25,7 @@ import type {
   SessionPromptResult,
   SubagentFinishedNotification,
   SubagentStartedNotification,
-} from '@ejunz/ea/sdk'
+} from '@ejunz/ea-core/sdk'
 
 interface SessionRecord {
   handle: AgentHandle
@@ -214,7 +214,7 @@ export class EjunzAgentSdkJsonRpcServer {
     // No preset composition: this server's compositions keep the model-facing
     // rows in the host plane, so this agent reads them from the global layer. A
     // deployment that configures a roster has to join one here first
-    // (@ejunz/ea/agent-presets README, "Composing a child agent").
+    // (@ejunz/ea-core/agent-presets README, "Composing a child agent").
     const handle = await this.ctx.agents.create({
       sessionId: SessionId(sessionId),
       meta: { cwd: this.cwd },
@@ -240,7 +240,7 @@ import type { Readable, Writable } from 'node:stream'
 
 import Schema from '@ejunz/schemastery'
 
-import { JsonRpcLineTransport } from '@ejunz/ea/sdk'
+import { JsonRpcLineTransport } from '@ejunz/ea-core/sdk'
 
 export const name = 'sdk-jsonrpc-server'
 
@@ -309,11 +309,11 @@ export function apply(ctx: Context, config: JsonRpcConfig): void {
   }, 'jsonrpc.serve')
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/sdk-jsonrpc-server'
+  const PACKAGE_NAME = '@ejunz/ea-core/sdk-jsonrpc-server'
   export const name = 'sdk-jsonrpc-server-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

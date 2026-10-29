@@ -3,7 +3,7 @@
  * Every workspace package registers checks from a `./invariant` companion;
  * ordinary package entrypoints stay independent of diagnostics.
  *
- * @module @ejunz/ea/invariants
+ * @module @ejunz/ea-core/invariants
  */
 
 import { Context, Service } from '@ejunz/cordis'
@@ -203,7 +203,7 @@ export default InvariantRegistry
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/invariants'
+  const PACKAGE_NAME = '@ejunz/ea-core/invariants'
   export const name = 'invariants-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

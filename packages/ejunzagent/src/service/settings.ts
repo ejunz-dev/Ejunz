@@ -81,7 +81,7 @@ export function redactSecrets(schema: z<never>, value: unknown): RedactedValue {
   return { value: stripped, secrets }
 }
 
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
 export type SettingsNamespace = Branded<'SettingsNamespace'>
 
@@ -960,11 +960,11 @@ export function installSettingsSection<T>(
 
 export default SettingsProvider
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/settings'
+  const PACKAGE_NAME = '@ejunz/ea-core/settings'
   export const name = 'settings-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

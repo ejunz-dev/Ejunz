@@ -1,7 +1,7 @@
 /**
  * Node's global `fetch` (undici) ignores proxy env unless NODE_USE_ENV_PROXY is set.
  * Devshell and PM2 often have `http_proxy` in the OS profile but not in IDE terminals.
- * @module @ejunz/ea/env-proxy
+ * @module @ejunz/ea-core/env-proxy
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'

@@ -4,17 +4,17 @@
  * else references RequestPayload<'session.*'> / ResponseValue<'session.*'>.
  */
 
-import type { MessageId } from '@ejunz/ea/llm/brand'
-import type { AttachmentIdType, ImageAttachmentLimits, ImageAttachmentRef, ImageMediaType } from '@ejunz/ea/attachment'
-import type { ContentBlock } from '@ejunz/ea/llm/types'
-import type { SessionEvent, SessionId, SessionPermissionInjection } from '@ejunz/ea/session/types'
+import type { MessageId } from '@ejunz/ea-core/llm/brand'
+import type { AttachmentIdType, ImageAttachmentLimits, ImageAttachmentRef, ImageMediaType } from '@ejunz/ea-core/attachment'
+import type { ContentBlock } from '@ejunz/ea-core/llm/types'
+import type { SessionEvent, SessionId, SessionPermissionInjection } from '@ejunz/ea-core/session/types'
 // The pure-type outlet: api/ is browser-importable, and the package root's
 // cordis Context merge (via ea-agent) must not enter client aggregates.
-import type { SessionProjectionMap } from '@ejunz/ea/session-projection/types'
+import type { SessionProjectionMap } from '@ejunz/ea-core/session-projection/types'
 import type { RpcId, RpcRequest, RpcResponse } from './rpc.ts'
 import type { ToolEventView } from './events.ts'
 
-declare module '@ejunz/ea/session-projection/types' {
+declare module '@ejunz/ea-core/session-projection/types' {
   interface SessionProjectionMap {
     /**
      * Session-list hints persisted by the projection cache. `blank: false`
@@ -50,7 +50,7 @@ export interface SessionAddonState {
   permissionInjection?: SessionAddonPermissionInjection
 }
 
-declare module '@ejunz/ea/llm' {
+declare module '@ejunz/ea-core/llm' {
   interface MessageSourceMap {
     /**
      * The prompt's rpcId is passed through MessageSource into the `user/message` event

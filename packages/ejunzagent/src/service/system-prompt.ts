@@ -2,11 +2,11 @@ import { Context, Service } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { AnonymousEntries, NamedEntries, ScopedLayers, scopeTarget } from '@ejunz/ea/scope'
+import { AnonymousEntries, NamedEntries, ScopedLayers, scopeTarget } from '@ejunz/ea-core/scope'
 
-import type { ScopeKey, ScopeLayer, Scoped } from '@ejunz/ea/scope'
+import type { ScopeKey, ScopeLayer, Scoped } from '@ejunz/ea-core/scope'
 
-import type { ContextSnapshotSection, ToolSchema } from '@ejunz/ea/llm'
+import type { ContextSnapshotSection, ToolSchema } from '@ejunz/ea-core/llm'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -16,7 +16,7 @@ declare module '@ejunz/cordis' {
   interface Events {
     /**
      * Expert waterfall over the assembled sections, contexts, tools, and variables.
-     * Scope-filtered dispatch (`@ejunz/ea/scope`): scoped listeners
+     * Scope-filtered dispatch (`@ejunz/ea-core/scope`): scoped listeners
      * receive only that scope's assemblies. The returned value is authoritative.
      * A supplied signal controls only this explicit assembly request and must not
      * be retained to control later turns. A registered complete section is
@@ -476,11 +476,11 @@ export class SystemPrompt extends Service {
 
 export default SystemPrompt
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/system-prompt'
+  const PACKAGE_NAME = '@ejunz/ea-core/system-prompt'
   export const name = 'system-prompt-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

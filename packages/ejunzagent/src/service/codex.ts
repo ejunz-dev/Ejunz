@@ -1,8 +1,8 @@
 import type { Readable, Writable } from 'node:stream'
 
-import type { ContentBlock } from '@ejunz/ea/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import { JsonRpcLineTransport } from '@ejunz/ea/sdk'
+import { JsonRpcLineTransport } from '@ejunz/ea-core/sdk'
 
 type JsonObject = Record<string, unknown>
 
@@ -361,7 +361,7 @@ export class CodexAppServerWire {
 
 import { randomUUID } from 'node:crypto'
 
-import { SessionId } from '@ejunz/ea/session'
+import { SessionId } from '@ejunz/ea-core/session'
 
 import {
   settleRunResult,
@@ -370,9 +370,9 @@ import {
   type SubagentRun,
   type SubagentStartRequest,
   type SubagentStopReason,
-} from '@ejunz/ea/subagent'
+} from '@ejunz/ea-core/subagent'
 
-import type { SubprocessHandle, SubprocessSpawnSpec } from '@ejunz/ea/subprocess'
+import type { SubprocessHandle, SubprocessSpawnSpec } from '@ejunz/ea-core/subprocess'
 
 export const DEFAULT_DISPOSE_GRACE_MS = 3_000
 
@@ -528,7 +528,7 @@ import type { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import { MAX_TIMER_DELAY_MS } from '@ejunz/ea/timeout'
+import { MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
 
 import {
   assertPositiveFinite,
@@ -537,7 +537,7 @@ import {
   type ResolvedSubagentStartRequest,
   type SubagentCapabilities,
   type SubagentProvider,
-} from '@ejunz/ea/subagent'
+} from '@ejunz/ea-core/subagent'
 
 export const name = 'subagent-codex'
 
@@ -611,11 +611,11 @@ export function apply(ctx: Context, config: Config): void {
   ctx.subagents.registerProvider(new CodexProvider(ctx, resolved))
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/subagent-codex'
+  const PACKAGE_NAME = '@ejunz/ea-core/subagent-codex'
   export const name = 'subagent-codex-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

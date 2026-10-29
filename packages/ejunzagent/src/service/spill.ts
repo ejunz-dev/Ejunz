@@ -1,8 +1,8 @@
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
-import type { CallId } from '@ejunz/ea/llm'
+import type { CallId } from '@ejunz/ea-core/llm'
 
-import type { SessionId } from '@ejunz/ea/session'
+import type { SessionId } from '@ejunz/ea-core/session'
 
 export type SpillLocator = Branded<'SpillLocator'>
 
@@ -64,11 +64,11 @@ export abstract class SpillStore extends Service {
 
 export default SpillStore
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/spill'
+  const PACKAGE_NAME = '@ejunz/ea-core/spill'
   export const name = 'spill-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

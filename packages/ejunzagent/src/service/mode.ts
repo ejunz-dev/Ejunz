@@ -3,7 +3,7 @@ export interface PlanProjection {
   pending: boolean
 }
 
-declare module '@ejunz/ea/session-projection/types' {
+declare module '@ejunz/ea-core/session-projection/types' {
   interface SessionProjectionMap {
     /** Plan collaboration state folded from `command/run` (name `plan`) and `plan/mode` events. */
     plan: PlanProjection
@@ -16,23 +16,23 @@ import { z as zod } from 'zod'
 
 import type { ZodType } from 'zod'
 
-import type { Agent, PreStepDecision } from '@ejunz/ea/agent'
+import type { Agent, PreStepDecision } from '@ejunz/ea-core/agent'
 
-import { createUserMessage } from '@ejunz/ea/llm'
+import { createUserMessage } from '@ejunz/ea-core/llm'
 
-import type { Session, SessionEvent, UserMessage } from '@ejunz/ea/session'
+import type { Session, SessionEvent, UserMessage } from '@ejunz/ea-core/session'
 
-import { defineTool } from '@ejunz/ea/tools'
+import { defineTool } from '@ejunz/ea-core/tools'
 
-import type {} from '@ejunz/ea/system-prompt'
+import type {} from '@ejunz/ea-core/system-prompt'
 
-import { UserQuestionError } from '@ejunz/ea/user-questions'
+import { UserQuestionError } from '@ejunz/ea-core/user-questions'
 
-import type {} from '@ejunz/ea/commands'
+import type {} from '@ejunz/ea-core/commands'
 
-import type {} from '@ejunz/ea/session-projection'
+import type {} from '@ejunz/ea-core/session-projection'
 
-declare module '@ejunz/ea/session/types' {
+declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {
     /**
      * Whether plan mode is in force from this point on: log-only, non-surface,
@@ -428,11 +428,11 @@ export class PlanModeController extends Service {
 
 export default PlanModeController
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/plan-mode'
+  const PACKAGE_NAME = '@ejunz/ea-core/plan-mode'
   export const name = 'plan-mode-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

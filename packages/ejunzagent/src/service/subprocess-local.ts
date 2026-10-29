@@ -80,9 +80,9 @@ import { join } from 'node:path'
 
 import { setTimeout as sleepMs } from 'node:timers/promises'
 
-import { scrubbedParentEnv } from '@ejunz/ea/subprocess'
+import { scrubbedParentEnv } from '@ejunz/ea-core/subprocess'
 
-import { MAX_TIMER_DELAY_MS } from '@ejunz/ea/timeout'
+import { MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
 
 import type {
   CollectedOutput,
@@ -91,7 +91,7 @@ import type {
   SubprocessOutcome,
   SubprocessOutputMode,
   SubprocessSpawnSpec,
-} from '@ejunz/ea/subprocess'
+} from '@ejunz/ea-core/subprocess'
 
 export function childEnv(extra?: Readonly<NodeJS.ProcessEnv>): NodeJS.ProcessEnv {
   const env = scrubbedParentEnv()
@@ -551,12 +551,12 @@ import { delimiter, extname, isAbsolute, resolve } from 'node:path'
 
 import { Context } from '@ejunz/cordis'
 
-import { SubprocessRuntime } from '@ejunz/ea/subprocess'
+import { SubprocessRuntime } from '@ejunz/ea-core/subprocess'
 
 import type {
   SubprocessHandle,
   SubprocessSpawnSpec,
-} from '@ejunz/ea/subprocess'
+} from '@ejunz/ea-core/subprocess'
 
 export class LocalSubprocessRuntime extends SubprocessRuntime {
   /** Live handles retained for normal disposal and synchronous host-exit finalization. */
@@ -677,11 +677,11 @@ function environmentValue(env: NodeJS.ProcessEnv, name: 'PATH' | 'PATHEXT'): str
 
 export default LocalSubprocessRuntime
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/subprocess-local'
+  const PACKAGE_NAME = '@ejunz/ea-core/subprocess-local'
   export const name = 'subprocess-local-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

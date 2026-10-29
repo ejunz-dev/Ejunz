@@ -1,21 +1,21 @@
 /**
  * Model-facing `get_goal`, `create_goal`, and `update_goal` tools over the
  * persisted same-session goal domain.
- * @module @ejunz/ea/tool-goal
+ * @module @ejunz/ea-core/tool-goal
  */
 
 import type { Context } from '@ejunz/cordis'
 import z from '@ejunz/schemastery'
-import { GoalId } from '@ejunz/ea/goal'
-import type { GoalRef, GoalView } from '@ejunz/ea/goal'
-import { boundContextSummary, createUserMessage, EjunzAgentError } from '@ejunz/ea/llm'
-import { defineTool } from '@ejunz/ea/tools'
-import type { GenericCallView } from '@ejunz/ea/tools'
-import type {} from '@ejunz/ea/system-prompt'
-import type { Agent } from '@ejunz/ea/agent'
-import type { SessionEvent } from '@ejunz/ea/session'
-import type { ToolRunContext } from '@ejunz/ea/tools'
-import type { ContentBlock } from '@ejunz/ea/llm'
+import { GoalId } from '@ejunz/ea-core/goal'
+import type { GoalRef, GoalView } from '@ejunz/ea-core/goal'
+import { boundContextSummary, createUserMessage, EjunzAgentError } from '@ejunz/ea-core/llm'
+import { defineTool } from '@ejunz/ea-core/tools'
+import type { GenericCallView } from '@ejunz/ea-core/tools'
+import type {} from '@ejunz/ea-core/system-prompt'
+import type { Agent } from '@ejunz/ea-core/agent'
+import type { SessionEvent } from '@ejunz/ea-core/session'
+import type { ToolRunContext } from '@ejunz/ea-core/tools'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
 export const name = 'tool-goal'
 export const inject = ['agents', 'goals', 'tools', 'systemPrompt']
@@ -473,10 +473,10 @@ export function renderWrapupContext(objective: string, blockedReason?: string): 
   return [{ type: 'text', text }]
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 
 namespace invariant {
-  const PACKAGE_NAME = '@ejunz/ea/tool-goal'
+  const PACKAGE_NAME = '@ejunz/ea-core/tool-goal'
   
   /** Cordis companion plugin name. */
   export const name = 'tool-goal-invariant'

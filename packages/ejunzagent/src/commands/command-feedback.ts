@@ -3,17 +3,17 @@
  * appends one authoritative log-only event and does not start model work. The
  * append is eager but unflushed, so acknowledgement reports that the entry is
  * logged, not that it reached disk.
- * @module @ejunz/ea/command-feedback
+ * @module @ejunz/ea-core/command-feedback
  */
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 
 
 import type { Context } from '@ejunz/cordis'
-import type { CommandInvocation, CommandResult } from '@ejunz/ea/commands'
-import type { SessionTelemetryBackend, SessionTelemetrySharingStatus } from '@ejunz/ea/session-telemetry'
-import type { Session } from '@ejunz/ea/session'
-import { getOrCreateAnonymousUserId } from '@ejunz/ea/anonymous-user-id'
+import type { CommandInvocation, CommandResult } from '@ejunz/ea-core/commands'
+import type { SessionTelemetryBackend, SessionTelemetrySharingStatus } from '@ejunz/ea-core/session-telemetry'
+import type { Session } from '@ejunz/ea-core/session'
+import { getOrCreateAnonymousUserId } from '@ejunz/ea-core/anonymous-user-id'
 
 export const name = 'command-feedback'
 export const inject = ['commands']
@@ -56,7 +56,7 @@ function sharingDisclosure(telemetry: SessionTelemetryBackend | undefined): stri
   return sharingSentence(telemetry.sharing)
 }
 
-declare module '@ejunz/ea/session/types' {
+declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {
     /**
      * One recorded human remark about this session. Log-only and independent
@@ -112,7 +112,7 @@ export function apply(ctx: Context): void {
 
 /** Invariant companion namespace for the module subpath. */
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/command-feedback'
+  const PACKAGE_NAME = '@ejunz/ea-core/command-feedback'
   
   /** Cordis companion plugin name. */
   export const name = 'command-feedback-invariant'

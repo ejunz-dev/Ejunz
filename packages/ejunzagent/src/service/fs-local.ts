@@ -130,7 +130,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 
 import { TextDecoder } from 'node:util'
 
-import { FsError, FsTargetKey, FsVersion } from '@ejunz/ea/fs'
+import { FsError, FsTargetKey, FsVersion } from '@ejunz/ea-core/fs'
 
 const BINARY_SAMPLE_BYTES = 8192
 
@@ -764,7 +764,7 @@ import { pathToFileURL } from 'node:url'
 
 import z from '@ejunz/schemastery'
 
-import { FileSystem, FsError, FsVersion } from '@ejunz/ea/fs'
+import { FileSystem, FsError, FsVersion } from '@ejunz/ea-core/fs'
 
 import type {
   FsDirEntry,
@@ -775,7 +775,7 @@ import type {
   FsTarget,
   FsWriteIntent,
   FsWriteOutcome,
-} from '@ejunz/ea/fs'
+} from '@ejunz/ea-core/fs'
 
 export interface Config {
   /** Base directory for relative paths. Defaults to `process.cwd()`. */
@@ -999,11 +999,11 @@ export class LocalFileSystem extends FileSystem {
 
 export default LocalFileSystem
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/fs-local'
+  const PACKAGE_NAME = '@ejunz/ea-core/fs-local'
   export const name = 'fs-local-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

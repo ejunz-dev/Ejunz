@@ -3,7 +3,7 @@
  * supplied each value. EjunzAgent consumers resolve through it instead of a flattened
  * `process.env`; launchers may still materialize accepted values for config
  * expressions and third-party libraries.
- * @module @ejunz/ea/launch-environment
+ * @module @ejunz/ea-core/launch-environment
  */
 
 import type { Context } from '@ejunz/cordis'
@@ -123,11 +123,11 @@ declare module '@ejunz/cordis' {
   }
 }
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/launch-environment'
+  const PACKAGE_NAME = '@ejunz/ea-core/launch-environment'
   export const name = 'launch-environment-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

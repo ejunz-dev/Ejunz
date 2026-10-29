@@ -1,4 +1,4 @@
-import type { Branded } from '@ejunz/ea/brand'
+import type { Branded } from '@ejunz/ea-core/brand'
 
 export type CommandId = Branded<'CommandId'>
 
@@ -54,7 +54,7 @@ declare module '@ejunz/cordis' {
   }
 }
 
-declare module '@ejunz/ea/session/types' {
+declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {
     /**
      * A resolved slash command entered its handler. Log-only (never model
@@ -84,15 +84,15 @@ declare module '@ejunz/ea/session/types' {
 
 import { Context } from '@ejunz/cordis'
 
-import type { Agent } from '@ejunz/ea/agent'
+import type { Agent } from '@ejunz/ea-core/agent'
 
-import { NamedEntries, ScopedLayers } from '@ejunz/ea/scope'
+import { NamedEntries, ScopedLayers } from '@ejunz/ea-core/scope'
 
-import type { ScopeKey, ScopeLayer } from '@ejunz/ea/scope'
+import type { ScopeKey, ScopeLayer } from '@ejunz/ea-core/scope'
 
-import type { Session, SessionEvent, SessionEventMap } from '@ejunz/ea/session'
+import type { Session, SessionEvent, SessionEventMap } from '@ejunz/ea-core/session'
 
-import { TypertRemoteService, Remote } from '@ejunz/ea/typert-protocol'
+import { TypertRemoteService, Remote } from '@ejunz/ea-core/typert-protocol'
 
 export const name = 'commands'
 
@@ -440,11 +440,11 @@ export class CommandRuntime extends TypertRemoteService {
 
 export default CommandRuntime
 
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/commands'
+  const PACKAGE_NAME = '@ejunz/ea-core/commands'
   export const name = 'commands-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}

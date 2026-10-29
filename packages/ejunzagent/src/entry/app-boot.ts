@@ -3,7 +3,7 @@
  * `.env`, install the fail-loud Loader guards, resolve the config path (snapshot-aware), load the
  * optional user patch layers from the EjunzAgent home (`~/.ea`), expose its path resolver to
  * config expressions, and drive the Cordis Loader against a leaf `cordis.yml` until the tree settles.
- * @module @ejunz/ea/app-boot
+ * @module @ejunz/ea-core/app-boot
  */
 
 import { pathToFileURL } from 'node:url'
@@ -15,12 +15,12 @@ import { Context, type FiberState } from '@ejunz/cordis'
 import Loader, { type Entry, type EntryOptions } from '@ejunz/cordis-plugin-loader'
 import Include, { applyEntryPatches, entryListSchema, type PatchOptions } from '@ejunz/cordis-plugin-include'
 import Group from '@ejunz/cordis-plugin-group'
-import { eaHomePath, resolveEaHome } from '@ejunz/ea/home-paths'
-import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentSnapshot } from '@ejunz/ea/launch-environment'
+import { eaHomePath, resolveEaHome } from '@ejunz/ea-core/home-paths'
+import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentSnapshot } from '@ejunz/ea-core/launch-environment'
 import type {} from '@ejunz/cordis-plugin-hmr'
 // Side-effect type import: resolves `ctx.get('systemPrompt')` to the service.
-import type {} from '@ejunz/ea/system-prompt'
-import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type {} from '@ejunz/ea-core/system-prompt'
+import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -835,7 +835,7 @@ export function addEjunzAgentSourceSection(ctx: Context, sourceRoot: string): ((
 }
 
 namespace __invariant {
-  const PACKAGE_NAME = '@ejunz/ea/app-boot'
+  const PACKAGE_NAME = '@ejunz/ea-core/app-boot'
   export const name = 'app-boot-invariant'
   export const inject = ['invariants']
   const install: InvariantInstaller = () => {}
