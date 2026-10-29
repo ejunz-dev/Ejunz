@@ -1,0 +1,50 @@
+/** All-human-messages model provider for `ctx.sessionTitle`. */
+
+import type { Context } from '@ejunz/cordis'
+import z from '@ejunz/schemastery'
+import {
+  registerSessionTitleLlmProvider,
+  SessionTitleLlmConfigFields,
+} from '@ejunz/ea/session-title-llm'
+import type { SessionTitleLlmConfig } from '@ejunz/ea/session-title-llm'
+
+export const name = 'session-title-all-prompts-llm'
+export const inject = ['sessionTitle', 'llm', 'sessions']
+
+/** Required LLM policy; this plugin adds no defaults. */
+export type Config = SessionTitleLlmConfig
+/** Loader schema shared with the first-prompt provider. */
+/* jscpd:ignore-start -- Loader requires each plugin to export its own statically walkable schema; the field validators remain shared. */
+export const Config: z<Config> = z.object({
+  targetWords: SessionTitleLlmConfigFields.targetWords,
+  targetCjkCharacters: SessionTitleLlmConfigFields.targetCjkCharacters,
+  maxInputBytes: SessionTitleLlmConfigFields.maxInputBytes,
+  maxOutputTokens: SessionTitleLlmConfigFields.maxOutputTokens,
+  timeoutMs: SessionTitleLlmConfigFields.timeoutMs,
+  provider: SessionTitleLlmConfigFields.provider,
+  model: SessionTitleLlmConfigFields.model,
+})
+/* jscpd:ignore-end */
+
+/**
+ * Register the all-prompts model provider.
+ * @param ctx - context exposing session-title, LLM, and session services.
+ * @param config - required route, target, byte, token, and timeout policy.
+ */
+export function apply(ctx: Context, config: Config): void {
+  registerSessionTitleLlmProvider(ctx, config, name, 'all-prompts', messages => messages)
+}
+
+import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { Context as InvariantContext } from '@ejunz/cordis'
+
+namespace __invariant {
+  const PACKAGE_NAME = '@ejunz/ea/session-title-all-prompts-llm'
+  export const name = 'session-title-all-prompts-llm-invariant'
+  export const inject = ['invariants']
+  const install: InvariantInstaller = () => {}
+  export const apply = (ctx: InvariantContext): Promise<() => void> =>
+    Promise.resolve(ctx.invariants.register(PACKAGE_NAME, install))
+}
+
+export import __invariant_companion = __invariant

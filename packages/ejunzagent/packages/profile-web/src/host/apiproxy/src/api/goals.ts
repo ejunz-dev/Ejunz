@@ -9,8 +9,8 @@
  * every client through the mux stream carrying the same whole value).
  */
 
-import type { Branded } from '@ejunz/brand'
-import type { SessionId } from '@ejunz/session/types'
+import type { Branded } from '@ejunz/ea/brand'
+import type { SessionId } from '@ejunz/ea/session/types'
 import type { RpcRequest, RpcResponse } from './rpc.ts'
 
 /** Identifies one goal across its durable revisions. */

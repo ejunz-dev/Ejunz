@@ -13,7 +13,7 @@ import {
   type InvocationParameterDescriptor,
   type TypertCodec,
   type TypertGatewayBinding,
-} from '@ejunz/typert-protocol'
+} from '@ejunz/ea/typert-protocol'
 import type {
   InvokeRemoteRequest,
   TypertGateway,

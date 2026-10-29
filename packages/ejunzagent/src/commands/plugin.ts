@@ -22,7 +22,7 @@ import {
   resolveProfileDir,
   writeProfileManifest,
   type ProfileManifest,
-} from '@ejunz/app-boot'
+} from '@ejunz/ea/app-boot'
 import { INSTALL_ANCHOR } from '../service/profile-boot.ts'
 
 const NAME = 'ea'

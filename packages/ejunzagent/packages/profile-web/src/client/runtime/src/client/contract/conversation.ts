@@ -1,4 +1,4 @@
-import type { SessionEvent } from '@ejunz/session/types'
+import type { SessionEvent } from '@ejunz/ea/session/types'
 import type { ToolEventView } from '@ejunz/profile-web/api/remotes/client'
 
 /* oxlint-disable typescript/no-duplicate-type-constituents, typescript/no-redundant-type-constituents --

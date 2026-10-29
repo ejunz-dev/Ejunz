@@ -11,7 +11,7 @@
 
 import type { Context } from '@ejunz/cordis'
 import { cliAssetPath } from '../lib/cli-paths.ts'
-import { loadLayeredEnv } from '@ejunz/app-boot'
+import { loadLayeredEnv } from '@ejunz/ea/app-boot'
 // Activate the Context merges this surface reads (`connection`, `apiProxy`).
 import type {} from '@ejunz/profile-web/client/connection'
 import type {} from '@ejunz/profile-web/host/apiproxy'

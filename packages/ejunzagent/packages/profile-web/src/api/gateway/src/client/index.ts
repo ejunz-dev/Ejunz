@@ -15,7 +15,7 @@ import type {
   TypertDisposer,
   TypertRemoteContribution,
   TypertRemoteEvent,
-} from '@ejunz/typert-protocol'
+} from '@ejunz/ea/typert-protocol'
 
 interface MountToken {
   active: boolean

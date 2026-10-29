@@ -6,30 +6,30 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, stat } from 'node:fs/promises'
 import type { Context } from '@ejunz/cordis'
-import { installModelSelection } from '@ejunz/agent'
-import type { Agent, ModelSelection, ModelSelectionRef, AgentOptions, AgentStatus } from '@ejunz/agent'
-import type {} from '@ejunz/agent-presets/types'
-import { AttachmentError } from '@ejunz/attachment'
-import type { ImageAttachmentRef } from '@ejunz/attachment'
-import { contentHasImage, createUserMessage, freezeMessage, ReasoningEffortId } from '@ejunz/llm'
-import { errorChain } from '@ejunz/llm'
-import type { ContentBlock, MessageSource } from '@ejunz/llm'
-import { isAppendSurfaceEvent, isJsonValue } from '@ejunz/session'
-import type { JsonValue, Session, SessionEvent, SessionEventMap, SessionHeader, SessionId, UserMessage } from '@ejunz/session'
-import type { SessionPersistence } from '@ejunz/session-persistence'
-import { SessionQueryError, type SessionSearchCursor } from '@ejunz/session-query'
-import { SubagentError } from '@ejunz/subagent'
-import type { SubagentListEntry as CatalogSubagentListEntry } from '@ejunz/subagent'
-import { isUserInvocable } from '@ejunz/skill'
+import { installModelSelection } from '@ejunz/ea/agent'
+import type { Agent, ModelSelection, ModelSelectionRef, AgentOptions, AgentStatus } from '@ejunz/ea/agent'
+import type {} from '@ejunz/ea/agent-presets/types'
+import { AttachmentError } from '@ejunz/ea/attachment'
+import type { ImageAttachmentRef } from '@ejunz/ea/attachment'
+import { contentHasImage, createUserMessage, freezeMessage, ReasoningEffortId } from '@ejunz/ea/llm'
+import { errorChain } from '@ejunz/ea/llm'
+import type { ContentBlock, MessageSource } from '@ejunz/ea/llm'
+import { isAppendSurfaceEvent, isJsonValue } from '@ejunz/ea/session'
+import type { JsonValue, Session, SessionEvent, SessionEventMap, SessionHeader, SessionId, UserMessage } from '@ejunz/ea/session'
+import type { SessionPersistence } from '@ejunz/ea/session-persistence'
+import { SessionQueryError, type SessionSearchCursor } from '@ejunz/ea/session-query'
+import { SubagentError } from '@ejunz/ea/subagent'
+import type { SubagentListEntry as CatalogSubagentListEntry } from '@ejunz/ea/subagent'
+import { isUserInvocable } from '@ejunz/ea/skill'
 // Type-only: brings the `ctx.tools` Context merge into this program (viewFor reads presenters).
 import {
   InvalidPresetIdError, PresetExistsError, PresetMountError,
   PresetNotWritableError, resolveSessionPreset,
   SETTINGS_NAMESPACE as AGENT_PRESET_SETTINGS_NAMESPACE, UnknownPresetError,
-} from '@ejunz/agent-presets'
-import type { PresetBearingSession } from '@ejunz/agent-presets'
-import type {} from '@ejunz/tools'
-import { refreshHostTools } from '@ejunz/tool-host'
+} from '@ejunz/ea/agent-presets'
+import type { PresetBearingSession } from '@ejunz/ea/agent-presets'
+import type {} from '@ejunz/ea/tools'
+import { refreshHostTools } from '@ejunz/ea/tool-host'
 import type {
   ApiProxy, ConfigurableProviderView, CredentialView, GoalRef, HistoryEntry, HostFrame,
   ModelCatalogFailure, ModelProviderGroup,
@@ -45,44 +45,44 @@ import {
   type SessionLogExportReady,
   type SessionLogCompressionLevel,
 } from './session-export.ts'
-import type { SessionRawArtifact } from '@ejunz/session-persistence'
+import type { SessionRawArtifact } from '@ejunz/ea/session-persistence'
 import {
   SESSION_SEARCH_RESULT_LIMIT,
   SESSION_SEARCH_SNIPPET_MAX_CODE_POINTS,
   truncateUnicodeCodePoints,
 } from './api/session-search.ts'
 // Type-only: resolves `ctx.get('sessionProjections')` to the projection registry.
-import type {} from '@ejunz/session-projection'
+import type {} from '@ejunz/ea/session-projection'
 // Type-only: resolves `ctx.get('tasks')` to the background job registry.
-import type {} from '@ejunz/jobs'
-import type { JobSnapshot } from '@ejunz/jobs'
+import type {} from '@ejunz/ea/jobs'
+import type { JobSnapshot } from '@ejunz/ea/jobs'
 // Type-only: resolves `ctx.get('sessionProjectionCache')` (the cold listing column).
-import type {} from '@ejunz/session-projection-cache'
+import type {} from '@ejunz/ea/session-projection-cache'
 // GoalError narrows domain rejections to their stable codes at the wire boundary.
-import { GoalError } from '@ejunz/goal'
-import type { GoalRef as CoreGoalRef } from '@ejunz/goal'
+import { GoalError } from '@ejunz/ea/goal'
+import type { GoalRef as CoreGoalRef } from '@ejunz/ea/goal'
 // Type-only edges: resolve the command-change stream and `ctx.get('skills')`.
-import type {} from '@ejunz/commands'
+import type {} from '@ejunz/ea/commands'
 // Type-only: the dynamic-package runner's forwarded-event declarations. Its
 // client-safe `./types` subpath deliberately, not the package root — the root
 // merges `ctx.dynamicCordisRunner`, and a dependency on that package would
 // rebuild the api-remotes cycle this direction exists to avoid.
-import type {} from '@ejunz/cordis-host-runner/types'
-import type {} from '@ejunz/skill'
+import type {} from '@ejunz/ea/cordis-host-runner/types'
+import type {} from '@ejunz/ea/skill'
 // The settings/credentials seams: brand guards run at this wire boundary; the
 // service reads stay optional (`ctx.get`) so a composition without either
 // provider still serves every other domain.
-import { SettingsConflictError, settingsNamespace } from '@ejunz/settings'
-import type { SettingsDescriptor, SettingsNamespace, SettingsPathOp } from '@ejunz/settings'
-import { credentialRef } from '@ejunz/credentials'
+import { SettingsConflictError, settingsNamespace } from '@ejunz/ea/settings'
+import type { SettingsDescriptor, SettingsNamespace, SettingsPathOp } from '@ejunz/ea/settings'
+import { credentialRef } from '@ejunz/ea/credentials'
 // Value edge: the rename impl narrows the title service's validation failure; the import also resolves `ctx.get('sessionTitle')`.
-import { SessionTitleInvalidError } from '@ejunz/session-title'
-import type { CallId } from '@ejunz/llm/brand'
-import type { ScopeKey } from '@ejunz/scope'
-import type { ApprovalOutcome, ApprovalRequestId } from '@ejunz/user-approval'
+import { SessionTitleInvalidError } from '@ejunz/ea/session-title'
+import type { CallId } from '@ejunz/ea/llm/brand'
+import type { ScopeKey } from '@ejunz/ea/scope'
+import type { ApprovalOutcome, ApprovalRequestId } from '@ejunz/ea/user-approval'
 // Side-effect type import: resolves the `approval/request` waterfall and
 // `ctx.get('approval')` without a value dependency on the seam (optional composition).
-import type {} from '@ejunz/user-approval'
+import type {} from '@ejunz/ea/user-approval'
 import { approvalResponsePayloadSchema } from './api/approvals.schema.ts'
 import { imageLimitsProjectionSchema, sessionListMetadataProjectionSchema } from './api/sessions.schema.ts'
 import { questionResponsePayloadSchema } from './api/questions.schema.ts'
@@ -90,8 +90,8 @@ import type { ClientResponse, RpcError, RpcReceipt, RpcRequest, RpcResponse } fr
 import { RpcId } from './api/rpc.ts'
 import type {
   AskUserQuestionAnswer, AskUserQuestionItem, AskUserQuestionRequest,
-} from '@ejunz/user-questions'
-import { UserQuestionError } from '@ejunz/user-questions'
+} from '@ejunz/ea/user-questions'
+import { UserQuestionError } from '@ejunz/ea/user-questions'
 import {
   ApiRemoteSessionNotFound as SessionNotFound,
   ApiRemoteSubagentSessionOwnership as SubagentSessionOwnership,
@@ -947,7 +947,7 @@ function subagentPromptError(
 function projectionsUnavailableError(): RpcError {
   return {
     code: 'internal',
-    message: 'subagent catalog is unavailable: this deployment does not mount the sessionProjections registry (load @ejunz/session-projection)',
+    message: 'subagent catalog is unavailable: this deployment does not mount the sessionProjections registry (load @ejunz/ea/session-projection)',
     details: {},
   }
 }
@@ -1861,7 +1861,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     const presets = ctx.get('agentPresets')
     const goals = presets?.serviceFor(agent, 'goals') ?? ctx.get('goals')
     if (goals === undefined) {
-      return { error: { code: 'internal', message: 'goal service is absent: neither this session\'s agent preset nor the host composition mounts @ejunz/goal', details: {} } }
+      return { error: { code: 'internal', message: 'goal service is absent: neither this session\'s agent preset nor the host composition mounts @ejunz/ea/goal', details: {} } }
     }
     return goals
   }
@@ -1942,12 +1942,12 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
 
   /** Missing-service report shared by the settings domain (skills-domain stance). */
   function settingsAbsent(): RpcError {
-    return { code: 'internal', message: 'settings service is absent: this deployment does not mount a settings provider (e.g. @ejunz/settings-file, formerly ea-settings-file) in its composition', details: {} }
+    return { code: 'internal', message: 'settings service is absent: this deployment does not mount a settings provider (e.g. @ejunz/ea/settings-file, formerly ea-settings-file) in its composition', details: {} }
   }
 
     /** Missing-service report shared by the credentials domain. */
   function credentialsAbsent(): RpcError {
-    return { code: 'internal', message: 'credentials service is absent: this deployment does not mount a credential provider (e.g. @ejunz/credentials-local, formerly ea-credentials-local) in its composition', details: {} }
+    return { code: 'internal', message: 'credentials service is absent: this deployment does not mount a credential provider (e.g. @ejunz/ea/credentials-local, formerly ea-credentials-local) in its composition', details: {} }
   }
 
   /** Map one redacted settings descriptor to its wire view. */
@@ -2069,7 +2069,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         if (sessionQuery === undefined) {
           return err(request, {
             code: 'internal',
-            message: 'session search is unavailable: this deployment does not mount @ejunz/session-query',
+            message: 'session search is unavailable: this deployment does not mount @ejunz/ea/session-query',
             details: {},
           })
         }
@@ -3126,7 +3126,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         // (an undeclared `ctx.skills` property read fails the reflect proxy).
         const skillRegistry = scoped ?? ctx.get('skills')
         if (skillRegistry === undefined) {
-          return err(request, { code: 'internal', message: 'skill registry is absent: neither this session\'s agent preset nor the host composition mounts @ejunz/skill', details: {} })
+          return err(request, { code: 'internal', message: 'skill registry is absent: neither this session\'s agent preset nor the host composition mounts @ejunz/ea/skill', details: {} })
         }
         // The scope presenters resolve in — the live agent, else the recorded
         // preset's standing key, else the global layer — so a cold session's

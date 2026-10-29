@@ -4,9 +4,9 @@
  * direct parent into the child's Agent inbox.
  */
 
-import type { MessageId } from '@ejunz/llm/brand'
-import type { ContentBlock } from '@ejunz/llm/types'
-import type { SessionId } from '@ejunz/session/types'
+import type { MessageId } from '@ejunz/ea/llm/brand'
+import type { ContentBlock } from '@ejunz/ea/llm/types'
+import type { SessionId } from '@ejunz/ea/session/types'
 import type { RpcRequest, RpcResponse } from './rpc.ts'
 import type { HistoryEntry, SessionProjectionsBlock } from './sessions.ts'
 

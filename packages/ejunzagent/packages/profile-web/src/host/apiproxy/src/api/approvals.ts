@@ -5,8 +5,8 @@
  * RpcReceipt carrier receipt as the HTTP response body; the final outcome arrives in the resolved frame.
  */
 
-import type { ApprovalRequestId } from '@ejunz/user-approval/types'
-import type { SessionId } from '@ejunz/session/types'
+import type { ApprovalRequestId } from '@ejunz/ea/user-approval/types'
+import type { SessionId } from '@ejunz/ea/session/types'
 
 /**
  * Approval answer payload (the result.value slot of a client-response). outcome accepts only

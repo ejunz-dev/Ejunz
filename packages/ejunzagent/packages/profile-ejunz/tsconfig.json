@@ -7,6 +7,6 @@
   "include": ["src"],
   "references": [
     { "path": "../../src/vendor/cordis" },
-    { "path": "../../src/service/runtime-diagnostics/invariants" }
+    { "path": "../../src/service/invariants" }
   ]
 }

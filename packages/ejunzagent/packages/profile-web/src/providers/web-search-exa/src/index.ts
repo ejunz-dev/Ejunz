@@ -2,14 +2,14 @@
  * `@ejunz/profile-web/providers/web-search-exa`: registers an Exa-backed `WebSearchProvider`
  * with `ctx.web`. A function/namespace plugin (NOT a default-export service):
  * a search provider does not own the `ctx.web` key — it registers INTO the
- * seam's provider registry, exactly as `@ejunz/llm-deepseek`
+ * seam's provider registry, exactly as `@ejunz/ea/llm-deepseek`
  * registers an adapter into `ctx.llm`. The key is owned by `@ejunz/profile-web`.
  *
  * @module @ejunz/profile-web/providers/web-search-exa
  */
 
 import type { Context } from '@ejunz/cordis'
-import { launchEnvironmentOf } from '@ejunz/launch-environment'
+import { launchEnvironmentOf } from '@ejunz/ea/launch-environment'
 import z from '@ejunz/schemastery'
 import type {} from '@ejunz/profile-web'
 import {

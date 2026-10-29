@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod'
-import type { AskUserQuestionItem } from '@ejunz/user-questions/types'
+import type { AskUserQuestionItem } from '@ejunz/ea/user-questions/types'
 import type { HostFrame, MuxFrame } from './events.ts'
 import type { Wire } from './rpc.schema.ts'
 import { rpcErrorSchema, rpcIdSchema } from './rpc.schema.ts'

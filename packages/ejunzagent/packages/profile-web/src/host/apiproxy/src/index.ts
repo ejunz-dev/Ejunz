@@ -14,7 +14,7 @@
 
 import { Context, Service } from '@ejunz/cordis'
 import z from '@ejunz/schemastery'
-import type {} from '@ejunz/agent-default-model'
+import type {} from '@ejunz/ea/agent-default-model'
 import type { ApiProxy } from './api/index.ts'
 import { createApiProxy, DEFAULT_COLD_BLANK_PROBE_MAX_BYTES } from './api-proxy.ts'
 import {

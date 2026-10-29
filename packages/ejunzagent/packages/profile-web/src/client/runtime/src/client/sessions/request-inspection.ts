@@ -1,4 +1,4 @@
-import type { ContentBlock, ToolSchema } from '@ejunz/llm/types'
+import type { ContentBlock, ToolSchema } from '@ejunz/ea/llm/types'
 import type {
   AssistantProvenanceView, AssistantRequestConfig,
 } from './conversation.ts'

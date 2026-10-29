@@ -1,7 +1,7 @@
 /** Host HTTP bridge for browser-client RPC. */
 import type { Context } from '@ejunz/cordis'
 import z from '@ejunz/schemastery'
-import type {} from '@ejunz/attachment'
+import type {} from '@ejunz/ea/attachment'
 // Activates the webServer Context merge used below.
 import type { WebRoute, WebUpgradeRoute } from '@ejunz/profile-web/host/webserver'
 import { toFetchHandler } from '@ejunz/profile-web/host/apiproxy'

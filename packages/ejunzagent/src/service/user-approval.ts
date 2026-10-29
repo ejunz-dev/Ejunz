@@ -1,0 +1,323 @@
+import type { Branded } from '@ejunz/ea/brand'
+
+export type ApprovalRequestId = Branded<'ApprovalRequestId'>
+
+export function ApprovalRequestId(id: string): ApprovalRequestId {
+  return id as ApprovalRequestId
+}
+
+export type ApprovalOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'
+
+import { randomUUID } from 'node:crypto'
+
+import { Context, Service } from '@ejunz/cordis'
+
+import z from '@ejunz/schemastery'
+
+import type { Agent } from '@ejunz/ea/agent'
+
+import { createUserMessage, type CallId } from '@ejunz/ea/llm'
+
+import { scopeTarget } from '@ejunz/ea/scope'
+
+import type { Scoped } from '@ejunz/ea/scope'
+
+import type { Session, SessionEvent } from '@ejunz/ea/session'
+
+import type {} from '@ejunz/ea/system-prompt'
+
+declare module '@ejunz/cordis' {
+  interface Context {
+    approval: ApprovalService
+  }
+
+  interface Events {
+    /**
+     * Ask composed answerers for one decision. Return an outcome to claim the
+     * request or call `next()`; failure yields the fail-closed default.
+     * Scope-filtered dispatch (`@ejunz/ea/scope`): agent-scoped listeners receive only that agent.
+     * @param req - the pending decision (agent, tool identity, reason, signal).
+     * @mode waterfall
+     */
+    'approval/request'(this: Scoped<ApprovalService>, req: ApprovalRequest, next: () => Promise<ApprovalOutcome>): Promise<ApprovalOutcome>
+  }
+}
+
+declare module '@ejunz/ea/session/types' {
+  interface SessionEventMap {
+    /**
+     * An approval question was put to the answerer chain — log-only audit
+     * (like `hook/*`; NOT a surface event, carries no `surfaceOp`). `id` pairs
+     * it with the `approval/decided` that always follows; `toolName` is the
+     * tool the question is about, `callId` the exact tool call when the asker
+     * had one, `reason` the asker's human-readable explanation (e.g. a hook's
+     * permission-decision reason).
+     */
+    'approval/asked': {
+      id: ApprovalRequestId
+      toolName: string
+      callId?: CallId
+      reason?: string
+    }
+    /**
+     * The outcome of a prior `approval/asked` (same `id`) — log-only audit.
+     * Exactly one per ask, appended when the outcome is known: a decision, a
+     * cancellation, or the fail-closed `'unavailable'`.
+     */
+    'approval/decided': {
+      id: ApprovalRequestId
+      outcome: ApprovalOutcome
+    }
+    /**
+     * The session's approval policy was switched — log-only, durable,
+     * replayable, never in the model transcript (the model learns the policy
+     * from the runtime-context snapshot and live switch notices). The LAST
+     * such event is the session's override ({@link effectiveApprovalPolicy}).
+     * `source: 'delegation'` marks an override seeded into a child; an absent
+     * source is a runtime switch.
+     */
+    'approval/policy': {
+      policy: ApprovalPolicy
+      /** Marks an override seeded into a child at delegation. */
+      source?: 'delegation'
+    }
+  }
+}
+
+const OUTCOMES: readonly ApprovalOutcome[] = ['allowed-once', 'rejected', 'cancelled', 'unavailable']
+
+export type ApprovalPolicy = 'ask' | 'never'
+
+export const APPROVAL_POLICIES: readonly ApprovalPolicy[] = ['ask', 'never']
+
+const NEVER_SENTENCE = 'Approval prompts are disabled in this session: actions that require approval are rejected automatically.'
+
+const ASK_SENTENCE = 'Approval policy: ask. Operations that require approval may ask through the configured answerers; without an available answerer, the request fails closed.'
+
+export function effectiveApprovalPolicy(events: readonly SessionEvent[]): ApprovalPolicy | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index] as SessionEvent
+    if (event.type === 'approval/policy') return event.data.policy
+  }
+  return undefined
+}
+
+function hasOpenTurn(events: readonly SessionEvent[]): boolean {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const type = (events[index] as SessionEvent).type
+    if (type === 'turn/start') return true
+    if (type === 'turn/end') return false
+  }
+  return false
+}
+
+export function setApprovalPolicy(session: Session, policy: ApprovalPolicy): void {
+  if (!APPROVAL_POLICIES.includes(policy)) {
+    throw new TypeError('approval policy must be one of "ask" or "never"')
+  }
+  session.append('approval/policy', { policy })
+}
+
+export interface ApprovalRequest {
+  /**
+   * The agent on whose behalf the question is asked. Routes the question (a
+   * UI answerer only answers for agents it owns) and receives the audit
+   * events on its session log.
+   */
+  readonly agent: Agent
+  /** The tool the question is about (presentation and audit). */
+  readonly toolName: string
+  /**
+   * The exact tool call being decided, when the asker has one — lets a UI
+   * attach the prompt to the tool call it already streamed.
+   */
+  readonly callId?: CallId
+  /** The asker's human-readable explanation of WHY it is asking. */
+  readonly reason?: string
+  /**
+   * Aborting withdraws the question: the request settles `'cancelled'`
+   * immediately and a late answer from a still-pending answerer is discarded.
+   */
+  readonly signal?: AbortSignal
+}
+
+export interface Config {
+  /**
+   * The deployment's default {@link ApprovalPolicy} for sessions without an
+   * `approval/policy` override — `'ask'` delegates to the composed answerers
+   * (fail-closed with none); `'never'` auto-rejects every ask without
+   * prompting (the deterministic CI/unattended stance).
+   */
+  readonly policy?: ApprovalPolicy
+}
+
+export class ApprovalService extends Service {
+  static Config: z<Config> = z.object({
+    policy: z.union(['ask', 'never'] as const).default('ask'),
+  })
+
+  constructor(ctx: Context, public config: Config) {
+    super(ctx, 'approval')
+
+    const effective = (agent: Agent): ApprovalPolicy => this.effectivePolicy(agent.session)
+
+    // The complete current value travels after retained history, so switching
+    // policy does not rewrite the stable system-prompt cache prefix.
+    ctx.inject(['systemPrompt'], (scope: Context) => {
+      scope.systemPrompt.context({
+        name: 'approval:policy',
+        order: 115,
+        text: (context) => {
+          const agent = context.agent
+          // A bare assemble() (tests, diagnostics) has no session to state.
+          if (agent === undefined) return ''
+          const policy = effective(agent)
+          return policy === 'never' ? NEVER_SENTENCE : ASK_SENTENCE
+        },
+      })
+    })
+  }
+
+  /**
+   * Switch one live agent's policy and queue the transition for its next model
+   * step. Session initialization uses {@link setApprovalPolicy} directly
+   * because there is no previously visible policy to change.
+   * @param agent - the live agent whose policy is changing.
+   * @param policy - the new effective policy.
+   */
+  setPolicy(agent: Agent, policy: ApprovalPolicy): void {
+    const previous = this.effectivePolicy(agent.session)
+    if (previous === policy) return
+    setApprovalPolicy(agent.session, policy)
+    agent.inject(createUserMessage({
+      content: [{
+        type: 'text',
+        text: `The approval policy changed from "${previous}" to "${policy}" (changed by the user).`,
+      }],
+      source: { kind: 'plugin', plugin: 'user-approval' },
+    }))
+  }
+
+  /**
+   * Ask the composed answerers to decide one readonly same-process request.
+   * The service borrows the request, agent, session, and live signal directly.
+   * The request requires an open turn because the audit pair must be enclosed
+   * by the durable log's commit/replay boundary; an idle ask rejects before
+   * appending anything. The answerer phase always produces an outcome: an
+   * aborted signal yields `'cancelled'`, a missing or throwing answerer yields
+   * `'unavailable'` (fail closed), and a rogue non-vocabulary return value is
+   * normalized to `'unavailable'`. A failure that prevents either audit append
+   * from committing still rejects because returning an unlogged decision would
+   * violate the pair. Session contains post-commit observer failures, so an
+   * authoritative append cannot reject the request or suppress its matching
+   * audit event.
+   * @param req - the pending decision (agent, tool identity, reason, signal).
+   * @returns the closed outcome; `'allowed-once'` is the only grant.
+   * @throws when no turn is open or either audit event fails before the session
+   *   append commit point.
+   */
+  async request(req: ApprovalRequest): Promise<ApprovalOutcome> {
+    const session = req.agent.session
+    if (!hasOpenTurn(session.events)) {
+      throw new Error(
+        'approval.request() outside an open turn: the approval/asked + approval/decided audit pair '
+        + 'must be turn-enclosed (a bare event between turns is crash-tail garbage on reload). '
+        + 'Ask from inside the turn that needs the decision.',
+      )
+    }
+    const id = ApprovalRequestId(randomUUID())
+    session.append('approval/asked', {
+      id,
+      toolName: req.toolName,
+      ...req.callId !== undefined ? { callId: req.callId } : {},
+      ...req.reason !== undefined ? { reason: req.reason } : {},
+    })
+    const outcome = await this.decide(req, session)
+    session.append('approval/decided', { id, outcome })
+    return outcome
+  }
+
+  /**
+   * The session's effective policy: its own `approval/policy` fold, else the
+   * configured default (the schema already defaulted an omitted policy to
+   * `'ask'`; the `??` only narrows the optional-input TYPE).
+   * @param session - the exact accepted session whose policy applies.
+   * @returns the policy every ask for this session resolves under right now.
+   */
+  private effectivePolicy(session: Session): ApprovalPolicy {
+    return this.overrideOf(session) ?? this.config.policy ?? 'ask'
+  }
+
+  /**
+   * Read the session override without applying the configured default.
+   * @param session - session whose log supplies the override.
+   * @returns the last logged policy, or `undefined` without one.
+   */
+  overrideOf(session: Session): ApprovalPolicy | undefined {
+    return effectiveApprovalPolicy(session.events)
+  }
+
+  /**
+   * Dispatch the waterfall, contained and raced against the request signal.
+   * @param req - the borrowed public request.
+   * @param session - the request agent's session used for policy lookup.
+   * @returns the normalized closed outcome.
+   */
+  private async decide(req: ApprovalRequest, session: Session): Promise<ApprovalOutcome> {
+    const signal = req.signal
+    if (signal?.aborted) return 'cancelled'
+    // The 'never' policy is decided HERE, before any dispatch: a listener
+    // registered with `prepend: true` after this service mounts would sit
+    // ahead of any gate LISTENER, so a listener-shaped gate cannot keep the
+    // documented promise that 'never' rejects deterministically regardless
+    // of registration order — only the service's own request path can.
+    if (this.effectivePolicy(session) === 'never') return 'rejected'
+    // Enter the promise chain BEFORE dispatching: a listener that throws
+    // SYNCHRONOUSLY (before its first await) must land in the same rejection
+    // path as an async one — `Promise.resolve(call())` would let it escape
+    // the containment into the caller.
+    const answer: Promise<ApprovalOutcome> = Promise.resolve().then(
+      () => this.ctx.waterfall(
+        scopeTarget(this, req.agent), 'approval/request', req,
+        () => Promise.resolve<ApprovalOutcome>('unavailable'),
+      ),
+    ).then(
+      // Normalize a rogue (non-vocabulary) answerer return to the fail-closed
+      // outcome instead of leaking it into callers' closed-union switches.
+      outcome => OUTCOMES.includes(outcome) ? outcome : 'unavailable',
+      // A throwing answerer must fail the QUESTION closed, not the caller's
+      // tool call open — the seam contains its callbacks.
+      () => 'unavailable',
+    )
+    if (signal === undefined) return answer
+    return await new Promise<ApprovalOutcome>((resolve) => {
+      const onAbort = () => {
+        signal.removeEventListener('abort', onAbort)
+        resolve('cancelled')
+      }
+      signal.addEventListener('abort', onAbort, { once: true })
+      void answer.then((outcome) => {
+        signal.removeEventListener('abort', onAbort)
+        // After an abort won the race this resolve is a settled-promise no-op:
+        // the late answer is discarded by construction.
+        resolve(outcome)
+      })
+    })
+  }
+}
+
+export default ApprovalService
+
+import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { Context as InvariantContext } from '@ejunz/cordis'
+
+namespace __invariant {
+  const PACKAGE_NAME = '@ejunz/ea/user-approval'
+  export const name = 'user-approval-invariant'
+  export const inject = ['invariants']
+  const install: InvariantInstaller = () => {}
+  export const apply = (ctx: InvariantContext): Promise<() => void> =>
+    Promise.resolve(ctx.invariants.register(PACKAGE_NAME, install))
+}
+
+export import __invariant_companion = __invariant

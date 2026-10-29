@@ -19,48 +19,119 @@
     "src/host/apiproxy/src/fetch/client.ts"
   ],
   "references": [
-    { "path": "../../src/lib/guard/timeout-policy" },
-    { "path": "../../src/lib/util/brand" },
-    { "path": "../../src/lib/util/launch-environment" },
-    { "path": "../../src/lib/util/timeout" },
-    { "path": "../../src/model/session/session-stats" },
-    { "path": "../../src/model/storage/storage-domain" },
-    { "path": "../../src/service/attachment/attachment" },
-    { "path": "../../src/service/core/agent" },
-    { "path": "../../src/service/core/agent-default-model" },
-    { "path": "../../src/service/core/session" },
-    { "path": "../../src/service/core/system-prompt" },
-    { "path": "../../src/service/core/tools" },
-    { "path": "../../src/service/credentials/credentials" },
-    { "path": "../../src/service/credentials/credentials-local" },
-    { "path": "../../src/service/extensions/cordis-host-runner" },
-    { "path": "../../src/service/feedback/message-feedback" },
-    { "path": "../../src/service/goal/goal" },
-    { "path": "../../src/service/interaction/commands" },
-    { "path": "../../src/service/interaction/user-approval" },
-    { "path": "../../src/service/interaction/user-questions" },
-    { "path": "../../src/service/jobs/jobs" },
-    { "path": "../../src/service/llm/llm" },
-    { "path": "../../src/service/llm/llm-retry" },
-    { "path": "../../src/service/preset/agent-presets" },
-    { "path": "../../src/service/runtime-diagnostics/invariants" },
-    { "path": "../../src/service/session/session-persistence" },
-    { "path": "../../src/service/session/session-projection" },
-    { "path": "../../src/service/session/session-projection-cache" },
-    { "path": "../../src/service/session-query/session-query" },
-    { "path": "../../src/service/session/session-title" },
-    { "path": "../../src/service/settings/settings" },
-    { "path": "../../src/service/skill/skill" },
-    { "path": "../../src/service/spill/spill-local" },
-    { "path": "../../src/service/spill/spill-policy" },
-    { "path": "../../src/service/storage/storage" },
-    { "path": "../../src/service/storage/storage-json" },
-    { "path": "../../src/service/subagent/subagent" },
-    { "path": "../../src/vendor/cordis" },
-    { "path": "../../src/vendor/cosmokit" },
-    { "path": "../../src/vendor/loader" },
-    { "path": "../../src/vendor/schemastery" },
-    { "path": "../../src/service/typert/protocol" },
-    { "path": "../../src/service/typert/registry" }
+    {
+      "path": "../../tsconfig.flat-modules.json"
+    },
+    {
+      "path": "../../src/model/session/session-stats"
+    },
+    {
+      "path": "../../src/model/storage/storage-domain"
+    },
+    {
+      "path": "../../src/service/attachment/attachment"
+    },
+    {
+      "path": "../../src/service/core/agent"
+    },
+    {
+      "path": "../../tsconfig.flat-modules.json"
+    },
+    {
+      "path": "../../src/service/core/session"
+    },
+    {
+      "path": "../../src/service/core/system-prompt"
+    },
+    {
+      "path": "../../src/service/core/tools"
+    },
+    {
+      "path": "../../src/service/credentials/credentials"
+    },
+    {
+      "path": "../../src/service/extensions/cordis-host-runner"
+    },
+    {
+      "path": "../../src/service/feedback/message-feedback"
+    },
+    {
+      "path": "../../src/service/goal/goal"
+    },
+    {
+      "path": "../../src/service/interaction/commands"
+    },
+    {
+      "path": "../../src/service/interaction/user-approval"
+    },
+    {
+      "path": "../../src/service/interaction/user-questions"
+    },
+    {
+      "path": "../../src/service/jobs/jobs"
+    },
+    {
+      "path": "../../src/service/llm/llm"
+    },
+    {
+      "path": "../../src/service/llm/llm-retry"
+    },
+    {
+      "path": "../../src/service/preset/agent-presets"
+    },
+    {
+      "path": "../../src/service/invariants"
+    },
+    {
+      "path": "../../src/service/session/session-persistence"
+    },
+    {
+      "path": "../../src/service/session/session-projection"
+    },
+    {
+      "path": "../../src/service/session/session-projection-cache"
+    },
+    {
+      "path": "../../src/service/session-query/session-query"
+    },
+    {
+      "path": "../../src/service/session/session-title"
+    },
+    {
+      "path": "../../src/service/settings/settings"
+    },
+    {
+      "path": "../../src/service/spill/spill-local"
+    },
+    {
+      "path": "../../src/service/spill/spill-policy"
+    },
+    {
+      "path": "../../src/service/storage/storage"
+    },
+    {
+      "path": "../../src/service/storage/storage-json"
+    },
+    {
+      "path": "../../src/service/subagent/subagent"
+    },
+    {
+      "path": "../../src/vendor/cordis"
+    },
+    {
+      "path": "../../src/vendor/cosmokit"
+    },
+    {
+      "path": "../../src/vendor/loader"
+    },
+    {
+      "path": "../../src/vendor/schemastery"
+    },
+    {
+      "path": "../../src/service/typert/protocol"
+    },
+    {
+      "path": "../../src/service/typert/registry"
+    }
   ]
 }

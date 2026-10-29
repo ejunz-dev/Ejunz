@@ -1,6 +1,6 @@
-import type { ContentBlock } from '@ejunz/llm/types'
+import type { ContentBlock } from '@ejunz/ea/llm/types'
 import type { MuxFrame } from '@ejunz/profile-web/api/remotes/client'
-import type { SessionEvent } from '@ejunz/session/types'
+import type { SessionEvent } from '@ejunz/ea/session/types'
 import type { QueuedMessage } from './conversation.ts'
 
 const QUEUE_PREVIEW_CHARS = 200

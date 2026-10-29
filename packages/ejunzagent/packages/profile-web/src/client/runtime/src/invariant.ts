@@ -3,7 +3,7 @@
  */
 
 import type { Context } from '@ejunz/cordis'
-import type { InvariantInstaller } from '@ejunz/invariants'
+import type { InvariantInstaller } from '@ejunz/ea/invariants'
 
 const PACKAGE_NAME = '@ejunz/profile-web/client/runtime'
 

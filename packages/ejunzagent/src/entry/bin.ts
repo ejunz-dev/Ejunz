@@ -10,7 +10,7 @@
 
 import { readFileSync } from 'node:fs'
 import { loadEjunzAgentConfig } from '@ejunz/profile-ejunz'
-import { loadLayeredEnv, loadProfile } from '@ejunz/app-boot'
+import { loadLayeredEnv, loadProfile } from '@ejunz/ea/app-boot'
 import { cliManifestPath } from '../lib/cli-paths.ts'
 import { installHostToolBridge } from '../service/host-tools.ts'
 import { parseEaArgs } from '../commands/args.ts'

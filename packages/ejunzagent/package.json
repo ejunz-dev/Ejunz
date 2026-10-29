@@ -16,7 +16,7 @@
   ],
   "scripts": {
     "build": "yarn run build:lib && yarn run build:cli",
-    "build:lib": "yarn run build:lib:host && yarn run build:lib:client",
+    "build:lib": "yarn run build:lib:host && yarn run build:lib:client && yarn run build:lib:modules",
     "build:cli-runtime": "tsx src/script/build-cli-runtime.ts",
     "build:lib:host": "tsc -b tsconfig.host.json && tsdown --env.EA_BUILD_FACE host",
     "build:lib:client": "tsc -b tsconfig.client.json && tsdown --env.EA_BUILD_FACE client",
@@ -59,18 +59,11 @@
     "release:publish": "tsx src/script/release/publish.ts",
     "ea": "node --expose-internals --import tsx/esm src/entry/bin.ts",
     "postinstall": "node bin/postinstall.js",
-    "build:cli": "tsc -b tsconfig.cli.json && tsdown --config tsdown.cli.config.ts && yarn run build:cli-runtime"
+    "build:cli": "tsc -b tsconfig.cli.json && tsdown --config tsdown.cli.config.ts && yarn run build:cli-runtime",
+    "build:lib:modules": "tsdown --config tsdown.modules.config.ts"
   },
   "devDependencies": {
     "@agentclientprotocol/sdk": "0.25.1",
-    "@ejunz/agent": "workspace:^",
-    "@ejunz/llm": "workspace:^",
-    "@ejunz/session": "workspace:^",
-    "@ejunz/settings": "workspace:^",
-    "@ejunz/subagent": "workspace:^",
-    "@ejunz/system-prompt": "workspace:^",
-    "@ejunz/tool-session-query": "workspace:^",
-    "@ejunz/tools": "workspace:^",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
@@ -107,56 +100,1136 @@
     "vitest": "^4.1.8"
   },
   "dependencies": {
-    "@ejunz/app-boot": "workspace:^",
-    "@ejunz/base": "workspace:^",
-    "@ejunz/cmdline": "workspace:^",
-    "@ejunz/command-compact": "workspace:^",
-    "@ejunz/command-goal": "workspace:^",
-    "@ejunz/compaction-basic": "workspace:^",
-    "@ejunz/compaction-tool-result-pruner": "workspace:^",
+    "@earendil-works/pi-ai": "^1.4.0",
     "@ejunz/cordis": "workspace:^",
+    "@ejunz/cordis-plugin-group": "workspace:^",
     "@ejunz/cordis-plugin-hmr": "workspace:^",
     "@ejunz/cordis-plugin-include": "workspace:^",
     "@ejunz/cordis-plugin-loader": "workspace:^",
     "@ejunz/cordis-plugin-logger-console": "workspace:^",
     "@ejunz/cordis-plugin-timer": "workspace:^",
-    "@ejunz/credentials": "workspace:^",
-    "@ejunz/goal": "workspace:^",
-    "@ejunz/goal-round-driver": "workspace:^",
-    "@ejunz/home-paths": "workspace:^",
-    "@ejunz/jobs-local": "workspace:^",
-    "@ejunz/launch-environment": "workspace:^",
-    "@ejunz/persona": "workspace:^",
-    "@ejunz/plan-mode": "workspace:^",
     "@ejunz/profile-ejunz": "workspace:^",
     "@ejunz/profile-web": "workspace:^",
-    "@ejunz/schedule": "workspace:^",
-    "@ejunz/session-projection": "workspace:^",
-    "@ejunz/session-reference": "workspace:^",
-    "@ejunz/skill": "workspace:^",
-    "@ejunz/time-context": "workspace:^",
-    "@ejunz/token-meter": "workspace:^",
-    "@ejunz/tool-ask-user": "workspace:^",
-    "@ejunz/tool-goal": "workspace:^",
-    "@ejunz/tool-host": "workspace:^",
-    "@ejunz/tool-jobs": "workspace:^",
-    "@ejunz/tool-skill": "workspace:^",
-    "@ejunz/tool-todo": "workspace:^",
-    "@ejunz/tool-workflow": "workspace:^",
-    "@ejunz/workflow-worker-thread": "workspace:^",
+    "@ejunz/schemastery": "workspace:^",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/api-logs": "^0.220.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.220.0",
+    "@opentelemetry/otlp-exporter-base": "^0.220.0",
+    "@opentelemetry/resources": "^2.9.0",
+    "@opentelemetry/sdk-logs": "^0.220.0",
+    "chokidar": "^5.0.0",
     "commander": "^15.0.0",
+    "e2b": "2.29.1",
+    "eventsource-parser": "^4.1.3",
     "js-yaml": "^4.2.0",
     "katex": "^0.16.25",
     "markdown-it": "^14.1.0",
     "node-addon-require-builtin": "^0.1.4",
-    "shiki": "^4.4.3"
+    "shiki": "^4.4.3",
+    "yaml": "^2.4.2"
   },
   "description": "ea CLI: profile boot, plugin management, and the browser UI alias",
   "exports": {
+    "./acp": {
+      "types": "./lib/types/modules/service/acp.d.ts",
+      "default": "./lib/modules/acp.js"
+    },
+    "./acp/invariant": {
+      "types": "./lib/types/modules/service/acp.d.ts",
+      "default": "./lib/modules/acp.js"
+    },
+    "./acp/package.json": "./package.json",
+    "./agent": {
+      "types": "./lib/types/modules/service/agent.d.ts",
+      "default": "./lib/modules/agent.js"
+    },
+    "./agent-default-model": {
+      "types": "./lib/types/modules/service/agent-default-model.d.ts",
+      "default": "./lib/modules/agent-default-model.js"
+    },
+    "./agent-default-model/invariant": {
+      "types": "./lib/types/modules/service/agent-default-model.d.ts",
+      "default": "./lib/modules/agent-default-model.js"
+    },
+    "./agent-default-model/package.json": "./package.json",
+    "./agent-instructions": {
+      "types": "./lib/types/modules/model/agent-instructions.d.ts",
+      "default": "./lib/modules/agent-instructions.js"
+    },
+    "./agent-instructions/invariant": {
+      "types": "./lib/types/modules/model/agent-instructions.d.ts",
+      "default": "./lib/modules/agent-instructions.js"
+    },
+    "./agent-instructions/package.json": "./package.json",
+    "./agent-loop": {
+      "types": "./lib/types/modules/service/agent-loop.d.ts",
+      "default": "./lib/modules/agent-loop.js"
+    },
+    "./agent-loop/invariant": {
+      "types": "./lib/types/modules/service/agent-loop.d.ts",
+      "default": "./lib/modules/agent-loop.js"
+    },
+    "./agent-loop/package.json": "./package.json",
+    "./agent-presets": {
+      "types": "./lib/types/modules/service/agent-presets.d.ts",
+      "default": "./lib/modules/agent-presets.js"
+    },
+    "./agent-presets/invariant": {
+      "types": "./lib/types/modules/service/agent-presets.d.ts",
+      "default": "./lib/modules/agent-presets.js"
+    },
+    "./agent-presets/package.json": "./package.json",
+    "./agent-spine-demo": {
+      "types": "./lib/types/modules/entry/agent-spine-demo.d.ts",
+      "default": "./lib/modules/agent-spine-demo.js"
+    },
+    "./agent-spine-demo/invariant": {
+      "types": "./lib/types/modules/entry/agent-spine-demo.d.ts",
+      "default": "./lib/modules/agent-spine-demo.js"
+    },
+    "./agent-spine-demo/package.json": "./package.json",
+    "./agent/invariant": {
+      "types": "./lib/types/modules/service/agent.d.ts",
+      "default": "./lib/modules/agent.js"
+    },
+    "./agent/package.json": "./package.json",
+    "./anonymous-user-id": {
+      "types": "./lib/types/modules/model/identity.d.ts",
+      "default": "./lib/modules/anonymous-user-id.js"
+    },
+    "./anonymous-user-id/invariant": {
+      "types": "./lib/types/modules/model/identity.d.ts",
+      "default": "./lib/modules/anonymous-user-id.js"
+    },
+    "./anonymous-user-id/package.json": "./package.json",
+    "./app-boot": {
+      "types": "./lib/types/modules/entry/app-boot.d.ts",
+      "default": "./lib/modules/app-boot.js"
+    },
+    "./app-boot/invariant": {
+      "types": "./lib/types/modules/entry/app-boot.d.ts",
+      "default": "./lib/modules/app-boot.js"
+    },
+    "./app-boot/package.json": "./package.json",
+    "./atomic-write": {
+      "types": "./lib/types/modules/lib/atomic-write.d.ts",
+      "default": "./lib/modules/atomic-write.js"
+    },
+    "./atomic-write/invariant": {
+      "types": "./lib/types/modules/lib/atomic-write.d.ts",
+      "default": "./lib/modules/atomic-write.js"
+    },
+    "./atomic-write/package.json": "./package.json",
+    "./attachment": {
+      "types": "./lib/types/modules/service/attachment.d.ts",
+      "default": "./lib/modules/attachment.js"
+    },
+    "./attachment-local": {
+      "types": "./lib/types/modules/service/local.d.ts",
+      "default": "./lib/modules/attachment-local.js"
+    },
+    "./attachment-local/invariant": {
+      "types": "./lib/types/modules/service/local.d.ts",
+      "default": "./lib/modules/attachment-local.js"
+    },
+    "./attachment-local/package.json": "./package.json",
+    "./attachment/invariant": {
+      "types": "./lib/types/modules/service/attachment.d.ts",
+      "default": "./lib/modules/attachment.js"
+    },
+    "./attachment/package.json": "./package.json",
+    "./base": {
+      "types": "./lib/types/modules/entry/base.d.ts",
+      "default": "./lib/modules/base.js"
+    },
+    "./base/invariant": {
+      "types": "./lib/types/modules/entry/base.d.ts",
+      "default": "./lib/modules/base.js"
+    },
+    "./base/package.json": "./package.json",
+    "./brand": {
+      "types": "./lib/types/modules/lib/brand.d.ts",
+      "default": "./lib/modules/brand.js"
+    },
+    "./brand/invariant": {
+      "types": "./lib/types/modules/lib/brand.d.ts",
+      "default": "./lib/modules/brand.js"
+    },
+    "./cmdline": {
+      "types": "./lib/types/modules/commands/cmdline.d.ts",
+      "default": "./lib/modules/cmdline.js"
+    },
+    "./cmdline/invariant": {
+      "types": "./lib/types/modules/commands/cmdline.d.ts",
+      "default": "./lib/modules/cmdline.js"
+    },
+    "./command-compact": {
+      "types": "./lib/types/modules/commands/command-compact.d.ts",
+      "default": "./lib/modules/command-compact.js"
+    },
+    "./command-compact/invariant": {
+      "types": "./lib/types/modules/commands/command-compact.d.ts",
+      "default": "./lib/modules/command-compact.js"
+    },
+    "./command-compact/package.json": "./package.json",
+    "./command-feedback": {
+      "types": "./lib/types/modules/commands/command-feedback.d.ts",
+      "default": "./lib/modules/command-feedback.js"
+    },
+    "./command-feedback/invariant": {
+      "types": "./lib/types/modules/commands/command-feedback.d.ts",
+      "default": "./lib/modules/command-feedback.js"
+    },
+    "./command-feedback/package.json": "./package.json",
+    "./command-goal": {
+      "types": "./lib/types/modules/commands/command-goal.d.ts",
+      "default": "./lib/modules/command-goal.js"
+    },
+    "./command-goal/invariant": {
+      "types": "./lib/types/modules/commands/command-goal.d.ts",
+      "default": "./lib/modules/command-goal.js"
+    },
+    "./command-goal/package.json": "./package.json",
+    "./commands": {
+      "types": "./lib/types/modules/service/commands.d.ts",
+      "default": "./lib/modules/commands.js"
+    },
+    "./commands/invariant": {
+      "types": "./lib/types/modules/service/commands.d.ts",
+      "default": "./lib/modules/commands.js"
+    },
+    "./commands/package.json": "./package.json",
+    "./compaction": {
+      "types": "./lib/types/modules/service/compaction.d.ts",
+      "default": "./lib/modules/compaction.js"
+    },
+    "./compaction-basic": {
+      "types": "./lib/types/modules/service/basic.d.ts",
+      "default": "./lib/modules/compaction-basic.js"
+    },
+    "./compaction-basic/invariant": {
+      "types": "./lib/types/modules/service/basic.d.ts",
+      "default": "./lib/modules/compaction-basic.js"
+    },
+    "./compaction-basic/package.json": "./package.json",
+    "./compaction-tool-result-pruner": {
+      "types": "./lib/types/modules/service/tool-result-pruner.d.ts",
+      "default": "./lib/modules/compaction-tool-result-pruner.js"
+    },
+    "./compaction-tool-result-pruner/invariant": {
+      "types": "./lib/types/modules/service/tool-result-pruner.d.ts",
+      "default": "./lib/modules/compaction-tool-result-pruner.js"
+    },
+    "./compaction-tool-result-pruner/package.json": "./package.json",
+    "./compaction/invariant": {
+      "types": "./lib/types/modules/service/compaction.d.ts",
+      "default": "./lib/modules/compaction.js"
+    },
+    "./compaction/package.json": "./package.json",
+    "./cordis-host-runner": {
+      "types": "./lib/types/modules/service/cordis-host-runner.d.ts",
+      "default": "./lib/modules/cordis-host-runner.js"
+    },
+    "./cordis-host-runner/invariant": {
+      "types": "./lib/types/modules/service/cordis-host-runner.d.ts",
+      "default": "./lib/modules/cordis-host-runner.js"
+    },
+    "./cordis-host-runner/package.json": "./package.json",
+    "./credentials": {
+      "types": "./lib/types/modules/service/credentials.d.ts",
+      "default": "./lib/modules/credentials.js"
+    },
+    "./credentials-local": {
+      "types": "./lib/types/modules/service/credentials-local.d.ts",
+      "default": "./lib/modules/credentials-local.js"
+    },
+    "./credentials-local/invariant": {
+      "types": "./lib/types/modules/service/credentials-local.d.ts",
+      "default": "./lib/modules/credentials-local.js"
+    },
+    "./credentials-local/package.json": "./package.json",
+    "./credentials/invariant": {
+      "types": "./lib/types/modules/service/credentials.d.ts",
+      "default": "./lib/modules/credentials.js"
+    },
+    "./credentials/package.json": "./package.json",
+    "./e2b": {
+      "types": "./lib/types/modules/service/e2b.d.ts",
+      "default": "./lib/modules/e2b.js"
+    },
+    "./e2b/invariant": {
+      "types": "./lib/types/modules/service/e2b.d.ts",
+      "default": "./lib/modules/e2b.js"
+    },
+    "./e2b/package.json": "./package.json",
     "./embed": {
       "types": "./lib/types/entry/embed.d.ts",
       "default": "./lib/embed.js"
-    }
+    },
+    "./fs": {
+      "types": "./lib/types/modules/service/fs.d.ts",
+      "default": "./lib/modules/fs.js"
+    },
+    "./fs-e2b": {
+      "types": "./lib/types/modules/service/fs-e2b.d.ts",
+      "default": "./lib/modules/fs-e2b.js"
+    },
+    "./fs-e2b/invariant": {
+      "types": "./lib/types/modules/service/fs-e2b.d.ts",
+      "default": "./lib/modules/fs-e2b.js"
+    },
+    "./fs-e2b/package.json": "./package.json",
+    "./fs-local": {
+      "types": "./lib/types/modules/service/fs-local.d.ts",
+      "default": "./lib/modules/fs-local.js"
+    },
+    "./fs-local/invariant": {
+      "types": "./lib/types/modules/service/fs-local.d.ts",
+      "default": "./lib/modules/fs-local.js"
+    },
+    "./fs-local/package.json": "./package.json",
+    "./fs/invariant": {
+      "types": "./lib/types/modules/service/fs.d.ts",
+      "default": "./lib/modules/fs.js"
+    },
+    "./fs/package.json": "./package.json",
+    "./goal": {
+      "types": "./lib/types/modules/service/goal.d.ts",
+      "default": "./lib/modules/goal.js"
+    },
+    "./goal-round-driver": {
+      "types": "./lib/types/modules/service/round-driver.d.ts",
+      "default": "./lib/modules/goal-round-driver.js"
+    },
+    "./goal-round-driver/invariant": {
+      "types": "./lib/types/modules/service/round-driver.d.ts",
+      "default": "./lib/modules/goal-round-driver.js"
+    },
+    "./goal-round-driver/package.json": "./package.json",
+    "./goal/invariant": {
+      "types": "./lib/types/modules/service/goal.d.ts",
+      "default": "./lib/modules/goal.js"
+    },
+    "./goal/package.json": "./package.json",
+    "./home-paths": {
+      "types": "./lib/types/modules/lib/home-paths.d.ts",
+      "default": "./lib/modules/home-paths.js"
+    },
+    "./home-paths/invariant": {
+      "types": "./lib/types/modules/lib/home-paths.d.ts",
+      "default": "./lib/modules/home-paths.js"
+    },
+    "./home-paths/package.json": "./package.json",
+    "./invariants": {
+      "types": "./lib/types/modules/service/invariants.d.ts",
+      "default": "./lib/modules/invariants.js"
+    },
+    "./invariants/invariant": {
+      "types": "./lib/types/modules/service/invariants.d.ts",
+      "default": "./lib/modules/invariants.js"
+    },
+    "./invariants/package.json": "./package.json",
+    "./jobs": {
+      "types": "./lib/types/modules/service/jobs.d.ts",
+      "default": "./lib/modules/jobs.js"
+    },
+    "./jobs-local": {
+      "types": "./lib/types/modules/service/jobs-local.d.ts",
+      "default": "./lib/modules/jobs-local.js"
+    },
+    "./jobs-local/invariant": {
+      "types": "./lib/types/modules/service/jobs-local.d.ts",
+      "default": "./lib/modules/jobs-local.js"
+    },
+    "./jobs-local/package.json": "./package.json",
+    "./jobs/invariant": {
+      "types": "./lib/types/modules/service/jobs.d.ts",
+      "default": "./lib/modules/jobs.js"
+    },
+    "./jobs/package.json": "./package.json",
+    "./launch-environment": {
+      "types": "./lib/types/modules/lib/launch-environment.d.ts",
+      "default": "./lib/modules/launch-environment.js"
+    },
+    "./launch-environment/invariant": {
+      "types": "./lib/types/modules/lib/launch-environment.d.ts",
+      "default": "./lib/modules/launch-environment.js"
+    },
+    "./launch-environment/package.json": "./package.json",
+    "./llm": {
+      "types": "./lib/types/modules/service/llm.d.ts",
+      "default": "./lib/modules/llm.js"
+    },
+    "./llm-deepseek": {
+      "types": "./lib/types/modules/service/deepseek.d.ts",
+      "default": "./lib/modules/llm-deepseek.js"
+    },
+    "./llm-deepseek/invariant": {
+      "types": "./lib/types/modules/service/deepseek.d.ts",
+      "default": "./lib/modules/llm-deepseek.js"
+    },
+    "./llm-deepseek/package.json": "./package.json",
+    "./llm-pi-ai": {
+      "types": "./lib/types/modules/service/pi-ai.d.ts",
+      "default": "./lib/modules/llm-pi-ai.js"
+    },
+    "./llm-pi-ai/invariant": {
+      "types": "./lib/types/modules/service/pi-ai.d.ts",
+      "default": "./lib/modules/llm-pi-ai.js"
+    },
+    "./llm-pi-ai/package.json": "./package.json",
+    "./llm-retry": {
+      "types": "./lib/types/modules/service/retry.d.ts",
+      "default": "./lib/modules/llm-retry.js"
+    },
+    "./llm-retry/invariant": {
+      "types": "./lib/types/modules/service/retry.d.ts",
+      "default": "./lib/modules/llm-retry.js"
+    },
+    "./llm-retry/package.json": "./package.json",
+    "./llm/invariant": {
+      "types": "./lib/types/modules/service/llm.d.ts",
+      "default": "./lib/modules/llm.js"
+    },
+    "./llm/package.json": "./package.json",
+    "./lsp": {
+      "types": "./lib/types/modules/service/lsp.d.ts",
+      "default": "./lib/modules/lsp.js"
+    },
+    "./lsp-stdio": {
+      "types": "./lib/types/modules/service/stdio.d.ts",
+      "default": "./lib/modules/lsp-stdio.js"
+    },
+    "./lsp-stdio/invariant": {
+      "types": "./lib/types/modules/service/stdio.d.ts",
+      "default": "./lib/modules/lsp-stdio.js"
+    },
+    "./lsp-stdio/package.json": "./package.json",
+    "./lsp/invariant": {
+      "types": "./lib/types/modules/service/lsp.d.ts",
+      "default": "./lib/modules/lsp.js"
+    },
+    "./lsp/package.json": "./package.json",
+    "./mcp-client": {
+      "types": "./lib/types/modules/service/client.d.ts",
+      "default": "./lib/modules/mcp-client.js"
+    },
+    "./mcp-client/invariant": {
+      "types": "./lib/types/modules/service/client.d.ts",
+      "default": "./lib/modules/mcp-client.js"
+    },
+    "./mcp-client/package.json": "./package.json",
+    "./message-feedback": {
+      "types": "./lib/types/modules/service/message-feedback.d.ts",
+      "default": "./lib/modules/message-feedback.js"
+    },
+    "./message-feedback/invariant": {
+      "types": "./lib/types/modules/service/message-feedback.d.ts",
+      "default": "./lib/modules/message-feedback.js"
+    },
+    "./message-feedback/package.json": "./package.json",
+    "./output-retention": {
+      "types": "./lib/types/modules/lib/output-retention.d.ts",
+      "default": "./lib/modules/output-retention.js"
+    },
+    "./output-retention/invariant": {
+      "types": "./lib/types/modules/lib/output-retention.d.ts",
+      "default": "./lib/modules/output-retention.js"
+    },
+    "./output-retention/package.json": "./package.json",
+    "./permission-presets": {
+      "types": "./lib/types/modules/service/permission-presets.d.ts",
+      "default": "./lib/modules/permission-presets.js"
+    },
+    "./permission-presets/invariant": {
+      "types": "./lib/types/modules/service/permission-presets.d.ts",
+      "default": "./lib/modules/permission-presets.js"
+    },
+    "./permission-presets/package.json": "./package.json",
+    "./persona": {
+      "types": "./lib/types/modules/model/preset.d.ts",
+      "default": "./lib/modules/persona.js"
+    },
+    "./persona/invariant": {
+      "types": "./lib/types/modules/model/preset.d.ts",
+      "default": "./lib/modules/persona.js"
+    },
+    "./persona/package.json": "./package.json",
+    "./plan-mode": {
+      "types": "./lib/types/modules/service/mode.d.ts",
+      "default": "./lib/modules/plan-mode.js"
+    },
+    "./plan-mode/invariant": {
+      "types": "./lib/types/modules/service/mode.d.ts",
+      "default": "./lib/modules/plan-mode.js"
+    },
+    "./plan-mode/package.json": "./package.json",
+    "./repeat-tool-reminder": {
+      "types": "./lib/types/modules/lib/repeat-tool-reminder.d.ts",
+      "default": "./lib/modules/repeat-tool-reminder.js"
+    },
+    "./repeat-tool-reminder/invariant": {
+      "types": "./lib/types/modules/lib/repeat-tool-reminder.d.ts",
+      "default": "./lib/modules/repeat-tool-reminder.js"
+    },
+    "./repeat-tool-reminder/package.json": "./package.json",
+    "./schedule": {
+      "types": "./lib/types/modules/model/schedule.d.ts",
+      "default": "./lib/modules/schedule.js"
+    },
+    "./schedule/invariant": {
+      "types": "./lib/types/modules/model/schedule.d.ts",
+      "default": "./lib/modules/schedule.js"
+    },
+    "./schedule/package.json": "./package.json",
+    "./scope": {
+      "types": "./lib/types/modules/model/scope.d.ts",
+      "default": "./lib/modules/scope.js"
+    },
+    "./scope/invariant": {
+      "types": "./lib/types/modules/model/scope.d.ts",
+      "default": "./lib/modules/scope.js"
+    },
+    "./scope/package.json": "./package.json",
+    "./sdk": {
+      "types": "./lib/types/modules/model/sdk.d.ts",
+      "default": "./lib/modules/sdk.js"
+    },
+    "./sdk-jsonrpc-server": {
+      "types": "./lib/types/modules/service/server.d.ts",
+      "default": "./lib/modules/sdk-jsonrpc-server.js"
+    },
+    "./sdk-jsonrpc-server/invariant": {
+      "types": "./lib/types/modules/service/server.d.ts",
+      "default": "./lib/modules/sdk-jsonrpc-server.js"
+    },
+    "./sdk-jsonrpc-server/package.json": "./package.json",
+    "./sdk-client": {
+      "types": "./lib/types/modules/service/sdk-client.d.ts",
+      "default": "./lib/modules/sdk-client.js"
+    },
+    "./sdk-client/invariant": {
+      "types": "./lib/types/modules/service/sdk-client.d.ts",
+      "default": "./lib/modules/sdk-client.js"
+    },
+    "./sdk-client/package.json": "./package.json",
+    "./sdk/invariant": {
+      "types": "./lib/types/modules/model/sdk.d.ts",
+      "default": "./lib/modules/sdk.js"
+    },
+    "./sdk/package.json": "./package.json",
+    "./session": {
+      "types": "./lib/types/modules/service/session.d.ts",
+      "default": "./lib/modules/session.js"
+    },
+    "./session-checkpoint-policy": {
+      "types": "./lib/types/modules/model/checkpoint-policy.d.ts",
+      "default": "./lib/modules/session-checkpoint-policy.js"
+    },
+    "./session-checkpoint-policy/invariant": {
+      "types": "./lib/types/modules/model/checkpoint-policy.d.ts",
+      "default": "./lib/modules/session-checkpoint-policy.js"
+    },
+    "./session-checkpoint-policy/package.json": "./package.json",
+    "./session-persistence": {
+      "types": "./lib/types/modules/service/persistence.d.ts",
+      "default": "./lib/modules/session-persistence.js"
+    },
+    "./session-persistence-ejunz": {
+      "types": "./lib/types/modules/model/persistence-ejunz.d.ts",
+      "default": "./lib/modules/session-persistence-ejunz.js"
+    },
+    "./session-persistence-ejunz/invariant": {
+      "types": "./lib/types/modules/model/persistence-ejunz.d.ts",
+      "default": "./lib/modules/session-persistence-ejunz.js"
+    },
+    "./session-persistence-ejunz/package.json": "./package.json",
+    "./session-persistence-jsonl": {
+      "types": "./lib/types/modules/model/persistence-jsonl.d.ts",
+      "default": "./lib/modules/session-persistence-jsonl.js"
+    },
+    "./session-persistence-jsonl/invariant": {
+      "types": "./lib/types/modules/model/persistence-jsonl.d.ts",
+      "default": "./lib/modules/session-persistence-jsonl.js"
+    },
+    "./session-persistence-jsonl/package.json": "./package.json",
+    "./session-persistence-sqlite": {
+      "types": "./lib/types/modules/model/persistence-sqlite.d.ts",
+      "default": "./lib/modules/session-persistence-sqlite.js"
+    },
+    "./session-persistence-sqlite/invariant": {
+      "types": "./lib/types/modules/model/persistence-sqlite.d.ts",
+      "default": "./lib/modules/session-persistence-sqlite.js"
+    },
+    "./session-persistence-sqlite/package.json": "./package.json",
+    "./session-persistence/invariant": {
+      "types": "./lib/types/modules/service/persistence.d.ts",
+      "default": "./lib/modules/session-persistence.js"
+    },
+    "./session-persistence/package.json": "./package.json",
+    "./session-projection": {
+      "types": "./lib/types/modules/service/projection.d.ts",
+      "default": "./lib/modules/session-projection.js"
+    },
+    "./session-projection-cache": {
+      "types": "./lib/types/modules/service/projection-cache.d.ts",
+      "default": "./lib/modules/session-projection-cache.js"
+    },
+    "./session-projection-cache/invariant": {
+      "types": "./lib/types/modules/service/projection-cache.d.ts",
+      "default": "./lib/modules/session-projection-cache.js"
+    },
+    "./session-projection-cache/package.json": "./package.json",
+    "./session-projection/invariant": {
+      "types": "./lib/types/modules/service/projection.d.ts",
+      "default": "./lib/modules/session-projection.js"
+    },
+    "./session-projection/package.json": "./package.json",
+    "./session-query": {
+      "types": "./lib/types/modules/service/session-query.d.ts",
+      "default": "./lib/modules/session-query.js"
+    },
+    "./session-query/invariant": {
+      "types": "./lib/types/modules/service/session-query.d.ts",
+      "default": "./lib/modules/session-query.js"
+    },
+    "./session-query/package.json": "./package.json",
+    "./session-reference": {
+      "types": "./lib/types/modules/service/session-reference.d.ts",
+      "default": "./lib/modules/session-reference.js"
+    },
+    "./session-reference/invariant": {
+      "types": "./lib/types/modules/service/session-reference.d.ts",
+      "default": "./lib/modules/session-reference.js"
+    },
+    "./session-reference/package.json": "./package.json",
+    "./session-stats": {
+      "types": "./lib/types/modules/model/stats.d.ts",
+      "default": "./lib/modules/session-stats.js"
+    },
+    "./session-stats/invariant": {
+      "types": "./lib/types/modules/model/stats.d.ts",
+      "default": "./lib/modules/session-stats.js"
+    },
+    "./session-stats/package.json": "./package.json",
+    "./session-telemetry": {
+      "types": "./lib/types/modules/service/telemetry.d.ts",
+      "default": "./lib/modules/session-telemetry.js"
+    },
+    "./session-telemetry-otel": {
+      "types": "./lib/types/modules/model/telemetry-otel.d.ts",
+      "default": "./lib/modules/session-telemetry-otel.js"
+    },
+    "./session-telemetry-otel/invariant": {
+      "types": "./lib/types/modules/model/telemetry-otel.d.ts",
+      "default": "./lib/modules/session-telemetry-otel.js"
+    },
+    "./session-telemetry-otel/package.json": "./package.json",
+    "./session-telemetry/invariant": {
+      "types": "./lib/types/modules/service/telemetry.d.ts",
+      "default": "./lib/modules/session-telemetry.js"
+    },
+    "./session-telemetry/package.json": "./package.json",
+    "./session-title": {
+      "types": "./lib/types/modules/service/title.d.ts",
+      "default": "./lib/modules/session-title.js"
+    },
+    "./session-title-all-prompts-llm": {
+      "types": "./lib/types/modules/model/title-all-prompts-llm.d.ts",
+      "default": "./lib/modules/session-title-all-prompts-llm.js"
+    },
+    "./session-title-all-prompts-llm/invariant": {
+      "types": "./lib/types/modules/model/title-all-prompts-llm.d.ts",
+      "default": "./lib/modules/session-title-all-prompts-llm.js"
+    },
+    "./session-title-all-prompts-llm/package.json": "./package.json",
+    "./session-title-first-prompt-llm": {
+      "types": "./lib/types/modules/model/title-first-prompt-llm.d.ts",
+      "default": "./lib/modules/session-title-first-prompt-llm.js"
+    },
+    "./session-title-first-prompt-llm/invariant": {
+      "types": "./lib/types/modules/model/title-first-prompt-llm.d.ts",
+      "default": "./lib/modules/session-title-first-prompt-llm.js"
+    },
+    "./session-title-first-prompt-llm/package.json": "./package.json",
+    "./session-title-llm": {
+      "types": "./lib/types/modules/model/title-llm.d.ts",
+      "default": "./lib/modules/session-title-llm.js"
+    },
+    "./session-title-llm/invariant": {
+      "types": "./lib/types/modules/model/title-llm.d.ts",
+      "default": "./lib/modules/session-title-llm.js"
+    },
+    "./session-title-llm/package.json": "./package.json",
+    "./session-title/invariant": {
+      "types": "./lib/types/modules/service/title.d.ts",
+      "default": "./lib/modules/session-title.js"
+    },
+    "./session-title/package.json": "./package.json",
+    "./session/invariant": {
+      "types": "./lib/types/modules/service/session.d.ts",
+      "default": "./lib/modules/session.js"
+    },
+    "./session/package.json": "./package.json",
+    "./settings": {
+      "types": "./lib/types/modules/service/settings.d.ts",
+      "default": "./lib/modules/settings.js"
+    },
+    "./settings-file": {
+      "types": "./lib/types/modules/service/settings-file.d.ts",
+      "default": "./lib/modules/settings-file.js"
+    },
+    "./settings-file/invariant": {
+      "types": "./lib/types/modules/service/settings-file.d.ts",
+      "default": "./lib/modules/settings-file.js"
+    },
+    "./settings-file/package.json": "./package.json",
+    "./settings/invariant": {
+      "types": "./lib/types/modules/service/settings.d.ts",
+      "default": "./lib/modules/settings.js"
+    },
+    "./settings/package.json": "./package.json",
+    "./skill": {
+      "types": "./lib/types/modules/service/skill.d.ts",
+      "default": "./lib/modules/skill.js"
+    },
+    "./skill-badge": {
+      "types": "./lib/types/modules/service/badge.d.ts",
+      "default": "./lib/modules/skill-badge.js"
+    },
+    "./skill-badge/invariant": {
+      "types": "./lib/types/modules/service/badge.d.ts",
+      "default": "./lib/modules/skill-badge.js"
+    },
+    "./skill-badge/package.json": "./package.json",
+    "./skill-filesystem": {
+      "types": "./lib/types/modules/service/filesystem.d.ts",
+      "default": "./lib/modules/skill-filesystem.js"
+    },
+    "./skill-filesystem/invariant": {
+      "types": "./lib/types/modules/service/filesystem.d.ts",
+      "default": "./lib/modules/skill-filesystem.js"
+    },
+    "./skill-filesystem/package.json": "./package.json",
+    "./skill/invariant": {
+      "types": "./lib/types/modules/service/skill.d.ts",
+      "default": "./lib/modules/skill.js"
+    },
+    "./skill/package.json": "./package.json",
+    "./spill": {
+      "types": "./lib/types/modules/service/spill.d.ts",
+      "default": "./lib/modules/spill.js"
+    },
+    "./spill-local": {
+      "types": "./lib/types/modules/service/spill-local.d.ts",
+      "default": "./lib/modules/spill-local.js"
+    },
+    "./spill-local/invariant": {
+      "types": "./lib/types/modules/service/spill-local.d.ts",
+      "default": "./lib/modules/spill-local.js"
+    },
+    "./spill-local/package.json": "./package.json",
+    "./spill-policy": {
+      "types": "./lib/types/modules/service/policy.d.ts",
+      "default": "./lib/modules/spill-policy.js"
+    },
+    "./spill-policy/invariant": {
+      "types": "./lib/types/modules/service/policy.d.ts",
+      "default": "./lib/modules/spill-policy.js"
+    },
+    "./spill-policy/package.json": "./package.json",
+    "./spill/invariant": {
+      "types": "./lib/types/modules/service/spill.d.ts",
+      "default": "./lib/modules/spill.js"
+    },
+    "./spill/package.json": "./package.json",
+    "./storage": {
+      "types": "./lib/types/modules/service/storage.d.ts",
+      "default": "./lib/modules/storage.js"
+    },
+    "./storage-domain": {
+      "types": "./lib/types/modules/model/storage.d.ts",
+      "default": "./lib/modules/storage-domain.js"
+    },
+    "./storage-domain/invariant": {
+      "types": "./lib/types/modules/model/storage.d.ts",
+      "default": "./lib/modules/storage-domain.js"
+    },
+    "./storage-domain/package.json": "./package.json",
+    "./storage-ejunz": {
+      "types": "./lib/types/modules/service/ejunz.d.ts",
+      "default": "./lib/modules/storage-ejunz.js"
+    },
+    "./storage-ejunz/invariant": {
+      "types": "./lib/types/modules/service/ejunz.d.ts",
+      "default": "./lib/modules/storage-ejunz.js"
+    },
+    "./storage-ejunz/package.json": "./package.json",
+    "./storage-json": {
+      "types": "./lib/types/modules/service/json.d.ts",
+      "default": "./lib/modules/storage-json.js"
+    },
+    "./storage-json/invariant": {
+      "types": "./lib/types/modules/service/json.d.ts",
+      "default": "./lib/modules/storage-json.js"
+    },
+    "./storage-json/package.json": "./package.json",
+    "./storage-sqlite": {
+      "types": "./lib/types/modules/service/sqlite.d.ts",
+      "default": "./lib/modules/storage-sqlite.js"
+    },
+    "./storage-sqlite/invariant": {
+      "types": "./lib/types/modules/service/sqlite.d.ts",
+      "default": "./lib/modules/storage-sqlite.js"
+    },
+    "./storage-sqlite/package.json": "./package.json",
+    "./storage/invariant": {
+      "types": "./lib/types/modules/service/storage.d.ts",
+      "default": "./lib/modules/storage.js"
+    },
+    "./storage/package.json": "./package.json",
+    "./subagent": {
+      "types": "./lib/types/modules/service/subagent.d.ts",
+      "default": "./lib/modules/subagent.js"
+    },
+    "./subagent-acp": {
+      "types": "./lib/types/modules/service/subagent-acp.d.ts",
+      "default": "./lib/modules/subagent-acp.js"
+    },
+    "./subagent-acp/invariant": {
+      "types": "./lib/types/modules/service/subagent-acp.d.ts",
+      "default": "./lib/modules/subagent-acp.js"
+    },
+    "./subagent-acp/package.json": "./package.json",
+    "./subagent-claude-code": {
+      "types": "./lib/types/modules/service/claude-code.d.ts",
+      "default": "./lib/modules/subagent-claude-code.js"
+    },
+    "./subagent-claude-code/invariant": {
+      "types": "./lib/types/modules/service/claude-code.d.ts",
+      "default": "./lib/modules/subagent-claude-code.js"
+    },
+    "./subagent-claude-code/package.json": "./package.json",
+    "./subagent-codex": {
+      "types": "./lib/types/modules/service/codex.d.ts",
+      "default": "./lib/modules/subagent-codex.js"
+    },
+    "./subagent-codex/invariant": {
+      "types": "./lib/types/modules/service/codex.d.ts",
+      "default": "./lib/modules/subagent-codex.js"
+    },
+    "./subagent-codex/package.json": "./package.json",
+    "./subagent-ea-sdk": {
+      "types": "./lib/types/modules/service/ea-sdk.d.ts",
+      "default": "./lib/modules/subagent-ea-sdk.js"
+    },
+    "./subagent-ea-sdk/invariant": {
+      "types": "./lib/types/modules/service/ea-sdk.d.ts",
+      "default": "./lib/modules/subagent-ea-sdk.js"
+    },
+    "./subagent-ea-sdk/package.json": "./package.json",
+    "./subagent-fork-in-process": {
+      "types": "./lib/types/modules/service/fork-in-process.d.ts",
+      "default": "./lib/modules/subagent-fork-in-process.js"
+    },
+    "./subagent-fork-in-process/invariant": {
+      "types": "./lib/types/modules/service/fork-in-process.d.ts",
+      "default": "./lib/modules/subagent-fork-in-process.js"
+    },
+    "./subagent-fork-in-process/package.json": "./package.json",
+    "./subagent-in-process-driver": {
+      "types": "./lib/types/modules/service/in-process-driver.d.ts",
+      "default": "./lib/modules/subagent-in-process-driver.js"
+    },
+    "./subagent-in-process-driver/invariant": {
+      "types": "./lib/types/modules/service/in-process-driver.d.ts",
+      "default": "./lib/modules/subagent-in-process-driver.js"
+    },
+    "./subagent-in-process-driver/package.json": "./package.json",
+    "./subagent-spawn-in-process": {
+      "types": "./lib/types/modules/service/spawn-in-process.d.ts",
+      "default": "./lib/modules/subagent-spawn-in-process.js"
+    },
+    "./subagent-spawn-in-process/invariant": {
+      "types": "./lib/types/modules/service/spawn-in-process.d.ts",
+      "default": "./lib/modules/subagent-spawn-in-process.js"
+    },
+    "./subagent-spawn-in-process/package.json": "./package.json",
+    "./subagent/invariant": {
+      "types": "./lib/types/modules/service/subagent.d.ts",
+      "default": "./lib/modules/subagent.js"
+    },
+    "./subagent/package.json": "./package.json",
+    "./subprocess": {
+      "types": "./lib/types/modules/service/subprocess.d.ts",
+      "default": "./lib/modules/subprocess.js"
+    },
+    "./subprocess-e2b": {
+      "types": "./lib/types/modules/service/subprocess-e2b.d.ts",
+      "default": "./lib/modules/subprocess-e2b.js"
+    },
+    "./subprocess-e2b/invariant": {
+      "types": "./lib/types/modules/service/subprocess-e2b.d.ts",
+      "default": "./lib/modules/subprocess-e2b.js"
+    },
+    "./subprocess-e2b/package.json": "./package.json",
+    "./subprocess-local": {
+      "types": "./lib/types/modules/service/subprocess-local.d.ts",
+      "default": "./lib/modules/subprocess-local.js"
+    },
+    "./subprocess-local/invariant": {
+      "types": "./lib/types/modules/service/subprocess-local.d.ts",
+      "default": "./lib/modules/subprocess-local.js"
+    },
+    "./subprocess-local/package.json": "./package.json",
+    "./subprocess/invariant": {
+      "types": "./lib/types/modules/service/subprocess.d.ts",
+      "default": "./lib/modules/subprocess.js"
+    },
+    "./subprocess/package.json": "./package.json",
+    "./system-prompt": {
+      "types": "./lib/types/modules/service/system-prompt.d.ts",
+      "default": "./lib/modules/system-prompt.js"
+    },
+    "./system-prompt/invariant": {
+      "types": "./lib/types/modules/service/system-prompt.d.ts",
+      "default": "./lib/modules/system-prompt.js"
+    },
+    "./system-prompt/package.json": "./package.json",
+    "./time-context": {
+      "types": "./lib/types/modules/model/time-context.d.ts",
+      "default": "./lib/modules/time-context.js"
+    },
+    "./time-context/invariant": {
+      "types": "./lib/types/modules/model/time-context.d.ts",
+      "default": "./lib/modules/time-context.js"
+    },
+    "./time-context/package.json": "./package.json",
+    "./timeout": {
+      "types": "./lib/types/modules/lib/timeout.d.ts",
+      "default": "./lib/modules/timeout.js"
+    },
+    "./timeout/invariant": {
+      "types": "./lib/types/modules/lib/timeout.d.ts",
+      "default": "./lib/modules/timeout.js"
+    },
+    "./timeout/package.json": "./package.json",
+    "./token-meter": {
+      "types": "./lib/types/modules/service/token-meter.d.ts",
+      "default": "./lib/modules/token-meter.js"
+    },
+    "./token-meter/invariant": {
+      "types": "./lib/types/modules/service/token-meter.d.ts",
+      "default": "./lib/modules/token-meter.js"
+    },
+    "./token-meter/package.json": "./package.json",
+    "./tool-ask-user": {
+      "types": "./lib/types/modules/tools/tool-ask-user.d.ts",
+      "default": "./lib/modules/tool-ask-user.js"
+    },
+    "./tool-ask-user/invariant": {
+      "types": "./lib/types/modules/tools/tool-ask-user.d.ts",
+      "default": "./lib/modules/tool-ask-user.js"
+    },
+    "./tool-ask-user/package.json": "./package.json",
+    "./tool-call-timeout-policy": {
+      "types": "./lib/types/modules/lib/timeout-policy.d.ts",
+      "default": "./lib/modules/tool-call-timeout-policy.js"
+    },
+    "./tool-call-timeout-policy/invariant": {
+      "types": "./lib/types/modules/lib/timeout-policy.d.ts",
+      "default": "./lib/modules/tool-call-timeout-policy.js"
+    },
+    "./tool-call-timeout-policy/package.json": "./package.json",
+    "./tool-cordis": {
+      "types": "./lib/types/modules/tools/tool-cordis.d.ts",
+      "default": "./lib/modules/tool-cordis.js"
+    },
+    "./tool-cordis/invariant": {
+      "types": "./lib/types/modules/tools/tool-cordis.d.ts",
+      "default": "./lib/modules/tool-cordis.js"
+    },
+    "./tool-cordis/package.json": "./package.json",
+    "./tool-goal": {
+      "types": "./lib/types/modules/tools/goal.d.ts",
+      "default": "./lib/modules/tool-goal.js"
+    },
+    "./tool-goal/invariant": {
+      "types": "./lib/types/modules/tools/goal.d.ts",
+      "default": "./lib/modules/tool-goal.js"
+    },
+    "./tool-goal/package.json": "./package.json",
+    "./tool-host": {
+      "types": "./lib/types/modules/service/tool-host.d.ts",
+      "default": "./lib/modules/tool-host.js"
+    },
+    "./tool-host/invariant": {
+      "types": "./lib/types/modules/service/tool-host.d.ts",
+      "default": "./lib/modules/tool-host.js"
+    },
+    "./tool-host/package.json": "./package.json",
+    "./tool-jobs": {
+      "types": "./lib/types/modules/tools/tool-jobs.d.ts",
+      "default": "./lib/modules/tool-jobs.js"
+    },
+    "./tool-jobs/invariant": {
+      "types": "./lib/types/modules/tools/tool-jobs.d.ts",
+      "default": "./lib/modules/tool-jobs.js"
+    },
+    "./tool-jobs/package.json": "./package.json",
+    "./tool-lsp": {
+      "types": "./lib/types/modules/tools/lsp.d.ts",
+      "default": "./lib/modules/tool-lsp.js"
+    },
+    "./tool-lsp/invariant": {
+      "types": "./lib/types/modules/tools/lsp.d.ts",
+      "default": "./lib/modules/tool-lsp.js"
+    },
+    "./tool-lsp/package.json": "./package.json",
+    "./tool-ralph": {
+      "types": "./lib/types/modules/tools/tool-ralph.d.ts",
+      "default": "./lib/modules/tool-ralph.js"
+    },
+    "./tool-ralph/invariant": {
+      "types": "./lib/types/modules/tools/tool-ralph.d.ts",
+      "default": "./lib/modules/tool-ralph.js"
+    },
+    "./tool-ralph/package.json": "./package.json",
+    "./tool-session-query": {
+      "types": "./lib/types/modules/tools/session-query.d.ts",
+      "default": "./lib/modules/tool-session-query.js"
+    },
+    "./tool-session-query/invariant": {
+      "types": "./lib/types/modules/tools/session-query.d.ts",
+      "default": "./lib/modules/tool-session-query.js"
+    },
+    "./tool-session-query/package.json": "./package.json",
+    "./tool-skill": {
+      "types": "./lib/types/modules/tools/tool-skill.d.ts",
+      "default": "./lib/modules/tool-skill.js"
+    },
+    "./tool-skill/invariant": {
+      "types": "./lib/types/modules/tools/tool-skill.d.ts",
+      "default": "./lib/modules/tool-skill.js"
+    },
+    "./tool-skill/package.json": "./package.json",
+    "./tool-subagent": {
+      "types": "./lib/types/modules/tools/tool-subagent.d.ts",
+      "default": "./lib/modules/tool-subagent.js"
+    },
+    "./tool-subagent-control": {
+      "types": "./lib/types/modules/tools/subagent-control.d.ts",
+      "default": "./lib/modules/tool-subagent-control.js"
+    },
+    "./tool-subagent-control/invariant": {
+      "types": "./lib/types/modules/tools/subagent-control.d.ts",
+      "default": "./lib/modules/tool-subagent-control.js"
+    },
+    "./tool-subagent-control/package.json": "./package.json",
+    "./tool-subagent-report": {
+      "types": "./lib/types/modules/tools/tool-subagent-report.d.ts",
+      "default": "./lib/modules/tool-subagent-report.js"
+    },
+    "./tool-subagent-report/invariant": {
+      "types": "./lib/types/modules/tools/tool-subagent-report.d.ts",
+      "default": "./lib/modules/tool-subagent-report.js"
+    },
+    "./tool-subagent-report/package.json": "./package.json",
+    "./tool-subagent/invariant": {
+      "types": "./lib/types/modules/tools/tool-subagent.d.ts",
+      "default": "./lib/modules/tool-subagent.js"
+    },
+    "./tool-subagent/package.json": "./package.json",
+    "./tool-todo": {
+      "types": "./lib/types/modules/tools/todo.d.ts",
+      "default": "./lib/modules/tool-todo.js"
+    },
+    "./tool-todo/invariant": {
+      "types": "./lib/types/modules/tools/todo.d.ts",
+      "default": "./lib/modules/tool-todo.js"
+    },
+    "./tool-todo/package.json": "./package.json",
+    "./tool-workflow": {
+      "types": "./lib/types/modules/tools/workflow.d.ts",
+      "default": "./lib/modules/tool-workflow.js"
+    },
+    "./tool-workflow/invariant": {
+      "types": "./lib/types/modules/tools/workflow.d.ts",
+      "default": "./lib/modules/tool-workflow.js"
+    },
+    "./tool-workflow/package.json": "./package.json",
+    "./tools": {
+      "types": "./lib/types/modules/service/tools.d.ts",
+      "default": "./lib/modules/tools.js"
+    },
+    "./tools/invariant": {
+      "types": "./lib/types/modules/service/tools.d.ts",
+      "default": "./lib/modules/tools.js"
+    },
+    "./tools/package.json": "./package.json",
+    "./typert-loader": {
+      "types": "./lib/types/modules/service/loader.d.ts",
+      "default": "./lib/modules/typert-loader.js"
+    },
+    "./typert-loader/invariant": {
+      "types": "./lib/types/modules/service/loader.d.ts",
+      "default": "./lib/modules/typert-loader.js"
+    },
+    "./typert-loader/package.json": "./package.json",
+    "./typert-protocol": {
+      "types": "./lib/types/modules/service/protocol.d.ts",
+      "default": "./lib/modules/typert-protocol.js"
+    },
+    "./typert-protocol/invariant": {
+      "types": "./lib/types/modules/service/protocol.d.ts",
+      "default": "./lib/modules/typert-protocol.js"
+    },
+    "./typert-protocol/package.json": "./package.json",
+    "./typert-registry": {
+      "types": "./lib/types/modules/service/registry.d.ts",
+      "default": "./lib/modules/typert-registry.js"
+    },
+    "./typert-registry/invariant": {
+      "types": "./lib/types/modules/service/registry.d.ts",
+      "default": "./lib/modules/typert-registry.js"
+    },
+    "./typert-registry/package.json": "./package.json",
+    "./user-approval": {
+      "types": "./lib/types/modules/service/user-approval.d.ts",
+      "default": "./lib/modules/user-approval.js"
+    },
+    "./user-approval/invariant": {
+      "types": "./lib/types/modules/service/user-approval.d.ts",
+      "default": "./lib/modules/user-approval.js"
+    },
+    "./user-approval/package.json": "./package.json",
+    "./user-questions": {
+      "types": "./lib/types/modules/service/user-questions.d.ts",
+      "default": "./lib/modules/user-questions.js"
+    },
+    "./user-questions/invariant": {
+      "types": "./lib/types/modules/service/user-questions.d.ts",
+      "default": "./lib/modules/user-questions.js"
+    },
+    "./user-questions/package.json": "./package.json",
+    "./workflow": {
+      "types": "./lib/types/modules/service/workflow.d.ts",
+      "default": "./lib/modules/workflow.js"
+    },
+    "./workflow-worker-thread": {
+      "types": "./lib/types/modules/service/worker-thread.d.ts",
+      "default": "./lib/modules/workflow-worker-thread.js"
+    },
+    "./workflow-worker-thread/invariant": {
+      "types": "./lib/types/modules/service/worker-thread.d.ts",
+      "default": "./lib/modules/workflow-worker-thread.js"
+    },
+    "./workflow-worker-thread/package.json": "./package.json",
+    "./workflow/invariant": {
+      "types": "./lib/types/modules/service/workflow.d.ts",
+      "default": "./lib/modules/workflow.js"
+    },
+    "./workflow/package.json": "./package.json"
   },
   "repository": {
     "type": "git",
@@ -171,6 +1244,138 @@
     "lib/types/entry/embed.d.ts",
     "lib/types/service/embed.d.ts",
     "lib/types/service/host-tools.d.ts",
-    "config"
-  ]
+    "config",
+    "lib/modules/**/*.js",
+    "lib/modules/**/*.d.ts",
+    "lib/types/modules/**/*.d.ts"
+  ],
+  "ea": {
+    "modules": {
+      "cmdline": "src/commands/cmdline.ts",
+      "command-compact": "src/commands/command-compact.ts",
+      "command-feedback": "src/commands/command-feedback.ts",
+      "command-goal": "src/commands/command-goal.ts",
+      "agent-spine-demo": "src/entry/agent-spine-demo.ts",
+      "app-boot": "src/entry/app-boot.ts",
+      "base": "src/entry/base.ts",
+      "atomic-write": "src/lib/atomic-write.ts",
+      "brand": "src/lib/brand.ts",
+      "home-paths": "src/lib/home-paths.ts",
+      "launch-environment": "src/lib/launch-environment.ts",
+      "output-retention": "src/lib/output-retention.ts",
+      "repeat-tool-reminder": "src/lib/repeat-tool-reminder.ts",
+      "tool-call-timeout-policy": "src/lib/timeout-policy.ts",
+      "timeout": "src/lib/timeout.ts",
+      "agent-instructions": "src/model/agent-instructions.ts",
+      "session-checkpoint-policy": "src/model/checkpoint-policy.ts",
+      "anonymous-user-id": "src/model/identity.ts",
+      "session-persistence-ejunz": "src/model/persistence-ejunz.ts",
+      "session-persistence-jsonl": "src/model/persistence-jsonl.ts",
+      "session-persistence-sqlite": "src/model/persistence-sqlite.ts",
+      "persona": "src/model/preset.ts",
+      "schedule": "src/model/schedule.ts",
+      "scope": "src/model/scope.ts",
+      "sdk": "src/model/sdk.ts",
+      "session-stats": "src/model/stats.ts",
+      "session-telemetry-otel": "src/model/telemetry-otel.ts",
+      "time-context": "src/model/time-context.ts",
+      "session-title-all-prompts-llm": "src/model/title-all-prompts-llm.ts",
+      "session-title-first-prompt-llm": "src/model/title-first-prompt-llm.ts",
+      "session-title-llm": "src/model/title-llm.ts",
+      "acp": "src/service/acp.ts",
+      "agent-default-model": "src/service/agent-default-model.ts",
+      "agent-loop": "src/service/agent-loop.ts",
+      "agent-presets": "src/service/agent-presets.ts",
+      "agent": "src/service/agent.ts",
+      "attachment": "src/service/attachment.ts",
+      "skill-badge": "src/service/badge.ts",
+      "compaction-basic": "src/service/basic.ts",
+      "subagent-claude-code": "src/service/claude-code.ts",
+      "mcp-client": "src/service/client.ts",
+      "subagent-codex": "src/service/codex.ts",
+      "commands": "src/service/commands.ts",
+      "compaction": "src/service/compaction.ts",
+      "cordis-host-runner": "src/service/cordis-host-runner.ts",
+      "credentials-local": "src/service/credentials-local.ts",
+      "credentials": "src/service/credentials.ts",
+      "llm-deepseek": "src/service/deepseek.ts",
+      "e2b": "src/service/e2b.ts",
+      "subagent-ea-sdk": "src/service/ea-sdk.ts",
+      "storage-ejunz": "src/service/ejunz.ts",
+      "skill-filesystem": "src/service/filesystem.ts",
+      "subagent-fork-in-process": "src/service/fork-in-process.ts",
+      "fs-e2b": "src/service/fs-e2b.ts",
+      "fs-local": "src/service/fs-local.ts",
+      "fs": "src/service/fs.ts",
+      "goal": "src/service/goal.ts",
+      "subagent-in-process-driver": "src/service/in-process-driver.ts",
+      "invariants": "src/service/invariants.ts",
+      "jobs-local": "src/service/jobs-local.ts",
+      "jobs": "src/service/jobs.ts",
+      "storage-json": "src/service/json.ts",
+      "llm": "src/service/llm.ts",
+      "typert-loader": "src/service/loader.ts",
+      "attachment-local": "src/service/local.ts",
+      "lsp": "src/service/lsp.ts",
+      "message-feedback": "src/service/message-feedback.ts",
+      "plan-mode": "src/service/mode.ts",
+      "permission-presets": "src/service/permission-presets.ts",
+      "session-persistence": "src/service/persistence.ts",
+      "llm-pi-ai": "src/service/pi-ai.ts",
+      "spill-policy": "src/service/policy.ts",
+      "session-projection-cache": "src/service/projection-cache.ts",
+      "session-projection": "src/service/projection.ts",
+      "typert-protocol": "src/service/protocol.ts",
+      "typert-registry": "src/service/registry.ts",
+      "llm-retry": "src/service/retry.ts",
+      "goal-round-driver": "src/service/round-driver.ts",
+      "sdk-client": "src/service/sdk-client.ts",
+      "sdk-jsonrpc-server": "src/service/server.ts",
+      "session-query": "src/service/session-query.ts",
+      "session-reference": "src/service/session-reference.ts",
+      "session": "src/service/session.ts",
+      "settings-file": "src/service/settings-file.ts",
+      "settings": "src/service/settings.ts",
+      "skill": "src/service/skill.ts",
+      "subagent-spawn-in-process": "src/service/spawn-in-process.ts",
+      "spill-local": "src/service/spill-local.ts",
+      "spill": "src/service/spill.ts",
+      "storage-sqlite": "src/service/sqlite.ts",
+      "lsp-stdio": "src/service/stdio.ts",
+      "storage": "src/service/storage.ts",
+      "storage-domain": "src/model/storage.ts",
+      "subagent-acp": "src/service/subagent-acp.ts",
+      "subagent": "src/service/subagent.ts",
+      "subprocess-e2b": "src/service/subprocess-e2b.ts",
+      "subprocess-local": "src/service/subprocess-local.ts",
+      "subprocess": "src/service/subprocess.ts",
+      "system-prompt": "src/service/system-prompt.ts",
+      "session-telemetry": "src/service/telemetry.ts",
+      "session-title": "src/service/title.ts",
+      "token-meter": "src/service/token-meter.ts",
+      "tool-host": "src/service/tool-host.ts",
+      "compaction-tool-result-pruner": "src/service/tool-result-pruner.ts",
+      "tools": "src/service/tools.ts",
+      "user-approval": "src/service/user-approval.ts",
+      "user-questions": "src/service/user-questions.ts",
+      "workflow-worker-thread": "src/service/worker-thread.ts",
+      "workflow": "src/service/workflow.ts",
+      "tool-lsp": "src/tools/lsp.ts",
+      "tool-session-query": "src/tools/session-query.ts",
+      "tool-subagent-control": "src/tools/subagent-control.ts",
+      "tool-todo": "src/tools/todo.ts",
+      "tool-ask-user": "src/tools/tool-ask-user.ts",
+      "tool-cordis": "src/tools/tool-cordis.ts",
+      "tool-goal": "src/tools/goal.ts",
+      "tool-jobs": "src/tools/tool-jobs.ts",
+      "tool-ralph": "src/tools/tool-ralph.ts",
+      "tool-skill": "src/tools/tool-skill.ts",
+      "tool-subagent-report": "src/tools/tool-subagent-report.ts",
+      "tool-subagent": "src/tools/tool-subagent.ts",
+      "tool-workflow": "src/tools/workflow.ts"
+    },
+    "bundle": {
+      "patch": "./config/base.cordis.patch.yml"
+    }
+  }
 }

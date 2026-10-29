@@ -1,7 +1,7 @@
 # The `cordis` preset id is retained for existing sessions, but has no
 # filesystem, code-execution, or runtime-mutation capability.
 - id: persona
-  name: '@ejunz/persona'
+  name: '@ejunz/ea/persona'
   config:
     text: >-
       You are a helpful assistant powered by the {{model}} model. This session has no tools for operating on the host system or modifying the Agent runtime.
@@ -14,7 +14,7 @@
 # The shared task registry is host-owned; this preset contributes only its
 # model-facing controls.
 - id: tool-jobs
-  name: '@ejunz/tool-jobs'
+  name: '@ejunz/ea/tool-jobs'
 
 # ── goals ───────────────────────────────────────────────────────────────────
 
@@ -25,7 +25,7 @@
 # registry is keyed by session anyway, so one host instance serves every
 # session. What a preset chooses is whether its agent can call the goal tool.
 - id: tool-goal
-  name: '@ejunz/tool-goal'
+  name: '@ejunz/ea/tool-goal'
 
 # ── plan mode ───────────────────────────────────────────────────────────────
 
@@ -38,7 +38,7 @@
     planMode: true
   config:
     - id: plan-mode
-      name: '@ejunz/plan-mode'
+      name: '@ejunz/ea/plan-mode'
       config:
         section: |
               You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
@@ -72,13 +72,13 @@
     toolResultPruner: true
   config:
     - id: compaction-basic
-      name: '@ejunz/compaction-basic'
+      name: '@ejunz/ea/compaction-basic'
 
     - id: command-compact
-      name: '@ejunz/command-compact'
+      name: '@ejunz/ea/command-compact'
 
     - id: tool-result-pruner
-      name: '@ejunz/compaction-tool-result-pruner'
+      name: '@ejunz/ea/compaction-tool-result-pruner'
       config:
         thresholdChars: 8192
         headChars: 4096
@@ -105,10 +105,10 @@
 # ── remaining model-facing rows ─────────────────────────────────────────────
 
 - id: tool-ask-user
-  name: '@ejunz/tool-ask-user'
+  name: '@ejunz/ea/tool-ask-user'
 
 - id: tool-todo
-  name: '@ejunz/tool-todo'
+  name: '@ejunz/ea/tool-todo'
   config:
     allowParallelInProgress: true
 
@@ -122,4 +122,4 @@
 
 # No runtime-mutation or local skill-filesystem tools are registered.
 - id: tool-skill
-  name: '@ejunz/tool-skill'
+  name: '@ejunz/ea/tool-skill'

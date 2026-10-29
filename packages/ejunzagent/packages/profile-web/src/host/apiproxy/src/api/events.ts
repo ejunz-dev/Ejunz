@@ -6,19 +6,19 @@
  * signal is a local stream-control parameter, independent of the request (never on the wire).
  */
 
-import type { AskUserQuestionItem } from '@ejunz/user-questions/types'
-import type { ApprovalOutcome, ApprovalRequestId } from '@ejunz/user-approval/types'
-import type { Message } from '@ejunz/llm/types'
-import type { MessageId } from '@ejunz/llm/brand'
-import type { CallId } from '@ejunz/llm/brand'
-import type { JsonValue, SessionEvent, SessionId } from '@ejunz/session/types'
-import type { ToolCallView, ToolResultView } from '@ejunz/tools/presentation'
+import type { AskUserQuestionItem } from '@ejunz/ea/user-questions/types'
+import type { ApprovalOutcome, ApprovalRequestId } from '@ejunz/ea/user-approval/types'
+import type { Message } from '@ejunz/ea/llm/types'
+import type { MessageId } from '@ejunz/ea/llm/brand'
+import type { CallId } from '@ejunz/ea/llm/brand'
+import type { JsonValue, SessionEvent, SessionId } from '@ejunz/ea/session/types'
+import type { ToolCallView, ToolResultView } from '@ejunz/ea/tools/presentation'
 import type { RpcError, RpcId, RpcRequest } from './rpc.ts'
 import type { JobView } from './jobs.ts'
 
 // Client-side consumers take the render-intent vocabulary from the contract;
 // ea-tools remains its owner.
-export type { ToolCallView, ToolResultView } from '@ejunz/tools/presentation'
+export type { ToolCallView, ToolResultView } from '@ejunz/ea/tools/presentation'
 
 /**
  * Host-computed render intent accompanying a `tool/call` or `tool/result`

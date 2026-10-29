@@ -5,7 +5,7 @@
  * patch overlays to apply, and the config dumps — and hands **everything after
  * its own flags** to the booted tree verbatim, where injected app plugins parse
  * their own flag families and print their own `--help` (see
- * `@ejunz/cmdline`). Launcher flags therefore come first: the first
+ * `@ejunz/ea/cmdline`). Launcher flags therefore come first: the first
  * token this parser does not recognize starts the inner arguments, so
  * `ea --profile web --port 8080` boots the web profile with `--port 8080`,
  * and `plugin` manages a profile's dependencies by forwarding to yarn.

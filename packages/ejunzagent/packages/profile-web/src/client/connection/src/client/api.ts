@@ -18,7 +18,7 @@ export type {
   SubagentsApi, SubagentAddress, SubagentCatalog, SubagentListEntry, SubagentPromptReceipt,
   JobView,
 } from '@ejunz/profile-web/host/apiproxy/api'
-export type { ToolCallView, ToolResultView } from '@ejunz/tools/presentation'
+export type { ToolCallView, ToolResultView } from '@ejunz/ea/tools/presentation'
 export type {
   RpcRequest, RpcResponse, RpcResult, RpcError, RpcErrorCode,
   ClientRequest, ServerResponse, ServerRequest, ClientResponse, RpcMessage, RpcReceipt,
@@ -33,9 +33,9 @@ export {
 } from '@ejunz/profile-web/host/apiproxy/api'
 export { AbstractApiClient } from '@ejunz/profile-web/host/apiproxy/client'
 export type { IApiClient } from '@ejunz/profile-web/host/apiproxy/client'
-export type { SessionId, SessionEvent } from '@ejunz/session/types'
-export type { MessageId } from '@ejunz/llm/brand'
-export type { ContentBlock, StreamChunk } from '@ejunz/llm/types'
+export type { SessionId, SessionEvent } from '@ejunz/ea/session/types'
+export type { MessageId } from '@ejunz/ea/llm/brand'
+export type { ContentBlock, StreamChunk } from '@ejunz/ea/llm/types'
 
 /** Successful value returned by the connection-generation host handshake. */
 export type HostDescription = import('@ejunz/profile-web/host/apiproxy/api').ResponseValue<'host.describe'>

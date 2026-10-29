@@ -5,7 +5,7 @@
  */
 
 import { z } from 'zod'
-import type { ApprovalRequestId } from '@ejunz/user-approval/types'
+import type { ApprovalRequestId } from '@ejunz/ea/user-approval/types'
 import type { ApprovalResponsePayload } from './approvals.ts'
 import type { Wire } from './rpc.schema.ts'
 import { sessionIdSchema } from './sessions.schema.ts'

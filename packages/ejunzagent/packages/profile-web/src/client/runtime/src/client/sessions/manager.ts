@@ -17,7 +17,7 @@ import type { PendingInteractionStatus } from './pending.ts'
 // Type-only merge edge: the title domain's client-namespace outlet declares
 // the 'title' projection key this manager projects into list rows and exposes to
 // client consumers. Zero value imports by construction.
-import type {} from '@ejunz/session-title/client'
+import type {} from '@ejunz/ea/session-title/client'
 import { Notifier } from './notifier.ts'
 import { ProjectionValueStore } from './projection-store.ts'
 import { Session } from './session.ts'

@@ -7,11 +7,11 @@
  * must stub); runtime-internal entry points (history staging, wire-frame
  * dispatch) stay on the class, invisible out here.
  */
-import type { AttachmentIdType, ImageAttachmentRef } from '@ejunz/attachment'
+import type { AttachmentIdType, ImageAttachmentRef } from '@ejunz/ea/attachment'
 import type {
   MessageId, PromptContentPart, QueueAction, RpcResult, SessionId,
 } from '@ejunz/profile-web/api/remotes/client'
-import type { RemoteResult } from '@ejunz/typert-protocol'
+import type { RemoteResult } from '@ejunz/ea/typert-protocol'
 import type { ConversationSnapshot } from '../sessions/conversation.ts'
 import type { ObservableSnapshot } from './store.ts'
 

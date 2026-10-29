@@ -1,7 +1,4 @@
 {
-  // Doubles as the resolution facade for vite-tsconfig-paths (vitest configs
-  // point here). NEVER add include/files to this file: it would leak into
-  // every extending package project and narrow the facade's match-all scope.
   "compilerOptions": {
     "target": "es2024",
     "module": "esnext",
@@ -23,90 +20,215 @@
     "noFallthroughCasesInSwitch": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "types": ["node"],
-    // Source-level resolution for every repo-local graph. Project references,
-    // not declaration path aliases, keep each package/vendor source compiled
-    // under its own tsconfig boundary.
+    "types": [
+      "node"
+    ],
     "paths": {
-      "@ejunz/cordis": ["./src/vendor/cordis/src"],
-      "@ejunz/cosmokit": ["./src/vendor/cosmokit/src"],
-      "@ejunz/schemastery": ["./src/vendor/schemastery/src"],
-      "@ejunz/cordis-plugin-loader": ["./src/vendor/loader/src"],
-      "@ejunz/cordis-plugin-include": ["./src/vendor/include/src"],
-      "@ejunz/cordis-plugin-group": ["./src/vendor/group/src"],
-      "@ejunz/cordis-plugin-timer": ["./src/vendor/timer/src"],
-      "@ejunz/cordis-plugin-hmr": ["./src/vendor/hmr/src"],
-      "@ejunz/cordis-plugin-logger-console": ["./src/vendor/logger-console/src"],
-      "@ejunz/invariants": ["./src/service/runtime-diagnostics/invariants/src/index.ts"],
-      "@ejunz/tool-call-timeout-policy": ["./src/lib/guard/timeout-policy/src"],
-      "@ejunz/tool-call-timeout-policy/invariant": ["./src/lib/guard/timeout-policy/src/invariant.ts"],
-      "@ejunz/typert-registry": ["./src/service/typert/registry/src/index.ts"],
-      "@ejunz/typert-registry/client": ["./src/service/typert/registry/src/client/index.ts"],
-      "@ejunz/profile-web/api/gateway": ["./packages/profile-web/src/api/gateway/src/index.ts"],
-      "@ejunz/profile-web/api/gateway/client": ["./packages/profile-web/src/api/gateway/src/client/index.ts"],
-      "@ejunz/profile-web/api/gateway/invariant": ["./packages/profile-web/src/api/gateway/src/invariant.ts"],
-      "@ejunz/profile-web/api/gateway/types": ["./packages/profile-web/src/api/gateway/src/types.ts"],
-      "@ejunz/typert-protocol": ["./src/service/typert/protocol/src/index.ts"],
-      "@ejunz/typert-protocol/types": ["./src/service/typert/protocol/src/types.ts"],
-      "@ejunz/typert-loader": ["./src/service/typert/loader/src/index.ts"],
-      "@ejunz/session/invariant": ["./src/service/core/session/src/invariant.ts"],
-      "@ejunz/typert-registry/types": ["./src/service/typert/registry/src/types.ts"],
-      "@ejunz/typert-generator": ["./src/script/typert/generator/src/index.ts"],
-      "@ejunz/session/types": ["./src/service/core/session/src/types.ts"],
-      "@ejunz/session/surface": ["./src/service/core/session/src/surface.ts"],
-      "@ejunz/session-projection": ["./src/service/session/session-projection/src/index.ts"],
-      "@ejunz/session-projection/types": ["./src/service/session/session-projection/src/types.ts"],
-      "@ejunz/tool-todo/types": ["./src/tools/todo/tool-todo/src/types.ts"],
-      "@ejunz/tool-todo/client": ["./src/tools/todo/tool-todo/src/client.ts"],
-      "@ejunz/session-title/types": ["./src/service/session/session-title/src/types.ts"],
-      "@ejunz/session-title/client": ["./src/service/session/session-title/src/client.ts"],
-      "@ejunz/session-stats/types": ["./src/model/session/session-stats/src/types.ts"],
-      "@ejunz/session-stats/client": ["./src/model/session/session-stats/src/client.ts"],
-      "@ejunz/plan-mode/types": ["./src/service/plan/plan-mode/src/types.ts"],
-      "@ejunz/plan-mode/client": ["./src/service/plan/plan-mode/src/client.ts"],
-      "@ejunz/agent-presets/types": ["./src/service/preset/agent-presets/src/types.ts"],
-      "@ejunz/cordis-host-runner": ["./src/service/extensions/cordis-host-runner/src/index.ts"],
-      "@ejunz/cordis-host-runner/types": ["./src/service/extensions/cordis-host-runner/src/types.ts"],
-      "@ejunz/goal/types": ["./src/service/goal/goal/src/types.ts"],
-      "@ejunz/goal/client": ["./src/service/goal/goal/src/client.ts"],
-      "@ejunz/llm/types": ["./src/service/llm/llm/src/types.ts"],
-      "@ejunz/llm/brand": ["./src/service/llm/llm/src/brand.ts"],
-      "@ejunz/llm-retry/types": ["./src/service/llm/llm-retry/src/types.ts"],
-      "@ejunz/workflow/types": ["./src/service/workflow/workflow/src/types.ts"],
-      "@ejunz/tool-workflow/types": ["./src/tools/workflow/tool-workflow/src/types.ts"],
-      "@ejunz/llm/message": ["./src/service/llm/llm/src/message.ts"],
-      "@ejunz/commands/brand": ["./src/service/interaction/commands/src/brand.ts"],
-      "@ejunz/commands/types": ["./src/service/interaction/commands/src/types.ts"],
-      "@ejunz/jobs/brand": ["./src/service/jobs/jobs/src/brand.ts"],
-      "@ejunz/credentials/types": ["./src/service/credentials/credentials/src/types.ts"],
-      "@ejunz/settings/types": ["./src/service/settings/settings/src/types.ts"],
-      "@ejunz/profile-web/api/remotes/types": ["./packages/profile-web/src/api/remotes/src/types.ts"],
-      "@ejunz/profile-web/api/remotes/invariant": ["./packages/profile-web/src/api/remotes/src/invariant.ts"],
-      "@ejunz/compaction/checkpoint": ["./src/service/compaction/compaction/src/checkpoint.ts"],
-      "@ejunz/compaction/types": ["./src/service/compaction/compaction/src/types.ts"],
-      "@ejunz/tools/presentation": ["./src/service/core/tools/src/presentation.ts"],
-      "@ejunz/tools/types": ["./src/service/core/tools/src/types.ts"],
-      "@ejunz/tool-subagent-control/list-agents": ["./src/tools/subagent/tool-subagent-control/src/list-agents.ts"],
-      "@ejunz/user-approval/types": ["./src/service/interaction/user-approval/src/types.ts"],
-      "@ejunz/user-questions/types": ["./src/service/interaction/user-questions/src/types.ts"],
-      "@ejunz/agent/types": ["./src/service/core/agent/src/types.ts"],
-      "@ejunz/agent/brand": ["./src/service/core/agent/src/brand.ts"],
-      "@ejunz/agent/invariant": ["./src/service/core/agent/src/invariant.ts"],
-      "@ejunz/scope/invariant": ["./src/model/core/scope/src/invariant.ts"],
-      "@ejunz/agent-loop/invariant": ["./src/service/core/agent-loop/src/invariant.ts"],
+      "@ejunz/cordis": [
+        "./src/vendor/cordis/src"
+      ],
+      "@ejunz/cosmokit": [
+        "./src/vendor/cosmokit/src"
+      ],
+      "@ejunz/schemastery": [
+        "./src/vendor/schemastery/src"
+      ],
+      "@ejunz/cordis-plugin-loader": [
+        "./src/vendor/loader/src"
+      ],
+      "@ejunz/cordis-plugin-include": [
+        "./src/vendor/include/src"
+      ],
+      "@ejunz/cordis-plugin-group": [
+        "./src/vendor/group/src"
+      ],
+      "@ejunz/cordis-plugin-timer": [
+        "./src/vendor/timer/src"
+      ],
+      "@ejunz/cordis-plugin-hmr": [
+        "./src/vendor/hmr/src"
+      ],
+      "@ejunz/cordis-plugin-logger-console": [
+        "./src/vendor/logger-console/src"
+      ],
+      "@ejunz/ea/invariants": [
+        "./src/service/invariants.ts"
+      ],
+      "@ejunz/ea/tool-call-timeout-policy": [
+        "./src/lib/timeout-policy.ts"
+      ],
+      "@ejunz/ea/tool-call-timeout-policy/invariant": [
+        "./src/lib/timeout-policy.ts"
+      ],
+      "@ejunz/ea/typert-registry": [
+        "./src/service/typert/registry/src/index.ts"
+      ],
+      "@ejunz/ea/typert-registry/client": [
+        "./src/service/typert/registry/src/client/index.ts"
+      ],
+      "@ejunz/profile-web/api/gateway": [
+        "./packages/profile-web/src/api/gateway/src/index.ts"
+      ],
+      "@ejunz/profile-web/api/gateway/client": [
+        "./packages/profile-web/src/api/gateway/src/client/index.ts"
+      ],
+      "@ejunz/profile-web/api/gateway/invariant": [
+        "./packages/profile-web/src/api/gateway/src/invariant.ts"
+      ],
+      "@ejunz/profile-web/api/gateway/types": [
+        "./packages/profile-web/src/api/gateway/src/types.ts"
+      ],
+      "@ejunz/ea/typert-protocol": [
+        "./src/service/typert/protocol/src/index.ts"
+      ],
+      "@ejunz/ea/typert-protocol/types": [
+        "./src/service/typert/protocol/src/types.ts"
+      ],
+      "@ejunz/ea/typert-loader": [
+        "./src/service/loader/loader.ts"
+      ],
+      "@ejunz/ea/session/invariant": [
+        "./src/service/core/session/src/invariant.ts"
+      ],
+      "@ejunz/ea/typert-registry/types": [
+        "./src/service/typert/registry/src/types.ts"
+      ],
+      "@ejunz/typert-generator": [
+        "./src/script/typert/generator/src/index.ts"
+      ],
+      "@ejunz/ea/session/types": [
+        "./src/service/core/session/src/types.ts"
+      ],
+      "@ejunz/ea/session/surface": [
+        "./src/service/core/session/src/surface.ts"
+      ],
+      "@ejunz/ea/session-projection": [
+        "./src/service/session/session-projection/src/index.ts"
+      ],
+      "@ejunz/ea/session-projection/types": [
+        "./src/service/session/session-projection/src/types.ts"
+      ],
+      "@ejunz/ea/tool-todo/types": [
+        "./src/tools/todo/tool-todo/src/types.ts"
+      ],
+      "@ejunz/ea/tool-todo/client": [
+        "./src/tools/todo/tool-todo/src/client.ts"
+      ],
+      "@ejunz/ea/session-title/types": [
+        "./src/service/session/session-title/src/types.ts"
+      ],
+      "@ejunz/ea/session-title/client": [
+        "./src/service/session/session-title/src/client.ts"
+      ],
+      "@ejunz/ea/session-stats/types": [
+        "./src/model/session/session-stats/src/types.ts"
+      ],
+      "@ejunz/ea/session-stats/client": [
+        "./src/model/session/session-stats/src/client.ts"
+      ],
+      "@ejunz/ea/plan-mode/types": [
+        "./src/service/plan/plan-mode/src/types.ts"
+      ],
+      "@ejunz/ea/plan-mode/client": [
+        "./src/service/plan/plan-mode/src/client.ts"
+      ],
+      "@ejunz/ea/agent-presets/types": [
+        "./src/service/preset/agent-presets/src/types.ts"
+      ],
+      "@ejunz/ea/cordis-host-runner": [
+        "./src/service/extensions/cordis-host-runner/src/index.ts"
+      ],
+      "@ejunz/ea/cordis-host-runner/types": [
+        "./src/service/extensions/cordis-host-runner/src/types.ts"
+      ],
+      "@ejunz/ea/goal/types": [
+        "./src/service/goal/goal/src/types.ts"
+      ],
+      "@ejunz/ea/goal/client": [
+        "./src/service/goal/goal/src/client.ts"
+      ],
+      "@ejunz/ea/llm/types": [
+        "./src/service/llm/llm/src/types.ts"
+      ],
+      "@ejunz/ea/llm/brand": [
+        "./src/service/llm/llm/src/brand.ts"
+      ],
+      "@ejunz/ea/llm-retry/types": [
+        "./src/service/llm/llm-retry/src/types.ts"
+      ],
+      "@ejunz/ea/workflow/types": [
+        "./src/service/workflow/workflow/src/types.ts"
+      ],
+      "@ejunz/ea/tool-workflow/types": [
+        "./src/tools/workflow/tool-workflow/src/types.ts"
+      ],
+      "@ejunz/ea/llm/message": [
+        "./src/service/llm/llm/src/message.ts"
+      ],
+      "@ejunz/ea/commands/brand": [
+        "./src/service/interaction/commands/src/brand.ts"
+      ],
+      "@ejunz/ea/commands/types": [
+        "./src/service/interaction/commands/src/types.ts"
+      ],
+      "@ejunz/ea/jobs/brand": [
+        "./src/service/jobs/jobs/src/brand.ts"
+      ],
+      "@ejunz/ea/credentials/types": [
+        "./src/service/credentials/credentials/src/types.ts"
+      ],
+      "@ejunz/ea/settings/types": [
+        "./src/service/settings/settings/src/types.ts"
+      ],
+      "@ejunz/profile-web/api/remotes/types": [
+        "./packages/profile-web/src/api/remotes/src/types.ts"
+      ],
+      "@ejunz/profile-web/api/remotes/invariant": [
+        "./packages/profile-web/src/api/remotes/src/invariant.ts"
+      ],
+      "@ejunz/ea/compaction/checkpoint": [
+        "./src/service/compaction/compaction/src/checkpoint.ts"
+      ],
+      "@ejunz/ea/compaction/types": [
+        "./src/service/compaction/compaction/src/types.ts"
+      ],
+      "@ejunz/ea/tools/presentation": [
+        "./src/service/core/tools/src/presentation.ts"
+      ],
+      "@ejunz/ea/tools/types": [
+        "./src/service/core/tools/src/types.ts"
+      ],
+      "@ejunz/ea/tool-subagent-control/list-agents": [
+        "./src/tools/tool-subagent-control/src/list-agents.ts"
+      ],
+      "@ejunz/ea/user-approval/types": [
+        "./src/service/interaction/user-approval/src/types.ts"
+      ],
+      "@ejunz/ea/user-questions/types": [
+        "./src/service/interaction/user-questions/src/types.ts"
+      ],
+      "@ejunz/ea/agent/types": [
+        "./src/service/core/agent/src/types.ts"
+      ],
+      "@ejunz/ea/agent/brand": [
+        "./src/service/core/agent/src/brand.ts"
+      ],
+      "@ejunz/ea/agent/invariant": [
+        "./src/service/core/agent/src/invariant.ts"
+      ],
+      "@ejunz/ea/scope/invariant": [
+        "./src/model/core/scope/src/invariant.ts"
+      ],
+      "@ejunz/ea/agent-loop/invariant": [
+        "./src/service/core/agent-loop/src/invariant.ts"
+      ],
       "@ejunz/*/invariant": [
-        "./src/commands/boot/*/src/invariant.ts",
-        "./src/commands/compaction/*/src/invariant.ts",
-        "./src/commands/feedback/*/src/invariant.ts",
-        "./src/commands/goal/*/src/invariant.ts",
         "./src/commands/interaction/*/src/invariant.ts",
         "./src/entry/boot/*/src/invariant.ts",
         "./src/entry/bundle/*/src/invariant.ts",
         "./src/entry/examples/*/src/invariant.ts",
-        "./src/lib/guard/*/src/invariant.ts",
         "./src/lib/llm/*/src/invariant.ts",
         "./src/lib/runtime-diagnostics/*/src/invariant.ts",
-        "./src/lib/util/*/src/invariant.ts",
         "./src/model/context/*/src/invariant.ts",
         "./src/model/core/*/src/invariant.ts",
         "./src/model/goal/*/src/invariant.ts",
@@ -150,113 +272,231 @@
         "./src/service/subprocess/*/src/invariant.ts",
         "./src/service/typert/*/src/invariant.ts",
         "./src/service/web/*/src/invariant.ts",
-        "./src/service/workflow/*/src/invariant.ts",
+        "./src/service/workflow/*/src/invariant.ts"
       ],
-      // host/client package names prefix the group dir (ea-client-<dir>), so
-      // the generic ea-*/invariant list above cannot map them; strip the
-      // group prefix with a dedicated wildcard per group instead.
-      "@ejunz/host-*/invariant": ["./src/service/host/*/src/invariant.ts"],
-      "@ejunz/client-*/invariant": ["./src/service/client/*/src/invariant.ts"],
-      "@ejunz/client-*/client": ["./src/service/client/*/src/client"],
-       // One wildcard maps every @ejunz/<name> to its source. Package
-      // dir names are unique across groups, so first-on-disk-wins resolution is
-      // unambiguous; adding a package under an existing group needs no edit
-      // here. The aggregates' project references (tsconfig.host.json /
-      // tsconfig.client.json) stay explicit — TS project references have no
-      // wildcard form.
-      "@ejunz/profile-web": ["./packages/profile-web/src/providers/web/src/index.ts"],
-      "@ejunz/profile-web/invariant": ["./packages/profile-web/src/invariant.ts"],
-      "@ejunz/profile-web/app": ["./packages/profile-web/src/app/web-app/src/index.ts"],
-      "@ejunz/profile-web/app/invariant": ["./packages/profile-web/src/app/web-app/src/invariant.ts"],
-      "@ejunz/profile-web/api/gateway": ["./packages/profile-web/src/api/gateway/src/index.ts"],
-      "@ejunz/profile-web/api/gateway/client": ["./packages/profile-web/src/api/gateway/src/client/index.ts"],
-      "@ejunz/profile-web/api/gateway/invariant": ["./packages/profile-web/src/api/gateway/src/invariant.ts"],
-      "@ejunz/profile-web/api/gateway/types": ["./packages/profile-web/src/api/gateway/src/types.ts"],
-      "@ejunz/profile-web/api/remotes": ["./packages/profile-web/src/api/remotes/src/index.ts"],
-      "@ejunz/profile-web/api/remotes/client": ["./packages/profile-web/src/api/remotes/src/client/index.ts"],
-      "@ejunz/profile-web/api/remotes/invariant": ["./packages/profile-web/src/api/remotes/src/invariant.ts"],
-      "@ejunz/profile-web/api/remotes/types": ["./packages/profile-web/src/api/remotes/src/types.ts"],
-      "@ejunz/profile-web/client/connection": ["./packages/profile-web/src/client/connection/src/index.ts"],
-      "@ejunz/profile-web/client/connection/client": ["./packages/profile-web/src/client/connection/src/client/index.ts"],
-      "@ejunz/profile-web/client/connection/invariant": ["./packages/profile-web/src/client/connection/src/invariant.ts"],
-      "@ejunz/profile-web/client/runtime": ["./packages/profile-web/src/client/runtime/src/index.ts"],
-      "@ejunz/profile-web/client/runtime/client": ["./packages/profile-web/src/client/runtime/src/client/index.ts"],
-      "@ejunz/profile-web/client/runtime/invariant": ["./packages/profile-web/src/client/runtime/src/invariant.ts"],
-      "@ejunz/profile-web/host/apiproxy": ["./packages/profile-web/src/host/apiproxy/src/index.ts"],
-      "@ejunz/profile-web/host/apiproxy/invariant": ["./packages/profile-web/src/host/apiproxy/src/invariant.ts"],
-      "@ejunz/profile-web/host/apiproxy/api": ["./packages/profile-web/src/host/apiproxy/src/api/index.ts"],
-      "@ejunz/profile-web/host/apiproxy/api/*": ["./packages/profile-web/src/host/apiproxy/src/api/*.ts"],
-      "@ejunz/profile-web/host/apiproxy/client": ["./packages/profile-web/src/host/apiproxy/src/fetch/client.ts"],
-      "@ejunz/profile-web/host/plugin-inventory": ["./packages/profile-web/src/host/plugin-inventory/src/index.ts"],
-      "@ejunz/profile-web/host/plugin-inventory/invariant": ["./packages/profile-web/src/host/plugin-inventory/src/invariant.ts"],
-      "@ejunz/profile-web/host/plugin-inventory/types": ["./packages/profile-web/src/host/plugin-inventory/src/types.ts"],
-      "@ejunz/profile-web/host/plugin-inventory/typert": ["./packages/profile-web/lib/typert.host.d.ts"],
-      "@ejunz/profile-web/host/plugin-inventory/remote": ["./packages/profile-web/lib/typert.remote-client.d.ts"],
-      "@ejunz/profile-web/host/plugin-inventory/typert": ["./packages/profile-web/lib/typert.host.d.ts"],
-      "@ejunz/profile-web/host/plugin-inventory/remote": ["./packages/profile-web/lib/typert.remote-client.d.ts"],
-      "@ejunz/profile-web/host/webserver": ["./packages/profile-web/src/host/webserver/src/index.ts"],
-      "@ejunz/profile-web/host/webserver/invariant": ["./packages/profile-web/src/host/webserver/src/invariant.ts"],
-      "@ejunz/profile-web/providers/web": ["./packages/profile-web/src/providers/web/src/index.ts"],
-      "@ejunz/profile-web/providers/web-fetch-http": ["./packages/profile-web/src/providers/web-fetch-http/src/index.ts"],
-      "@ejunz/profile-web/providers/web-fetch-http/invariant": ["./packages/profile-web/src/providers/web-fetch-http/src/invariant.ts"],
-      "@ejunz/profile-web/providers/web-search-deepseek": ["./packages/profile-web/src/providers/web-search-deepseek/src/index.ts"],
-      "@ejunz/profile-web/providers/web-search-exa": ["./packages/profile-web/src/providers/web-search-exa/src/index.ts"],
-      "@ejunz/profile-web/providers/web-search-perplexity": ["./packages/profile-web/src/providers/web-search-perplexity/src/index.ts"],
-      "@ejunz/tool-host": ["./src/service/ejunz/tool-host/src"],
-      // sdk/ folders are role-named without their npm-side sdk/jsonrpc prefixes,
-      // so the generic wildcard cannot map these three package names.
-      "@ejunz/sdk-client": ["./src/service/sdk/client/src"],
-      "@ejunz/sdk-protocol": ["./src/model/sdk/protocol/src"],
-      "@ejunz/sdk-jsonrpc-server": ["./src/service/sdk/server/src"],
-      "@ejunz/tools": ["./src/service/core/tools/src"],
-      "@ejunz/tools/invariant": ["./src/service/core/tools/src/invariant.ts"],
-      "@ejunz/tool-host": ["./src/service/ejunz/tool-host/src"],
-      "@ejunz/tool-host/invariant": ["./src/service/ejunz/tool-host/src/invariant.ts"],
-      "@ejunz/tool-cordis": ["./src/tools/extensions/tool-cordis/src"],
-      "@ejunz/tool-cordis/invariant": ["./src/tools/extensions/tool-cordis/src/invariant.ts"],
-      "@ejunz/tool-goal": ["./src/tools/goal/tool-goal/src"],
-      "@ejunz/tool-goal/invariant": ["./src/tools/goal/tool-goal/src/invariant.ts"],
-      "@ejunz/tool-ask-user": ["./src/tools/interaction/tool-ask-user/src"],
-      "@ejunz/tool-ask-user/invariant": ["./src/tools/interaction/tool-ask-user/src/invariant.ts"],
-      "@ejunz/tool-jobs": ["./src/tools/jobs/tool-jobs/src"],
-      "@ejunz/tool-jobs/invariant": ["./src/tools/jobs/tool-jobs/src/invariant.ts"],
-      "@ejunz/tool-lsp": ["./src/tools/lsp/tool-lsp/src"],
-      "@ejunz/tool-lsp/invariant": ["./src/tools/lsp/tool-lsp/src/invariant.ts"],
-      "@ejunz/tool-session-query": ["./src/tools/session-query/tool-session-query/src"],
-      "@ejunz/tool-session-query/invariant": ["./src/tools/session-query/tool-session-query/src/invariant.ts"],
-      "@ejunz/tool-skill": ["./src/tools/skill/tool-skill/src"],
-      "@ejunz/tool-skill/invariant": ["./src/tools/skill/tool-skill/src/invariant.ts"],
-      "@ejunz/tool-subagent": ["./src/tools/subagent/tool-subagent/src"],
-      "@ejunz/tool-subagent/invariant": ["./src/tools/subagent/tool-subagent/src/invariant.ts"],
-      "@ejunz/tool-subagent-control": ["./src/tools/subagent/tool-subagent-control/src"],
-      "@ejunz/tool-subagent-control/invariant": ["./src/tools/subagent/tool-subagent-control/src/invariant.ts"],
-      "@ejunz/tool-subagent-report": ["./src/tools/subagent/tool-subagent-report/src"],
-      "@ejunz/tool-subagent-report/invariant": ["./src/tools/subagent/tool-subagent-report/src/invariant.ts"],
-      "@ejunz/tool-todo": ["./src/tools/todo/tool-todo/src"],
-      "@ejunz/tool-todo/invariant": ["./src/tools/todo/tool-todo/src/invariant.ts"],
-      "@ejunz/profile-web/providers/web/invariant": ["./packages/profile-web/src/invariant.ts"],
-      "@ejunz/profile-web/providers/web-search-deepseek/invariant": ["./packages/profile-web/src/providers/web-search-deepseek/src/invariant.ts"],
-      "@ejunz/profile-web/providers/web-search-exa/invariant": ["./packages/profile-web/src/providers/web-search-exa/src/invariant.ts"],
-      "@ejunz/profile-web/providers/web-search-perplexity/invariant": ["./packages/profile-web/src/providers/web-search-perplexity/src/invariant.ts"],
-      "@ejunz/profile-web/tool": ["./packages/profile-web/src/tool/tool-web/src"],
-      "@ejunz/profile-web/tool/invariant": ["./packages/profile-web/src/tool/tool-web/src/invariant.ts"],
-      "@ejunz/tool-ralph": ["./src/tools/workflow/tool-ralph/src"],
-      "@ejunz/tool-ralph/invariant": ["./src/tools/workflow/tool-ralph/src/invariant.ts"],
-      "@ejunz/tool-workflow": ["./src/tools/workflow/tool-workflow/src"],
-      "@ejunz/tool-workflow/invariant": ["./src/tools/workflow/tool-workflow/src/invariant.ts"],
+      "@ejunz/host-*/invariant": [
+        "./src/service/host/*/src/invariant.ts"
+      ],
+      "@ejunz/client-*/invariant": [
+        "./src/service/client/*/src/invariant.ts"
+      ],
+      "@ejunz/client-*/client": [
+        "./src/service/client/*/src/client"
+      ],
+      "@ejunz/profile-web": [
+        "./packages/profile-web/src/providers/web/src/index.ts"
+      ],
+      "@ejunz/profile-web/invariant": [
+        "./packages/profile-web/src/invariant.ts"
+      ],
+      "@ejunz/profile-web/app": [
+        "./packages/profile-web/src/app/web-app/src/index.ts"
+      ],
+      "@ejunz/profile-web/app/invariant": [
+        "./packages/profile-web/src/app/web-app/src/invariant.ts"
+      ],
+      "@ejunz/profile-web/api/remotes": [
+        "./packages/profile-web/src/api/remotes/src/index.ts"
+      ],
+      "@ejunz/profile-web/api/remotes/client": [
+        "./packages/profile-web/src/api/remotes/src/client/index.ts"
+      ],
+      "@ejunz/profile-web/client/connection": [
+        "./packages/profile-web/src/client/connection/src/index.ts"
+      ],
+      "@ejunz/profile-web/client/connection/client": [
+        "./packages/profile-web/src/client/connection/src/client/index.ts"
+      ],
+      "@ejunz/profile-web/client/connection/invariant": [
+        "./packages/profile-web/src/client/connection/src/invariant.ts"
+      ],
+      "@ejunz/profile-web/client/runtime": [
+        "./packages/profile-web/src/client/runtime/src/index.ts"
+      ],
+      "@ejunz/profile-web/client/runtime/client": [
+        "./packages/profile-web/src/client/runtime/src/client/index.ts"
+      ],
+      "@ejunz/profile-web/client/runtime/invariant": [
+        "./packages/profile-web/src/client/runtime/src/invariant.ts"
+      ],
+      "@ejunz/profile-web/host/apiproxy": [
+        "./packages/profile-web/src/host/apiproxy/src/index.ts"
+      ],
+      "@ejunz/profile-web/host/apiproxy/invariant": [
+        "./packages/profile-web/src/host/apiproxy/src/invariant.ts"
+      ],
+      "@ejunz/profile-web/host/apiproxy/api": [
+        "./packages/profile-web/src/host/apiproxy/src/api/index.ts"
+      ],
+      "@ejunz/profile-web/host/apiproxy/api/*": [
+        "./packages/profile-web/src/host/apiproxy/src/api/*.ts"
+      ],
+      "@ejunz/profile-web/host/apiproxy/client": [
+        "./packages/profile-web/src/host/apiproxy/src/fetch/client.ts"
+      ],
+      "@ejunz/profile-web/host/plugin-inventory": [
+        "./packages/profile-web/src/host/plugin-inventory/src/index.ts"
+      ],
+      "@ejunz/profile-web/host/plugin-inventory/invariant": [
+        "./packages/profile-web/src/host/plugin-inventory/src/invariant.ts"
+      ],
+      "@ejunz/profile-web/host/plugin-inventory/types": [
+        "./packages/profile-web/src/host/plugin-inventory/src/types.ts"
+      ],
+      "@ejunz/profile-web/host/plugin-inventory/typert": [
+        "./packages/profile-web/lib/typert.host.d.ts"
+      ],
+      "@ejunz/profile-web/host/plugin-inventory/remote": [
+        "./packages/profile-web/lib/typert.remote-client.d.ts"
+      ],
+      "@ejunz/profile-web/host/webserver": [
+        "./packages/profile-web/src/host/webserver/src/index.ts"
+      ],
+      "@ejunz/profile-web/host/webserver/invariant": [
+        "./packages/profile-web/src/host/webserver/src/invariant.ts"
+      ],
+      "@ejunz/profile-web/providers/web": [
+        "./packages/profile-web/src/providers/web/src/index.ts"
+      ],
+      "@ejunz/profile-web/providers/web-fetch-http": [
+        "./packages/profile-web/src/providers/web-fetch-http/src/index.ts"
+      ],
+      "@ejunz/profile-web/providers/web-fetch-http/invariant": [
+        "./packages/profile-web/src/providers/web-fetch-http/src/invariant.ts"
+      ],
+      "@ejunz/profile-web/providers/web-search-deepseek": [
+        "./packages/profile-web/src/providers/web-search-deepseek/src/index.ts"
+      ],
+      "@ejunz/profile-web/providers/web-search-exa": [
+        "./packages/profile-web/src/providers/web-search-exa/src/index.ts"
+      ],
+      "@ejunz/profile-web/providers/web-search-perplexity": [
+        "./packages/profile-web/src/providers/web-search-perplexity/src/index.ts"
+      ],
+      "@ejunz/ea/tool-host": [
+        "./src/service/ejunz/tool-host/src"
+      ],
+      "@ejunz/ea/sdk-client": [
+        "./src/service/sdk/client/src"
+      ],
+      "@ejunz/ea/sdk": [
+        "./src/model/sdk/protocol/src"
+      ],
+      "@ejunz/ea/sdk-jsonrpc-server": [
+        "./src/service/sdk/server/src"
+      ],
+      "@ejunz/ea/tools": [
+        "./src/service/core/tools/src"
+      ],
+      "@ejunz/ea/tools/invariant": [
+        "./src/service/core/tools/src/invariant.ts"
+      ],
+      "@ejunz/ea/tool-host/invariant": [
+        "./src/service/ejunz/tool-host/src/invariant.ts"
+      ],
+      "@ejunz/ea/tool-cordis": [
+        "./src/tools/extensions/tool-cordis/src"
+      ],
+      "@ejunz/ea/tool-cordis/invariant": [
+        "./src/tools/extensions/tool-cordis/src/invariant.ts"
+      ],
+      "@ejunz/tool-goal": [
+        "./src/tools/goal/tool-goal/src"
+      ],
+      "@ejunz/tool-goal/invariant": [
+        "./src/tools/goal/tool-goal/src/invariant.ts"
+      ],
+      "@ejunz/ea/tool-ask-user": [
+        "./src/tools/tool-ask-user/tool-ask-user.ts"
+      ],
+      "@ejunz/ea/tool-ask-user/invariant": [
+        "./src/tools/tool-ask-user/tool-ask-user.ts"
+      ],
+      "@ejunz/ea/tool-jobs": [
+        "./src/tools/tool-jobs/tool-jobs.ts"
+      ],
+      "@ejunz/ea/tool-jobs/invariant": [
+        "./src/tools/tool-jobs/tool-jobs.ts"
+      ],
+      "@ejunz/ea/tool-lsp": [
+        "./src/tools/lsp/tool-lsp/src"
+      ],
+      "@ejunz/ea/tool-lsp/invariant": [
+        "./src/tools/lsp/tool-lsp/src/invariant.ts"
+      ],
+      "@ejunz/ea/tool-session-query": [
+        "./src/tools/session-query/tool-session-query/src"
+      ],
+      "@ejunz/ea/tool-session-query/invariant": [
+        "./src/tools/session-query/tool-session-query/src/invariant.ts"
+      ],
+      "@ejunz/ea/tool-skill": [
+        "./src/tools/tool-skill/tool-skill.ts"
+      ],
+      "@ejunz/ea/tool-skill/invariant": [
+        "./src/tools/tool-skill/tool-skill.ts"
+      ],
+      "@ejunz/ea/tool-subagent": [
+        "./src/tools/tool-subagent/tool-subagent.ts"
+      ],
+      "@ejunz/ea/tool-subagent/invariant": [
+        "./src/tools/tool-subagent/tool-subagent.ts"
+      ],
+      "@ejunz/ea/tool-subagent-control": [
+        "./src/tools/tool-subagent-control/src"
+      ],
+      "@ejunz/ea/tool-subagent-control/invariant": [
+        "./src/tools/tool-subagent-control/src/invariant.ts"
+      ],
+      "@ejunz/ea/tool-subagent-report": [
+        "./src/tools/tool-subagent-report/tool-subagent-report.ts"
+      ],
+      "@ejunz/ea/tool-subagent-report/invariant": [
+        "./src/tools/tool-subagent-report/tool-subagent-report.ts"
+      ],
+      "@ejunz/ea/tool-todo": [
+        "./src/tools/todo/tool-todo/src"
+      ],
+      "@ejunz/ea/tool-todo/invariant": [
+        "./src/tools/todo/tool-todo/src/invariant.ts"
+      ],
+      "@ejunz/profile-web/providers/web/invariant": [
+        "./packages/profile-web/src/invariant.ts"
+      ],
+      "@ejunz/profile-web/providers/web-search-deepseek/invariant": [
+        "./packages/profile-web/src/providers/web-search-deepseek/src/invariant.ts"
+      ],
+      "@ejunz/profile-web/providers/web-search-exa/invariant": [
+        "./packages/profile-web/src/providers/web-search-exa/src/invariant.ts"
+      ],
+      "@ejunz/profile-web/providers/web-search-perplexity/invariant": [
+        "./packages/profile-web/src/providers/web-search-perplexity/src/invariant.ts"
+      ],
+      "@ejunz/profile-web/tool": [
+        "./packages/profile-web/src/tool/tool-web/src"
+      ],
+      "@ejunz/profile-web/tool/invariant": [
+        "./packages/profile-web/src/tool/tool-web/src/invariant.ts"
+      ],
+      "@ejunz/ea/tool-ralph": [
+        "./src/tools/tool-ralph/tool-ralph.ts"
+      ],
+      "@ejunz/ea/tool-ralph/invariant": [
+        "./src/tools/tool-ralph/tool-ralph.ts"
+      ],
+      "@ejunz/ea/tool-workflow": [
+        "./src/tools/workflow/tool-workflow/src"
+      ],
+      "@ejunz/ea/tool-workflow/invariant": [
+        "./src/tools/workflow/tool-workflow/src/invariant.ts"
+      ],
       "@ejunz/*": [
-        "./src/commands/boot/*/src",
-        "./src/commands/compaction/*/src",
-        "./src/commands/feedback/*/src",
-        "./src/commands/goal/*/src",
         "./src/commands/interaction/*/src",
         "./src/entry/boot/*/src",
         "./src/entry/bundle/*/src",
         "./src/entry/examples/*/src",
-        "./src/lib/guard/*/src",
         "./src/lib/llm/*/src",
         "./src/lib/runtime-diagnostics/*/src",
-        "./src/lib/util/*/src",
         "./src/model/context/*/src",
         "./src/model/core/*/src",
         "./src/model/goal/*/src",
@@ -313,6 +553,462 @@
         "./src/script/todo/*/src",
         "./src/script/web/*/src",
         "./src/script/workflow/*/src"
+      ],
+      "@ejunz/ea/invariants": [
+        "./src/service/invariants.ts"
+      ],
+      "@ejunz/ea/cmdline": [
+        "./src/commands/cmdline.ts"
+      ],
+      "@ejunz/ea/cmdline/invariant": [
+        "./src/commands/cmdline.ts"
+      ],
+      "@ejunz/ea/command-compact": [
+        "./src/commands/command-compact.ts"
+      ],
+      "@ejunz/ea/command-compact/invariant": [
+        "./src/commands/command-compact.ts"
+      ],
+      "@ejunz/ea/command-feedback": [
+        "./src/commands/command-feedback.ts"
+      ],
+      "@ejunz/ea/command-feedback/invariant": [
+        "./src/commands/command-feedback.ts"
+      ],
+      "@ejunz/ea/command-goal": [
+        "./src/commands/command-goal.ts"
+      ],
+      "@ejunz/ea/command-goal/invariant": [
+        "./src/commands/command-goal.ts"
+      ],
+      "@ejunz/ea/brand": [
+        "./src/lib/brand.ts"
+      ],
+      "@ejunz/ea/brand/invariant": [
+        "./src/lib/brand.ts"
+      ],
+      "@ejunz/ea/repeat-tool-reminder": [
+        "./src/lib/repeat-tool-reminder.ts"
+      ],
+      "@ejunz/ea/repeat-tool-reminder/invariant": [
+        "./src/lib/repeat-tool-reminder.ts"
+      ],
+      "@ejunz/ea/atomic-write": [
+        "./src/lib/atomic-write.ts"
+      ],
+      "@ejunz/ea/atomic-write/invariant": [
+        "./src/lib/atomic-write.ts"
+      ],
+      "@ejunz/ea/home-paths": [
+        "./src/lib/home-paths.ts"
+      ],
+      "@ejunz/ea/home-paths/invariant": [
+        "./src/lib/home-paths.ts"
+      ],
+      "@ejunz/ea/launch-environment": [
+        "./src/lib/launch-environment.ts"
+      ],
+      "@ejunz/ea/launch-environment/invariant": [
+        "./src/lib/launch-environment.ts"
+      ],
+      "@ejunz/ea/output-retention": [
+        "./src/lib/output-retention.ts"
+      ],
+      "@ejunz/ea/output-retention/invariant": [
+        "./src/lib/output-retention.ts"
+      ],
+      "@ejunz/ea/timeout": [
+        "./src/lib/timeout.ts"
+      ],
+      "@ejunz/ea/timeout/invariant": [
+        "./src/lib/timeout.ts"
+      ],
+      "@ejunz/ea/agent-spine-demo": [
+        "./src/entry/agent-spine-demo.ts"
+      ],
+      "@ejunz/ea/agent-spine-demo/invariant": [
+        "./src/entry/agent-spine-demo.ts"
+      ],
+      "@ejunz/ea/anonymous-user-id": [
+        "./src/model/identity/anonymous-user-id.ts"
+      ],
+      "@ejunz/ea/anonymous-user-id/invariant": [
+        "./src/model/identity/anonymous-user-id.ts"
+      ],
+      "@ejunz/ea/persona": [
+        "./src/model/preset/persona.ts"
+      ],
+      "@ejunz/ea/persona/invariant": [
+        "./src/model/preset/persona.ts"
+      ],
+      "@ejunz/ea/session-checkpoint-policy": [
+        "./src/model/checkpoint-policy/session-checkpoint-policy.ts"
+      ],
+      "@ejunz/ea/session-checkpoint-policy/invariant": [
+        "./src/model/checkpoint-policy/session-checkpoint-policy.ts"
+      ],
+      "@ejunz/ea/session-persistence-ejunz": [
+        "./src/model/persistence-ejunz/session-persistence-ejunz.ts"
+      ],
+      "@ejunz/ea/session-persistence-ejunz/invariant": [
+        "./src/model/persistence-ejunz/session-persistence-ejunz.ts"
+      ],
+      "@ejunz/ea/session-telemetry-otel": [
+        "./src/model/telemetry-otel/session-telemetry-otel.ts"
+      ],
+      "@ejunz/ea/session-telemetry-otel/invariant": [
+        "./src/model/telemetry-otel/session-telemetry-otel.ts"
+      ],
+      "@ejunz/ea/session-title-all-prompts-llm": [
+        "./src/model/title-all-prompts-llm/session-title-all-prompts-llm.ts"
+      ],
+      "@ejunz/ea/session-title-all-prompts-llm/invariant": [
+        "./src/model/title-all-prompts-llm/session-title-all-prompts-llm.ts"
+      ],
+      "@ejunz/ea/session-title-first-prompt-llm": [
+        "./src/model/title-first-prompt-llm/session-title-first-prompt-llm.ts"
+      ],
+      "@ejunz/ea/session-title-first-prompt-llm/invariant": [
+        "./src/model/title-first-prompt-llm/session-title-first-prompt-llm.ts"
+      ],
+      "@ejunz/ea/session-title-llm": [
+        "./src/model/title-llm/session-title-llm.ts"
+      ],
+      "@ejunz/ea/session-title-llm/invariant": [
+        "./src/model/title-llm/session-title-llm.ts"
+      ],
+      "@ejunz/ea/agent-default-model": [
+        "./src/service/agent-default-model/agent-default-model.ts"
+      ],
+      "@ejunz/ea/agent-default-model/invariant": [
+        "./src/service/agent-default-model/agent-default-model.ts"
+      ],
+      "@ejunz/ea/credentials-local": [
+        "./src/service/credentials-local/credentials-local.ts"
+      ],
+      "@ejunz/ea/credentials-local/invariant": [
+        "./src/service/credentials-local/credentials-local.ts"
+      ],
+      "@ejunz/ea/e2b": [
+        "./src/service/e2b/e2b.ts"
+      ],
+      "@ejunz/ea/e2b/invariant": [
+        "./src/service/e2b/e2b.ts"
+      ],
+      "@ejunz/ea/fs-e2b": [
+        "./src/service/fs-e2b/fs-e2b.ts"
+      ],
+      "@ejunz/ea/fs-e2b/invariant": [
+        "./src/service/fs-e2b/fs-e2b.ts"
+      ],
+      "@ejunz/ea/jobs-local": [
+        "./src/service/jobs-local/jobs-local.ts"
+      ],
+      "@ejunz/ea/jobs-local/invariant": [
+        "./src/service/jobs-local/jobs-local.ts"
+      ],
+      "@ejunz/ea/settings-file": [
+        "./src/service/settings-file/settings-file.ts"
+      ],
+      "@ejunz/ea/settings-file/invariant": [
+        "./src/service/settings-file/settings-file.ts"
+      ],
+      "@ejunz/ea/skill": [
+        "./src/service/skill/skill.ts"
+      ],
+      "@ejunz/ea/skill/invariant": [
+        "./src/service/skill/skill.ts"
+      ],
+      "@ejunz/ea/skill-filesystem": [
+        "./src/service/skill-filesystem/skill-filesystem.ts"
+      ],
+      "@ejunz/ea/skill-filesystem/invariant": [
+        "./src/service/skill-filesystem/skill-filesystem.ts"
+      ],
+      "@ejunz/ea/storage-ejunz": [
+        "./src/service/storage-ejunz/storage-ejunz.ts"
+      ],
+      "@ejunz/ea/storage-ejunz/invariant": [
+        "./src/service/storage-ejunz/storage-ejunz.ts"
+      ],
+      "@ejunz/ea/subagent-fork-in-process": [
+        "./src/service/subagent-fork-in-process/subagent-fork-in-process.ts"
+      ],
+      "@ejunz/ea/subagent-fork-in-process/invariant": [
+        "./src/service/subagent-fork-in-process/subagent-fork-in-process.ts"
+      ],
+      "@ejunz/ea/subagent-spawn-in-process": [
+        "./src/service/subagent-spawn-in-process/subagent-spawn-in-process.ts"
+      ],
+      "@ejunz/ea/subagent-spawn-in-process/invariant": [
+        "./src/service/subagent-spawn-in-process/subagent-spawn-in-process.ts"
+      ],
+      "@ejunz/ea/typert-loader": [
+        "./src/service/loader/loader.ts"
+      ],
+      "@ejunz/ea/typert-loader/invariant": [
+        "./src/service/loader/loader.ts"
+      ],
+      "@ejunz/ea/tool-ask-user": [
+        "./src/tools/tool-ask-user/tool-ask-user.ts"
+      ],
+      "@ejunz/ea/tool-ask-user/invariant": [
+        "./src/tools/tool-ask-user/tool-ask-user.ts"
+      ],
+      "@ejunz/ea/tool-jobs": [
+        "./src/tools/tool-jobs/tool-jobs.ts"
+      ],
+      "@ejunz/ea/tool-jobs/invariant": [
+        "./src/tools/tool-jobs/tool-jobs.ts"
+      ],
+      "@ejunz/ea/tool-skill": [
+        "./src/tools/tool-skill/tool-skill.ts"
+      ],
+      "@ejunz/ea/tool-skill/invariant": [
+        "./src/tools/tool-skill/tool-skill.ts"
+      ],
+      "@ejunz/ea/tool-subagent": [
+        "./src/tools/tool-subagent/tool-subagent.ts"
+      ],
+      "@ejunz/ea/tool-subagent/invariant": [
+        "./src/tools/tool-subagent/tool-subagent.ts"
+      ],
+      "@ejunz/ea/tool-subagent-report": [
+        "./src/tools/tool-subagent-report/tool-subagent-report.ts"
+      ],
+      "@ejunz/ea/tool-subagent-report/invariant": [
+        "./src/tools/tool-subagent-report/tool-subagent-report.ts"
+      ],
+      "@ejunz/ea/tool-ralph": [
+        "./src/tools/tool-ralph/tool-ralph.ts"
+      ],
+      "@ejunz/ea/tool-ralph/invariant": [
+        "./src/tools/tool-ralph/tool-ralph.ts"
+      ],
+      "@ejunz/ea/cmdline": [
+        "./src/commands/cmdline.ts"
+      ],
+      "@ejunz/ea/cmdline/invariant": [
+        "./src/commands/cmdline.ts"
+      ],
+      "@ejunz/ea/brand": [
+        "./src/lib/brand.ts"
+      ],
+      "@ejunz/ea/brand/invariant": [
+        "./src/lib/brand.ts"
+      ],
+      "@ejunz/ea/command-compact": [
+        "./src/commands/command-compact.ts"
+      ],
+      "@ejunz/ea/command-compact/invariant": [
+        "./src/commands/command-compact.ts"
+      ],
+      "@ejunz/ea/command-feedback": [
+        "./src/commands/command-feedback.ts"
+      ],
+      "@ejunz/ea/command-feedback/invariant": [
+        "./src/commands/command-feedback.ts"
+      ],
+      "@ejunz/ea/command-goal": [
+        "./src/commands/command-goal.ts"
+      ],
+      "@ejunz/ea/command-goal/invariant": [
+        "./src/commands/command-goal.ts"
+      ],
+      "@ejunz/ea/repeat-tool-reminder": [
+        "./src/lib/repeat-tool-reminder.ts"
+      ],
+      "@ejunz/ea/repeat-tool-reminder/invariant": [
+        "./src/lib/repeat-tool-reminder.ts"
+      ],
+      "@ejunz/ea/tool-call-timeout-policy": [
+        "./src/lib/timeout-policy.ts"
+      ],
+      "@ejunz/ea/tool-call-timeout-policy/invariant": [
+        "./src/lib/timeout-policy.ts"
+      ],
+      "@ejunz/ea/atomic-write": [
+        "./src/lib/atomic-write.ts"
+      ],
+      "@ejunz/ea/atomic-write/invariant": [
+        "./src/lib/atomic-write.ts"
+      ],
+      "@ejunz/ea/home-paths": [
+        "./src/lib/home-paths.ts"
+      ],
+      "@ejunz/ea/home-paths/invariant": [
+        "./src/lib/home-paths.ts"
+      ],
+      "@ejunz/ea/launch-environment": [
+        "./src/lib/launch-environment.ts"
+      ],
+      "@ejunz/ea/launch-environment/invariant": [
+        "./src/lib/launch-environment.ts"
+      ],
+      "@ejunz/ea/output-retention": [
+        "./src/lib/output-retention.ts"
+      ],
+      "@ejunz/ea/output-retention/invariant": [
+        "./src/lib/output-retention.ts"
+      ],
+      "@ejunz/ea/timeout": [
+        "./src/lib/timeout.ts"
+      ],
+      "@ejunz/ea/timeout/invariant": [
+        "./src/lib/timeout.ts"
+      ],
+      "@ejunz/ea/agent-spine-demo": [
+        "./src/entry/agent-spine-demo.ts"
+      ],
+      "@ejunz/ea/agent-spine-demo/invariant": [
+        "./src/entry/agent-spine-demo.ts"
+      ],
+      "@ejunz/ea/anonymous-user-id": [
+        "./src/model/identity/anonymous-user-id.ts"
+      ],
+      "@ejunz/ea/anonymous-user-id/invariant": [
+        "./src/model/identity/anonymous-user-id.ts"
+      ],
+      "@ejunz/ea/persona": [
+        "./src/model/preset/persona.ts"
+      ],
+      "@ejunz/ea/persona/invariant": [
+        "./src/model/preset/persona.ts"
+      ],
+      "@ejunz/ea/session-checkpoint-policy": [
+        "./src/model/checkpoint-policy/session-checkpoint-policy.ts"
+      ],
+      "@ejunz/ea/session-checkpoint-policy/invariant": [
+        "./src/model/checkpoint-policy/session-checkpoint-policy.ts"
+      ],
+      "@ejunz/ea/session-persistence-ejunz": [
+        "./src/model/persistence-ejunz/session-persistence-ejunz.ts"
+      ],
+      "@ejunz/ea/session-persistence-ejunz/invariant": [
+        "./src/model/persistence-ejunz/session-persistence-ejunz.ts"
+      ],
+      "@ejunz/ea/session-telemetry-otel": [
+        "./src/model/telemetry-otel/session-telemetry-otel.ts"
+      ],
+      "@ejunz/ea/session-telemetry-otel/invariant": [
+        "./src/model/telemetry-otel/session-telemetry-otel.ts"
+      ],
+      "@ejunz/ea/session-title-all-prompts-llm": [
+        "./src/model/title-all-prompts-llm/session-title-all-prompts-llm.ts"
+      ],
+      "@ejunz/ea/session-title-all-prompts-llm/invariant": [
+        "./src/model/title-all-prompts-llm/session-title-all-prompts-llm.ts"
+      ],
+      "@ejunz/ea/session-title-first-prompt-llm": [
+        "./src/model/title-first-prompt-llm/session-title-first-prompt-llm.ts"
+      ],
+      "@ejunz/ea/session-title-first-prompt-llm/invariant": [
+        "./src/model/title-first-prompt-llm/session-title-first-prompt-llm.ts"
+      ],
+      "@ejunz/ea/session-title-llm": [
+        "./src/model/title-llm/session-title-llm.ts"
+      ],
+      "@ejunz/ea/session-title-llm/invariant": [
+        "./src/model/title-llm/session-title-llm.ts"
+      ],
+      "@ejunz/ea/agent-default-model": [
+        "./src/service/agent-default-model/agent-default-model.ts"
+      ],
+      "@ejunz/ea/agent-default-model/invariant": [
+        "./src/service/agent-default-model/agent-default-model.ts"
+      ],
+      "@ejunz/ea/credentials-local": [
+        "./src/service/credentials-local/credentials-local.ts"
+      ],
+      "@ejunz/ea/credentials-local/invariant": [
+        "./src/service/credentials-local/credentials-local.ts"
+      ],
+      "@ejunz/ea/e2b": [
+        "./src/service/e2b/e2b.ts"
+      ],
+      "@ejunz/ea/e2b/invariant": [
+        "./src/service/e2b/e2b.ts"
+      ],
+      "@ejunz/ea/fs-e2b": [
+        "./src/service/fs-e2b/fs-e2b.ts"
+      ],
+      "@ejunz/ea/fs-e2b/invariant": [
+        "./src/service/fs-e2b/fs-e2b.ts"
+      ],
+      "@ejunz/ea/jobs-local": [
+        "./src/service/jobs-local/jobs-local.ts"
+      ],
+      "@ejunz/ea/jobs-local/invariant": [
+        "./src/service/jobs-local/jobs-local.ts"
+      ],
+      "@ejunz/ea/settings-file": [
+        "./src/service/settings-file/settings-file.ts"
+      ],
+      "@ejunz/ea/settings-file/invariant": [
+        "./src/service/settings-file/settings-file.ts"
+      ],
+      "@ejunz/ea/skill": [
+        "./src/service/skill/skill.ts"
+      ],
+      "@ejunz/ea/skill/invariant": [
+        "./src/service/skill/skill.ts"
+      ],
+      "@ejunz/ea/skill-filesystem": [
+        "./src/service/skill-filesystem/skill-filesystem.ts"
+      ],
+      "@ejunz/ea/skill-filesystem/invariant": [
+        "./src/service/skill-filesystem/skill-filesystem.ts"
+      ],
+      "@ejunz/ea/storage-ejunz": [
+        "./src/service/storage-ejunz/storage-ejunz.ts"
+      ],
+      "@ejunz/ea/storage-ejunz/invariant": [
+        "./src/service/storage-ejunz/storage-ejunz.ts"
+      ],
+      "@ejunz/ea/subagent-fork-in-process": [
+        "./src/service/subagent-fork-in-process/subagent-fork-in-process.ts"
+      ],
+      "@ejunz/ea/subagent-fork-in-process/invariant": [
+        "./src/service/subagent-fork-in-process/subagent-fork-in-process.ts"
+      ],
+      "@ejunz/ea/subagent-spawn-in-process": [
+        "./src/service/subagent-spawn-in-process/subagent-spawn-in-process.ts"
+      ],
+      "@ejunz/ea/subagent-spawn-in-process/invariant": [
+        "./src/service/subagent-spawn-in-process/subagent-spawn-in-process.ts"
+      ],
+      "@ejunz/ea/typert-loader/invariant": [
+        "./src/service/loader/loader.ts"
+      ],
+      "@ejunz/ea/invariants/invariant": [
+        "./src/service/invariants.ts"
+      ],
+      "@ejunz/ea/app-boot": [
+        "./src/entry/app-boot.ts"
+      ],
+      "@ejunz/ea/app-boot/invariant": [
+        "./src/entry/app-boot.ts"
+      ],
+      "@ejunz/ea/app-boot": [
+        "./src/entry/app-boot.ts"
+      ],
+      "@ejunz/ea/app-boot/invariant": [
+        "./src/entry/app-boot.ts"
+      ],
+      "@ejunz/ea/base": [
+        "./src/entry/base.ts"
+      ],
+      "@ejunz/ea/base/invariant": [
+        "./src/entry/base.ts"
+      ],
+      "@ejunz/ea/base": [
+        "./src/entry/base.ts"
+      ],
+      "@ejunz/ea/base/invariant": [
+        "./src/entry/base.ts"
+      ],
+      "@ejunz/ea/invariant": [
+        "./src/entry/base.ts"
       ]
     }
   }

@@ -5,12 +5,12 @@
 // views. callId/approvalId stay plain string here (narrow to real brands when
 // convenient).
 
-import type { CommandId } from '@ejunz/commands/brand'
-import type { MessageId } from '@ejunz/llm/brand'
-import type { ContentBlock } from '@ejunz/llm/types'
-import type { ImageAttachmentRef } from '@ejunz/attachment'
-import type { LlmRetryEventData } from '@ejunz/llm-retry/types'
-import type { TodoItem } from '@ejunz/session/types'
+import type { CommandId } from '@ejunz/ea/commands/brand'
+import type { MessageId } from '@ejunz/ea/llm/brand'
+import type { ContentBlock } from '@ejunz/ea/llm/types'
+import type { ImageAttachmentRef } from '@ejunz/ea/attachment'
+import type { LlmRetryEventData } from '@ejunz/ea/llm-retry/types'
+import type { TodoItem } from '@ejunz/ea/session/types'
 import type {
   RpcError, SessionId, SubagentAddress, ToolCallView, ToolResultView,
 } from '@ejunz/profile-web/api/remotes/client'

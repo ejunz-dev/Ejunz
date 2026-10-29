@@ -1,0 +1,78 @@
+/**
+ * The in-process SPAWN subagent backend: registers a {@link SubagentProvider} on
+ * `ctx.subagents` that runs each child as a fresh child {@link Agent} on the same cordis
+ * context (its own session, own system prompt, zero parent context). The cheapest transport,
+ * reusing the agent factory's quiescent teardown.
+ * @module @ejunz/ea/subagent-spawn-in-process
+ */
+
+import type { Context } from '@ejunz/cordis'
+import z from '@ejunz/schemastery'
+import type {
+  ContinuableCreateSpec,
+  ResolvedSubagentStartRequest,
+  SubagentCapabilities,
+  SubagentProvider,
+} from '@ejunz/ea/subagent'
+import { startInProcessRun } from '@ejunz/ea/subagent-in-process-driver'
+
+export const name = 'subagent-spawn-in-process'
+// `tools` is deliberately not injected: the child factory already provides it during setup,
+// and adding it here would unnecessarily change this provider's apply timing.
+export const inject = ['subagents']
+
+/** Config: the registry name to register the provider under. */
+export interface Config {
+  /** Provider name on `ctx.subagents` (default `spawn`). */
+  providerName: string
+}
+
+export const Config: z<Config> = z.object({
+  providerName: z.string().default('spawn'),
+})
+
+/**
+ * The spawn provider. Supports every start-time capability: `depthLimit` (it
+ * constructs the child, so it can enforce a recursion cap), `outputSchema`
+ * (the scoped structured runtime), and `toolFilter`/`persona` (scoped
+ * `restrict()` and a scoped shadowing persona section, applied in the child's
+ * creation window).
+ */
+class SpawnInProcessProvider implements SubagentProvider {
+  readonly capabilities: SubagentCapabilities = { outputSchema: true, depthLimit: true, toolFilter: true, persona: true }
+  // Context contract: a spawned child starts fresh — it never sees the parent conversation.
+  readonly inheritsParentContext = false
+
+  constructor(readonly name: string) {}
+
+  start(request: ResolvedSubagentStartRequest) {
+    // Fresh child: no seed. The shared driver mints ids, stamps cwd/lineage/
+    // depth, drives the one-shot (including the structured capture when the
+    // request carries an outputSchema), and maps the result.
+    return startInProcessRun(request, {})
+  }
+
+  prepareContinuable(): Promise<ContinuableCreateSpec> {
+    // A spawned child starts fresh, so it contributes no seed; the continuation
+    // manager owns every later operation on it.
+    return Promise.resolve({})
+  }
+}
+
+export function apply(ctx: Context, config: Config): void {
+  ctx.subagents.registerProvider(new SpawnInProcessProvider(config.providerName))
+}
+
+import type { InvariantInstaller } from '@ejunz/ea/invariants'
+import type { Context as InvariantContext } from '@ejunz/cordis'
+
+namespace __invariant {
+  const PACKAGE_NAME = '@ejunz/ea/subagent-spawn-in-process'
+  export const name = 'subagent-spawn-in-process-invariant'
+  export const inject = ['invariants']
+  const install: InvariantInstaller = () => {}
+  export const apply = (ctx: InvariantContext): Promise<() => void> =>
+    Promise.resolve(ctx.invariants.register(PACKAGE_NAME, install))
+}
+
+export import __invariant_companion = __invariant

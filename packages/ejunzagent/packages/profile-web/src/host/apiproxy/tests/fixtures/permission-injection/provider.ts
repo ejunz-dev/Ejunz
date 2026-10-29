@@ -1,6 +1,6 @@
 import type { Context } from '@ejunz/cordis'
-import { Session } from '@ejunz/session'
-import type { SessionId } from '@ejunz/session/types'
+import { Session } from '@ejunz/ea/session'
+import type { SessionId } from '@ejunz/ea/session/types'
 
 export const name = 'permission-injection-test-provider'
 export const inject = []

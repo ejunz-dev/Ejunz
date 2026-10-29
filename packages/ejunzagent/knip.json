@@ -88,7 +88,7 @@
         "tests/**/*.ts"
       ]
     },
-    "src/service/e2b/e2b": {
+    "src/service/e2b": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -98,7 +98,7 @@
         "tests/**/*.ts"
       ]
     },
-    "src/model/context/time-context": {
+    "src/model/time-context.ts": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -122,7 +122,7 @@
         "typescript-language-server"
       ]
     },
-    "src/model/session/session-telemetry-otel": {
+    "src/model/telemetry-otel": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -132,7 +132,7 @@
         "tests/**/*.ts"
       ]
     },
-    "src/lib/util/brand": {
+    "src/lib/brand": {
       "project": [
         "src/**/*.ts"
       ]
@@ -142,7 +142,7 @@
         "src/**/*.ts"
       ]
     },
-    "src/lib/util/timeout": {
+    "src/lib/timeout": {
       "entry": [
         "tests/**/*.spec.ts"
       ],
@@ -151,7 +151,7 @@
         "tests/**/*.ts"
       ]
     },
-    "src/lib/util/output-retention": {
+    "src/lib/output-retention": {
       "entry": [
         "tests/**/*.spec.ts"
       ],
@@ -189,7 +189,7 @@
         "tests/**/*.ts"
       ]
     },
-    "src/tools/goal/tool-goal": {
+    "src/tools/goal.ts": {
       "entry": [
         "tests/**/*.spec.ts"
       ],
@@ -228,7 +228,7 @@
         "tests/**/*.ts"
       ]
     },
-    "src/model/session/session-title-first-prompt-llm": {
+    "src/model/title-first-prompt-llm": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -238,7 +238,7 @@
         "tests/**/*.ts"
       ]
     },
-    "src/model/context/agent-instructions": {
+    "src/model/agent-instructions.ts": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -248,7 +248,7 @@
         "tests/**/*.ts"
       ]
     },
-    "src/model/session/session-checkpoint-policy": {
+    "src/model/checkpoint-policy": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -258,7 +258,7 @@
         "tests/**/*.ts"
       ]
     },
-    "src/lib/util/home-paths": {
+    "src/lib/home-paths": {
       "entry": [
         "tests/**/*.spec.ts"
       ],
@@ -275,11 +275,6 @@
       "project": [
         "src/**/*.ts",
         "tests/**/*.ts"
-      ]
-    },
-    "src/entry/examples/agent-spine-demo": {
-      "project": [
-        "src/**/*.ts"
       ]
     },
     "src/service/sdk/server": {
@@ -304,7 +299,7 @@
         "zod"
       ]
     },
-    "src/service/subagent/subagent-spawn-in-process": {
+    "src/service/subagent-spawn-in-process": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"
@@ -387,7 +382,7 @@
         "tests/**/*.ts"
       ]
     },
-    "src/entry/bundle/base": {
+    "src/entry/base.ts": {
       "ignoreDependencies": [
         "@ejunz/.+"
       ]

@@ -2,13 +2,13 @@
  * `@ejunz/profile-web/providers/web-search-perplexity`: registers a Perplexity-backed
  * `WebSearchProvider` with `ctx.web`. A function/namespace plugin (NOT a
  * default-export service): it registers INTO the seam's provider registry, like
- * `@ejunz/llm-deepseek` registers an adapter into `ctx.llm`.
+ * `@ejunz/ea/llm-deepseek` registers an adapter into `ctx.llm`.
  *
  * @module @ejunz/profile-web/providers/web-search-perplexity
  */
 
 import type { Context } from '@ejunz/cordis'
-import { launchEnvironmentOf } from '@ejunz/launch-environment'
+import { launchEnvironmentOf } from '@ejunz/ea/launch-environment'
 import z from '@ejunz/schemastery'
 import type {} from '@ejunz/profile-web'
 import { PerplexitySearchProvider, PERPLEXITY_DEFAULT_BASE_URL, PERPLEXITY_DEFAULT_MAX_TOKENS, PERPLEXITY_DEFAULT_MODEL } from './provider.ts'

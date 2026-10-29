@@ -13,7 +13,7 @@ import {
   loadOverlayPatches,
   renderConfigDump,
   type ConfigDumpLayer,
-} from '@ejunz/app-boot'
+} from '@ejunz/ea/app-boot'
 import { homePatchPath, prepareProfile, PROFILE_ROOT_FILENAME } from '../service/profile-boot.ts'
 
 const NAME = 'ea'

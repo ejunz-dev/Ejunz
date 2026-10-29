@@ -1,11 +1,11 @@
 /** Host BFF policy for resolving Remote Agent and Session identities. */
 
 import type { Context } from '@ejunz/cordis'
-import type { Agent, AgentOptions, AgentSetup } from '@ejunz/agent'
-import type { Session, SessionEvent, SessionHeader, SessionId } from '@ejunz/session'
-import type { SessionPersistence } from '@ejunz/session-persistence'
-import { TypertLookupFailure } from '@ejunz/typert-protocol'
-import type {} from '@ejunz/typert-registry'
+import type { Agent, AgentOptions, AgentSetup } from '@ejunz/ea/agent'
+import type { Session, SessionEvent, SessionHeader, SessionId } from '@ejunz/ea/session'
+import type { SessionPersistence } from '@ejunz/ea/session-persistence'
+import { TypertLookupFailure } from '@ejunz/ea/typert-protocol'
+import type {} from '@ejunz/ea/typert-registry'
 
 /** Caller-facing failures preserved by the Gateway's RPC adapter. */
 export type ApiRemoteLookupError =

@@ -1,4 +1,4 @@
-import type { SessionEvent } from '@ejunz/session/types'
+import type { SessionEvent } from '@ejunz/ea/session/types'
 import type {
   ConversationEventInput, ConversationLocation, ConversationLocationData,
   ConversationLocationDataStore, ConversationStepDataMap, ConversationTimelineSnapshot,

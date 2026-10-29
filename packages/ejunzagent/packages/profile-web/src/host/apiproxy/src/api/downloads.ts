@@ -5,7 +5,7 @@
  * `IApiClient` never exposes them.
  */
 
-import type { SessionId } from '@ejunz/session/types'
+import type { SessionId } from '@ejunz/ea/session/types'
 
 /** Host-only download surfaces (no wire envelope; absent from IApiClient). */
 export interface DownloadsApi {

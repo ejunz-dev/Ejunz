@@ -28,14 +28,14 @@ import {
   PROFILE_PATCH_FILENAME,
   watchUserPatches,
   type Profile,
-} from '@ejunz/app-boot'
-import { resolveEaHome } from '@ejunz/home-paths'
+} from '@ejunz/ea/app-boot'
+import { resolveEaHome } from '@ejunz/ea/home-paths'
 
 /** Shipped agent-preset root beside this app's own config. */
 const SHIPPED_PRESET_ROOT = cliAssetPath('config/agent-presets/')
 
-import { EA_LAUNCH_ENVIRONMENT_KEY, type LaunchEnvironmentSnapshot } from '@ejunz/launch-environment'
-import { provideCmdline } from '@ejunz/cmdline'
+import { EA_LAUNCH_ENVIRONMENT_KEY, type LaunchEnvironmentSnapshot } from '@ejunz/ea/launch-environment'
+import { provideCmdline } from '@ejunz/ea/cmdline'
 import { createProcessShutdown, type ProcessShutdown } from './process-shutdown.ts'
 
 // Cordis exposes FiberState as a const enum, so keep the runtime value local.
@@ -314,7 +314,7 @@ export async function runProfile(options: RunProfileOptions): Promise<{ ctx: Con
   const ctx = await bootProfileTree(composed, {
     environment: options.environment,
     args: options.args,
-    debug: options.debug,
+    ...(options.debug === undefined ? {} : { debug: options.debug }),
     // Owned here so an interrupt during boot can dispose a tree that is still
     // mounting: the launcher, not the tree, owns process lifetime.
     onContext: (hostCtx) => { app.current = hostCtx },

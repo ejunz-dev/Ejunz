@@ -10,8 +10,8 @@ import {
   createToolResultMessage,
   createUserMessage,
   isTokenDelta,
-} from '@ejunz/llm/message'
-import { CallId } from '@ejunz/llm/brand'
+} from '@ejunz/ea/llm/message'
+import { CallId } from '@ejunz/ea/llm/brand'
 import type {
   AssistantMessage,
   ContentBlock,
@@ -19,18 +19,18 @@ import type {
   TokenUsage,
   ToolResultMessage,
   UserMessage,
-} from '@ejunz/llm'
-import type { AttachmentIdType, ImageAttachmentRef } from '@ejunz/attachment'
+} from '@ejunz/ea/llm'
+import type { AttachmentIdType, ImageAttachmentRef } from '@ejunz/ea/attachment'
 import type {
   SessionEvent,
   SessionId,
   TodoItem,
-} from '@ejunz/session/types'
+} from '@ejunz/ea/session/types'
 // Type-only: the brand constructor is host-side; the fixture casts at its
 // wire-fabrication boundary (the schema layer's one-cast-point posture).
-import type { CommandId } from '@ejunz/commands/brand'
-import type { CommandDescriptor, CommandExecution, CommandResult } from '@ejunz/commands/types'
-import { deriveEventMessage, foldSurface } from '@ejunz/session/surface'
+import type { CommandId } from '@ejunz/ea/commands/brand'
+import type { CommandDescriptor, CommandExecution, CommandResult } from '@ejunz/ea/commands/types'
+import { deriveEventMessage, foldSurface } from '@ejunz/ea/session/surface'
 import type {
   ApiProxy, ClientRequest, ClientResponse, HistoryEntry, HostFrame, MuxFrame, RpcReceipt,
   ModelProviderGroup, ModelSelection, RpcRequest, RpcResponse, RpcResult, ServerRequest, ServerResponse, SessionSummary,

@@ -1,6 +1,6 @@
 # `@ejunz/profile-ejunz`
 
-Ejunz-specific profile bundle for EjunzAgent. Add it after `@ejunz/profile-web` to select Ejunz-hosted storage, session persistence and telemetry. The shipped `ejunz` profile composes `@ejunz/base`, `@ejunz/profile-web`, then this bundle.
+Ejunz-specific profile bundle for EjunzAgent. Add it after `@ejunz/profile-web` to select Ejunz-hosted storage, session persistence and telemetry. The shipped `ejunz` profile composes `@ejunz/ea`, `@ejunz/profile-web`, then this bundle.
 
 The generic `web` profile does not include this package; it uses local JSON storage and JSONL session persistence. For standalone launches, the CLI checks `config.agent.yaml` in the current working directory. If missing, it creates the file from `config.agent.example.yaml` and asks you to fill it before starting:
 

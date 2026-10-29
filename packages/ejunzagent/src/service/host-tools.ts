@@ -9,8 +9,8 @@
  */
 
 import type { Context } from '@ejunz/cordis'
-import { createHostToolBridge, createHostToolClient } from '@ejunz/tool-host'
-import * as ToolHost from '@ejunz/tool-host'
+import { createHostToolBridge, createHostToolClient } from '@ejunz/ea/tool-host'
+import * as ToolHost from '@ejunz/ea/tool-host'
 
 /** Where this application reaches the host that owns its sessions. */
 export interface HostToolBridgeConfig {

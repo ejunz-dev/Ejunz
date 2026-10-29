@@ -5,12 +5,12 @@ import type { ConnectionHandle, SessionId } from '@ejunz/profile-web/api/remotes
 // than api-remotes': that face imports a Host-tsdown-generated artifact, and this
 // project sits in the Host build graph.
 import type {} from '@ejunz/profile-web/api/remotes/client'
-import type { TypertContext } from '@ejunz/typert-protocol'
+import type { TypertContext } from '@ejunz/ea/typert-protocol'
 import { SessionRuntime } from './sessions/service.ts'
 import { ConversationEventRegistry } from './conversation/event-registry.ts'
 import { ConversationViewRegistry } from './conversation/view-registry.ts'
 
-export { isAppendSurfaceEvent, isReplacementSurfaceEvent } from '@ejunz/session/surface'
+export { isAppendSurfaceEvent, isReplacementSurfaceEvent } from '@ejunz/ea/session/surface'
 
 export { ConversationEventRegistry } from './conversation/event-registry.ts'
 export { ConversationViewRegistry } from './conversation/view-registry.ts'
@@ -88,7 +88,7 @@ export type { SessionId } from '@ejunz/profile-web/client/connection/client'
 /** Client-side Cordis context after declaration merging. */
 export type ClientContext = Context
 
-declare module '@ejunz/typert-protocol' {
+declare module '@ejunz/ea/typert-protocol' {
   interface TypertContextMap {
     /** Client Agent scope identity; the agent and session share one wire id. */
     agent: TypertContext<SessionId>

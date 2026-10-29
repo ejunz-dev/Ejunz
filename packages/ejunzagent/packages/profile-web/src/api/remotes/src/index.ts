@@ -1,18 +1,18 @@
 /** Host BFF entry and Loader shell for the Remote contribution assembly. */
 
-import type { TypertForwardableEvent } from '@ejunz/typert-protocol'
+import type { TypertForwardableEvent } from '@ejunz/ea/typert-protocol'
 import { API_REMOTE_FORWARDED_EVENTS } from './remote-events.ts'
 
 // The owner packages' client-safe `./types` exports carry the cordis `Events`
 // declarations for every allowlisted event. Pulling them into this face is what
 // makes the shape assertion below judge real signatures rather than an empty
 // event vocabulary.
-import type {} from '@ejunz/commands/types'
-import type {} from '@ejunz/cordis-host-runner/types'
-import type {} from '@ejunz/credentials/types'
-import type {} from '@ejunz/llm/types'
-import type {} from '@ejunz/agent-presets/types'
-import type {} from '@ejunz/settings/types'
+import type {} from '@ejunz/ea/commands/types'
+import type {} from '@ejunz/ea/cordis-host-runner/types'
+import type {} from '@ejunz/ea/credentials/types'
+import type {} from '@ejunz/ea/llm/types'
+import type {} from '@ejunz/ea/agent-presets/types'
+import type {} from '@ejunz/ea/settings/types'
 
 export {
   ApiRemoteSessionNotFound,

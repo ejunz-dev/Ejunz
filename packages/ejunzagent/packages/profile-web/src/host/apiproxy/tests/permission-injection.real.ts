@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { boot } from '@ejunz/app-boot'
+import { boot } from '@ejunz/ea/app-boot'
 import type { ApiProxy } from '../src/api/index.ts'
-import type { Session } from '@ejunz/session'
+import type { Session } from '@ejunz/ea/session'
 
 interface FixtureService {
   session: Session

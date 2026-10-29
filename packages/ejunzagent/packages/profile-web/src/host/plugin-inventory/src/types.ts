@@ -1,4 +1,4 @@
-import type { Branded } from '@ejunz/brand'
+import type { Branded } from '@ejunz/ea/brand'
 
 /** Stable Loader-tree identity of one configured plugin entry. */
 export type PluginEntryId = Branded<'PluginEntryId'>
