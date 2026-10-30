@@ -18,7 +18,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join, matchesGlob } from 'node:path'
 import { parseArgs } from 'node:util'
 import { releaseFamily, type ReleaseFamily, type ReleaseMember } from './families.ts'
-import { capture, isEntry } from './process.ts'
+import { attempt, capture, isEntry } from './process.ts'
 
 /** Files npm publishes whether or not `files` lists them. */
 const ALWAYS_PUBLISHED = ['package.json', 'README*', 'LICENSE*', 'LICENCE*'] as const
@@ -357,7 +357,12 @@ function main(): void {
     console.log('release bump: dry run, nothing written')
     return
   }
-  capture('git', ['add', 'yarn.lock', ...planned.map(entry => entry.manifestPath)])
+  // yarn.lock is gitignored in this checkout; only stage manifests that exist.
+  const staged = planned.map(entry => entry.manifestPath)
+  if (attempt('git', ['check-ignore', '-q', 'yarn.lock']).status !== 0) {
+    staged.unshift('yarn.lock')
+  }
+  capture('git', ['add', ...staged])
   capture('git', ['commit', '-m', `release(${family.id}): ${summary}`])
   console.log('release bump: committed. After this merges to master, tag it:')
   for (const tag of [...new Set(planned.map(entry => entry.tag).filter(tag => tag !== undefined))]) {

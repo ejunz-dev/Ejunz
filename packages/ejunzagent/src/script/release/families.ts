@@ -96,8 +96,13 @@ export abstract class ReleaseFamily {
       if (!name.startsWith('@ejunz/')) throw new Error(`${normalized} must name an @ejunz package`)
       if (seen.has(name)) throw new Error(`${name} appears twice in release family ${this.id}`)
       seen.add(name)
+      // Root `package.json` has no slash prefix; stripping `/package.json` would
+      // leave a truncated path such as `package.jso`.
+      const directory = normalized === 'package.json'
+        ? '.'
+        : normalized.slice(0, -'/package.json'.length)
       members.push({
-        directory: normalized.slice(0, normalized.length - '/package.json'.length),
+        directory,
         name,
         version,
         manifest,

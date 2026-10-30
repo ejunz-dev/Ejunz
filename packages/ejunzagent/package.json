@@ -1,6 +1,6 @@
 {
   "name": "@ejunz/ea-core",
-  "version": "0.1.2-rc.5",
+    "version": "0.1.3-rc.5",
   "license": "AGPL-3.0-only",
   "type": "module",
   "packageManager": "yarn@4.0.2",
@@ -59,7 +59,7 @@
     "release:publish": "tsx src/script/release/publish.ts",
     "ea": "node --expose-internals --import tsx/esm src/entry/bin.ts",
     "postinstall": "node bin/postinstall.js",
-    "build:cli": "tsc -b tsconfig.cli.json && tsdown --config tsdown.cli.config.ts && yarn run build:cli-runtime",
+    "build:cli": "tsdown --config tsdown.cli.config.ts --config-loader tsx && yarn run build:cli-runtime",
     "build:lib:modules": "tsdown --config tsdown.modules.config.ts"
   },
   "devDependencies": {

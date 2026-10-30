@@ -113,7 +113,19 @@ function main(): void {
     capture(process.execPath, [
       '--input-type=module',
       '-e',
-      "const { embedAgentRuntime } = await import('@ejunz/ea-core/embed'); if (typeof embedAgentRuntime !== 'function') throw new TypeError('embedAgentRuntime is not exported');",
+      [
+        "import { readFileSync } from 'node:fs';",
+        "import { createRequire } from 'node:module';",
+        "const require = createRequire(import.meta.url);",
+        "const embedPath = require.resolve('@ejunz/ea-core/embed');",
+        "const source = readFileSync(embedPath, 'utf8');",
+        // Stale CLI builds rewrote `@ejunz/ea-core/...` to short names that are
+        // not published packages; reject them before the import smoke test.
+        "const stale = source.match(/from\\s+[\"']@(?:app-boot|tool-host|cmdline|web)\\b[^\"']*[\"']/g);",
+        "if (stale) throw new Error(`embed ships stale short imports: ${stale.join(', ')}`);",
+        "const { embedAgentRuntime } = await import('@ejunz/ea-core/embed');",
+        "if (typeof embedAgentRuntime !== 'function') throw new TypeError('embedAgentRuntime is not exported');",
+      ].join(''),
     ], { cwd: consumerRoot, env: environment })
 
     const typecheckFile = join(consumerRoot, 'embed-consumer.mts')
