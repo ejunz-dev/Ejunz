@@ -1,6 +1,6 @@
 {
   "name": "@ejunz/ea-core",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "license": "AGPL-3.0-only",
   "type": "module",
   "packageManager": "yarn@4.0.2",
@@ -123,8 +123,10 @@
     "katex": "^0.16.25",
     "markdown-it": "^14.1.0",
     "node-addon-require-builtin": "^0.1.4",
+    "sharp": "^0.32.0",
     "shiki": "^4.4.3",
-    "yaml": "^2.4.2"
+    "yaml": "^2.4.2",
+    "zod": "^4.4.3"
   },
   "description": "ea CLI: profile boot, plugin management, and the browser UI alias",
   "exports": {
