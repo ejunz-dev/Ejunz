@@ -108,8 +108,6 @@
     "@ejunz/cordis-plugin-loader": "workspace:^",
     "@ejunz/cordis-plugin-logger-console": "workspace:^",
     "@ejunz/cordis-plugin-timer": "workspace:^",
-    "@ejunz/profile-ejunz": "workspace:^",
-    "@ejunz/profile-web": "workspace:^",
     "@ejunz/schemastery": "workspace:^",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/api-logs": "^0.220.0",
