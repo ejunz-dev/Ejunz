@@ -80,7 +80,7 @@ import { assertNever, createToolResultMessage, type ToolCallBlock } from '@ejunz
 
 import type { Session, UserMessage } from '@ejunz/ea-core/session'
 
-import { TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER, type ToolExecutionInput, type ToolExecutionMode, type ToolExecutionResult, type ToolRunContext } from '@ejunz/ea-core/tools'
+import { TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER, type ToolExecutionInput, type ToolExecutionMode, type ToolExecutionResult, type ToolRunContext } from './tools.js'
 
 interface PlannedCall {
   block: ToolCallBlock

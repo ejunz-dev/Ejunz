@@ -258,6 +258,9 @@ function planShared(
     { manifestPath: ROOT_MANIFEST, label: ROOT_MANIFEST, from: rootVersion(root), to: version, tag: undefined },
   ]
   for (const member of members) {
+    // The root package is already included above, but remains a family member
+    // for release verification and packing.
+    if (member.directory === '.') continue
     planned.push({
       manifestPath: join(member.directory, 'package.json'),
       label: member.directory,
