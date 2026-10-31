@@ -1,7 +1,7 @@
 {
   "name": "@ejunz/profile-ejunz",
   "description": "Ejunz storage, persistence and telemetry profile layer for EjunzAgent",
-  "version": "0.1.2-rc.5",
+  "version": "0.1.5",
   "publishConfig": {
     "access": "public"
   },

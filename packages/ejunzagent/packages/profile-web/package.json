@@ -1,7 +1,7 @@
 {
   "name": "@ejunz/profile-web",
   "description": "Web capability, embedded Host API and client runtime for EjunzAgent",
-  "version": "0.1.2-rc.5",
+  "version": "0.1.5",
   "publishConfig": {
     "access": "public"
   },
