@@ -10,8 +10,8 @@ import {
 } from '@ejunz/framework';
 import { errorMessage, Time } from '@ejunz/utils';
 import { Context } from '../context';
-import { listAgentAddons } from './addons';
-import { checkAccessPerm, checkAccessPriv } from './tool';
+import { listAgentAddons } from './agent';
+import { checkAccessPerm, checkAccessPriv } from './agent';
 import { PermissionError, PrivilegeError } from '../error';
 import type { DomainDoc } from '../interface';
 import { Logger } from '../logger';

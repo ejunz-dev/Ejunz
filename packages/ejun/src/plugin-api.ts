@@ -35,20 +35,20 @@ export { AgentModel, AgentSessionModel } from './model/agent';
 export { AgentRuntimeModel } from './model/agent';
 export { AgentLinkModel } from './model/agent';
 export { AgentStorageModel } from './model/agent';
-export { createInProcessLink, createSocketLink, isAgentAddonEnabled, isAgentContextPluginEnabled } from './service/runtime';
-export { parseRuntimeFrame } from './service/runtime';
+export { createInProcessLink, createSocketLink, isAgentAddonEnabled, isAgentContextPluginEnabled } from './service/agent';
+export { parseRuntimeFrame } from './service/agent';
 export type {
     AgentFrame,
     InProcessRuntime,
     RuntimeLink,
     RuntimeReply,
     SocketPeer,
-} from './service/runtime';
+} from './service/agent';
 export type {
     RuntimeInboundFrame,
     RuntimeOutboundFrame,
     RuntimeStream,
-} from './service/runtime';
+} from './service/agent';
 export type {
     AgentCredentialDoc,
     AgentConfig,
@@ -66,8 +66,8 @@ export type {
 export type { AgentRuntimeDoc, AgentRuntimeKind, AgentRuntimeSummary } from './model/agent';
 export type { AgentLinkStatus, AgentLinkSummary } from './model/agent';
 export type { AgentStorageDescriptor, AgentStorageSnapshot } from './model/agent';
-export { agentDataAdapter, MongoAgentDataAdapter } from './service/runtime';
-export type { AgentDataAdapter, AgentScope } from './service/runtime';
+export { agentDataAdapter, MongoAgentDataAdapter } from './service/agent';
+export type { AgentDataAdapter, AgentScope } from './service/agent';
 export { default as ClientModel, ClientWidgetModel, ClientGsiFieldModel } from '../../../plugins/edge/model/client';
 export { PERM, PRIV } from './model/builtin';
 export * from './model/builtin';
@@ -86,20 +86,20 @@ export * from '@ejunz/framework/decorators';
 export * from '@ejunz/framework/validator';
 export * as StorageService from './service/storage';
 export { EventMap } from './service/bus';
-export { registerAgentAddon, listAgentAddons } from './service/addons';
-export type { AgentAddonDescriptor, AgentAddonPermission } from './service/addons';
-export { registerAgentContextPlugin } from './service/agent-context-plugins';
-export type { AgentContextPluginDescriptor } from './service/agent-context-plugins';
-export { createProvider } from './service/provider';
+export { registerAgentAddon, listAgentAddons } from './service/agent';
+export type { AgentAddonDescriptor, AgentAddonPermission } from './service/agent';
+export { registerAgentContextPlugin } from './service/agent';
+export type { AgentContextPluginDescriptor } from './service/agent';
+export { createProvider } from './service/agent';
 export { schemaToJsonSchema } from './lib/tool-schema';
 export * from './lib/tool-limits';
-export type { Provider, ProviderScope } from './service/provider';
-export { createAgentToolView } from './service/tool';
-export type { AgentToolView } from './service/tool';
+export type { Provider, ProviderScope } from './service/agent';
+export { createAgentToolView } from './service/agent';
+export type { AgentToolView } from './service/agent';
 export type {
     RegisteredTool, ToolAccess, ToolBindBase, ToolDeclaration, ToolDefinition, ToolExecute,
     ToolInstructionsContext, ToolRegisterOptions, ToolSource,
-} from './service/tool';
+} from './service/agent';
 export type {
     SystemToolExecutionContext,
     ToolArgs,

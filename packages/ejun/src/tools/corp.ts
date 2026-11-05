@@ -4,8 +4,8 @@ import { PERM } from 'ejun/src/model/builtin';
 import Schema from 'schemastery';
 import { asText } from '../lib/tool-shared';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
-import { agentPermissionCatalog, registerAgentAddon } from '../service/addons';
-import { agentRuntimeHandlerContext } from '../service/runtime';
+import { agentPermissionCatalog, registerAgentAddon } from '../service/agent';
+import { agentRuntimeHandlerContext } from '../service/agent';
 import { requireAgentConfigurationPermission, requireGroup, sessionScope } from './common/agent';
 
 export const inject = ['server'];

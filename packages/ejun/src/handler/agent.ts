@@ -3,14 +3,14 @@ import { ConnectionHandler, Handler } from '@ejunz/framework';
 import { PERM, PRIV } from '../model/builtin';
 import GroupDefinitionModel, { AgentModel, AgentSessionModel, defaultAgentAcl, normalizeAgentAcl, permissionsForAgentAcl } from '../model/agent';
 import type { AgentConfig, AgentTeamConfig, AgentTeamDoc } from '../model/agent';
-import type { AgentScope, RuntimeLink } from '../service/runtime';
+import type { AgentScope, RuntimeLink } from '../service/agent';
 import type { AgentStorageDescriptor } from '../model/agent';
-import type { RuntimeHelloFrame, RuntimeInboundFrame, RuntimeLinkPollFrame, RuntimeStream } from '../service/runtime';
-import { agentRuntimeHandlerContext as service } from '../service/runtime';
+import type { RuntimeHelloFrame, RuntimeInboundFrame, RuntimeLinkPollFrame, RuntimeStream } from '../service/agent';
+import { agentRuntimeHandlerContext as service } from '../service/agent';
 import { matchesRuntimeToolCapability, parseRuntimeToolCapabilities } from '../lib/runtime-tool-catalog';
-import { addonAgentPermissionId, agentPermissionCatalog, listAgentAddons } from '../service/addons';
+import { addonAgentPermissionId, agentPermissionCatalog, listAgentAddons } from '../service/agent';
 import type { AgentAddonStateChange } from '../service/bus';
-import { checkAccessPriv } from '../service/tool';
+import { checkAccessPriv } from '../service/agent';
 
 interface RpcEnvelope {
     type?: string;

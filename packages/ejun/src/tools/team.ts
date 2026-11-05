@@ -7,8 +7,8 @@ import Schema from 'schemastery';
 import { MAX_AGENTS_PER_CALL, MAX_TEAMS_PER_CALL } from '../lib/tool-limits';
 import { asText, idList } from '../lib/tool-shared';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
-import { agentPermissionCatalog, listAgentAddons as listRegisteredAgentAddons } from '../service/addons';
-import { agentRuntimeHandlerContext } from '../service/runtime';
+import { agentPermissionCatalog, listAgentAddons as listRegisteredAgentAddons } from '../service/agent';
+import { agentRuntimeHandlerContext } from '../service/agent';
 import {
     AgentAgentCreateExecutor, AgentAgentDeleteManyExecutor, AgentAgentGetManyExecutor, AgentAgentUpdateManyExecutor,
 } from './agent';

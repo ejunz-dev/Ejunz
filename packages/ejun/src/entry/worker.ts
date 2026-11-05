@@ -69,7 +69,7 @@ export async function apply(ctx: Context) {
     const loadDir = async (dir: string) => Promise.all((await fs.readdir(dir)).filter((i) => i.endsWith('.ts'))
         .map((h) => ctx.loader.reloadPlugin(path.resolve(dir, h), '')));
     await loadDir(path.resolve(__dirname, '..', 'handler'));
-    await ctx.loader.reloadPlugin(require.resolve('../service/runtime'), 'agentRuntime');
+    await ctx.loader.reloadPlugin(require.resolve('../service/agent'), 'agentRuntime');
     await ctx.plugin(require('../service/migration').default);
     await addon(pending, fail, ctx);
     await loadDir(path.resolve(__dirname, '..', 'script'));

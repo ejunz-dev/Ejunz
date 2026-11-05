@@ -7,7 +7,7 @@ import Schema from 'schemastery';
 import { MAX_AGENTS_PER_CALL, MAX_FILE_CONTENT_CHARS, MAX_FILE_CONTENT_CHARS_LIMIT } from '../lib/tool-limits';
 import { asText, idList } from '../lib/tool-shared';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
-import { agentRuntimeHandlerContext } from '../service/runtime';
+import { agentRuntimeHandlerContext } from '../service/agent';
 import {
     agentRecordView,
     configFromArgs,

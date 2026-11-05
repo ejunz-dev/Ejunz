@@ -3,8 +3,8 @@ import GroupDefinitionModel, { AgentModel, AgentSessionModel, defaultAgentAcl, n
 import UserModel from 'ejun/src/model/user';
 import { MAX_FILE_CONTENT_CHARS, MAX_FILE_CONTENT_CHARS_LIMIT } from '../../lib/tool-limits';
 import { asText, idList } from '../../lib/tool-shared';
-import { agentRuntimeHandlerContext } from '../../service/runtime';
-import { agentPermissionCatalog } from '../../service/addons';
+import { agentRuntimeHandlerContext } from '../../service/agent';
+import { agentPermissionCatalog } from '../../service/agent';
 import type { AgentConfig, AgentSettings, AgentTeamAcl, AgentTeamDoc, AgentSessionSummary, AgentSessionView } from 'ejun/src/model/agent';
 import type { ToolArgs, ToolContext } from '../../lib/tool-types';
 

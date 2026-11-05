@@ -5,7 +5,7 @@ import Schema from 'schemastery';
 import type { ToolArgs, ToolContext } from '../lib/tool-types';
 import { searchExa } from '../lib/exa-search';
 import type { WebSearchResult } from '../lib/exa-search';
-import { registerAgentAddon } from '../service/addons';
+import { registerAgentAddon } from '../service/agent';
 import type {} from '../service/server';
 
 export const inject = ['server'];
