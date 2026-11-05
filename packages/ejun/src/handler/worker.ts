@@ -1,169 +1,18 @@
 import { hostname } from 'os';
 import { Context } from '../context';
-import {
-    BadRequestError,
-} from '../error';
-import { Task } from '../interface';
 import { Logger } from '../logger';
-import * as builtin from '../model/builtin';
 import * as setting from '../model/setting';
-import task, { Consumer } from '../model/task';
+import * as builtin from '../model/builtin';
 import {
-    allocateWorkerId, isWorkerPaused, markWorkerOffline, removeWorkerStatus, upsertWorkerStatus,
+    allocateWorkerId, markWorkerOffline, removeWorkerStatus, upsertWorkerStatus,
 } from '../model/workerStatus';
-import bus from '../service/bus';
-import {
-    ConnectionHandler, subscribe,
-} from '../service/server';
+import { ConnectionHandler, subscribe } from '../service/server';
 
 const logger = new Logger('worker');
-
 const WORKER_PROTOCOL = 'ejunz-worker-v1';
-const DEFAULT_TASK_TYPES = ['mcp_tool_call'];
-const ALLOWED_TASK_TYPES = DEFAULT_TASK_TYPES;
-
-type EjunzWorkerTaskType = 'mcp_tool_call';
-
-type WorkerMeta = {
-    workerId: string;
-    workerName: string;
-    workerLabel: string;
-    workerKind: string;
-    workerVersion: string;
-};
-
-function taskWithoutId(t: Task): Omit<Task, '_id'> & { type: string } {
-    const { _id, ...rest } = t as any;
-    return rest;
-}
-
-function taskTypeFromDbTask(t: Task): EjunzWorkerTaskType | null {
-    if (t.type === 'mcp' && (t as any).subType === 'tool_call') return 'mcp_tool_call';
-    return null;
-}
-
-function buildTaskQuery(taskTypes: string[], minPriority?: number) {
-    const clauses: any[] = [];
-    if (taskTypes.includes('mcp_tool_call')) clauses.push({ type: 'mcp', subType: 'tool_call' });
-    const query: any = clauses.length === 1 ? { ...clauses[0] } : { $or: clauses.length ? clauses : [{ type: '__never__' }] };
-    if (Number.isFinite(minPriority)) query.priority = { $gt: minPriority };
-    return query;
-}
-
-function cleanTaskTypes(taskTypes: unknown): string[] {
-    if (!(taskTypes instanceof Array)) return DEFAULT_TASK_TYPES.slice();
-    const allowed = new Set(ALLOWED_TASK_TYPES);
-    const out = taskTypes.map((i) => String(i)).filter((i) => allowed.has(i));
-    return out.length ? out : DEFAULT_TASK_TYPES.slice();
-}
-
-abstract class EjunzTaskCallbackContext {
-    private resolve: (_: any) => void;
-    protected finishPromise: Promise<any>;
-    protected operationPromise = Promise.resolve(null);
-    protected completed = false;
-
-    constructor(
-        public ctx: Context,
-        public readonly dbTask: Task,
-        public readonly taskType: EjunzWorkerTaskType,
-        private readonly metaProvider: (taskType: EjunzWorkerTaskType) => WorkerMeta,
-    ) {
-        this.finishPromise = new Promise((resolve) => {
-            this.resolve = resolve;
-        });
-    }
-
-    get taskId() {
-        return this.dbTask._id?.toString?.() || String(this.dbTask._id || '');
-    }
-
-    protected workerMeta() {
-        return this.metaProvider(this.taskType);
-    }
-
-    protected finish(value: any = null) {
-        if (this.completed) return;
-        this.completed = true;
-        this.resolve(value);
-    }
-
-    enqueue(op: () => Promise<void>) {
-        this.operationPromise = this.operationPromise.then(op);
-        return this.operationPromise;
-    }
-
-    abstract start(): Promise<void>;
-    abstract accepted(body?: any): Promise<void>;
-    abstract complete(body?: any): Promise<void>;
-    abstract error(body?: any): Promise<void>;
-    abstract reset(): Promise<void>;
-
-    summary() {
-        return {
-            taskId: this.taskId,
-            taskType: this.taskType,
-            recordId: (this.dbTask as any).recordId?.toString?.(),
-            toolName: (this.dbTask as any).toolName || (this.dbTask as any).name,
-        };
-    }
-
-    then(onfulfilled?: (value: any) => void, onrejected?: (reason: any) => void) {
-        return this.finishPromise.then(onfulfilled, onrejected);
-    }
-}
-
-class McpToolCallCallbackContext extends EjunzTaskCallbackContext {
-    async start() {}
-
-    async accepted() {}
-
-    private deliver(response: any) {
-        const sessionId = (this.dbTask as any).sessionId;
-        if (!sessionId) return;
-        const data = typeof response === 'string' ? response : JSON.stringify(response);
-        (bus.broadcast as any)('mcp/deliver', { sessionId, data });
-    }
-
-    async complete(body: any = {}) {
-        await this.enqueue(async () => {
-            this.deliver(body?.data || body?.response || body?.result);
-        });
-        this.finish(null);
-    }
-
-    async error(body: any = {}) {
-        await this.enqueue(async () => {
-            const err = body?.error || body;
-            this.deliver({
-                jsonrpc: '2.0',
-                id: (this.dbTask as any).rpcId,
-                result: {
-                    content: [{ type: 'text', text: err?.message || String(err || 'MCP tool call failed') }],
-                    isError: true,
-                },
-            });
-        });
-        this.finish(null);
-    }
-
-    async reset() {
-        if (this.completed) return;
-        await this.enqueue(async () => {
-            await task.add(taskWithoutId(this.dbTask));
-        });
-        this.finish(null);
-    }
-}
 
 export class EjunzWorkerConnectionHandler extends ConnectionHandler {
     category = '#worker';
-    taskTypes = DEFAULT_TASK_TYPES.slice();
-    minPriority?: number;
-    query: any = buildTaskQuery(this.taskTypes);
-    concurrency = 1;
-    consumer: Consumer = null;
-    tasks: Record<string, EjunzTaskCallbackContext> = {};
     workerId = '';
     workerName = '';
     workerLabel = '';
@@ -172,7 +21,6 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
     processWorkerId = '';
     heartbeatTimer?: ReturnType<typeof setInterval>;
     statusRegistered = false;
-    reqCount = 0;
     startedAt = new Date();
 
     async prepare() {
@@ -187,20 +35,6 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
         this.sendServerConfig();
     }
 
-    private workerMeta(taskType: EjunzWorkerTaskType): WorkerMeta {
-        return {
-            workerId: this.workerId,
-            workerName: this.workerName,
-            workerLabel: this.workerLabel || this.workerName,
-            workerKind: taskType,
-            workerVersion: this.workerVersion,
-        };
-    }
-
-    private activeTaskSummaries() {
-        return Object.values(this.tasks).map((cb) => cb.summary()).slice(0, 20);
-    }
-
     async updateWorkerStatus(extra: Record<string, any> = {}) {
         if (!this.statusRegistered) return;
         await upsertWorkerStatus({
@@ -213,11 +47,11 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
             workerVersion: this.workerVersion,
             host: extra.host || hostname(),
             pid: extra.pid || process.pid,
-            consuming: !!this.consumer?.consuming,
-            concurrency: this.concurrency,
-            processingCount: Object.keys(this.tasks).length,
-            activeTasks: this.activeTaskSummaries(),
-            reqCount: this.reqCount,
+            consuming: false,
+            concurrency: 1,
+            processingCount: 0,
+            activeTasks: [],
+            reqCount: 0,
             startedAt: this.startedAt,
             status: 'online',
             ...extra,
@@ -229,36 +63,6 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
         this.send({ key: 'server_config', language: setting.langs });
     }
 
-    private refreshQuery() {
-        this.query = buildTaskQuery(this.taskTypes, this.minPriority);
-        this.consumer?.setQuery(this.query);
-    }
-
-    private createCallbackContext(t: Task, taskType: EjunzWorkerTaskType) {
-        return new McpToolCallCallbackContext(this.ctx, t, taskType, this.workerMeta.bind(this));
-    }
-
-    async newTask(t: Task) {
-        const taskType = taskTypeFromDbTask(t);
-        if (!taskType) {
-            logger.warn('Ignoring unsupported worker task type: %o', { taskId: t._id?.toString?.(), type: t.type, subType: (t as any).subType });
-            return;
-        }
-        const taskId = t._id.toString();
-        const cb = this.createCallbackContext(t, taskType);
-        this.tasks[taskId] = cb;
-        try {
-            await cb.start();
-            await this.updateWorkerStatus({ lastTaskAt: new Date() });
-            this.send({ key: 'task', taskId, taskType, payload: t });
-            await cb;
-            this.reqCount++;
-        } finally {
-            delete this.tasks[taskId];
-            await this.updateWorkerStatus({ lastTaskAt: new Date() });
-        }
-    }
-
     async message(raw: any) {
         const msg = typeof raw === 'string' && raw !== 'ping' ? JSON.parse(raw) : raw;
         if (msg === 'ping' || msg?.key === 'ping') {
@@ -266,7 +70,7 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
             return;
         }
         if (!msg || typeof msg !== 'object') return;
-        if (msg.key !== 'status') logger.info('Worker message: %s task=%s', msg.key, msg.taskId || '');
+        if (msg.key !== 'status') logger.info('Worker message: %s', msg.key);
 
         if (msg.key === 'config') {
             if (msg.protocol && msg.protocol !== WORKER_PROTOCOL) {
@@ -279,20 +83,9 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
             if (msg.workerName) this.workerName = String(msg.workerName);
             if (msg.workerLabel) this.workerLabel = String(msg.workerLabel);
             if (msg.workerVersion || msg.version) this.workerVersion = String(msg.workerVersion || msg.version);
-            if (Number.isSafeInteger(msg.concurrency) && msg.concurrency > 0) {
-                this.concurrency = msg.concurrency;
-                this.consumer?.setConcurrency(msg.concurrency);
-            }
-            if (Number.isFinite(msg.minPriority)) {
-                this.minPriority = Number(msg.minPriority);
-                this.refreshQuery();
-            }
-            this.taskTypes = cleanTaskTypes(msg.taskTypes);
-            this.refreshQuery();
             this.statusRegistered = true;
             await this.updateWorkerStatus({
                 status: 'online',
-                taskTypes: this.taskTypes,
                 protocol: msg.protocol || WORKER_PROTOCOL,
                 host: msg.host,
                 pid: msg.pid,
@@ -312,46 +105,18 @@ export class EjunzWorkerConnectionHandler extends ConnectionHandler {
             await this.updateWorkerStatus({
                 ...status,
                 status: status.status || 'online',
-                taskTypes: this.taskTypes,
                 host: msg.host || status.host,
                 pid: msg.pid || status.pid,
             });
             return;
         }
 
-        if (msg.key === 'start') {
-            if (this.consumer) throw new BadRequestError('Worker daemon already started');
-            this.consumer = task.consume(
-                this.query,
-                this.newTask.bind(this),
-                false,
-                this.concurrency,
-                () => isWorkerPaused(this.workerId),
-            );
-            await this.updateWorkerStatus({ status: 'online' });
-            logger.info('Ejunz worker started: workerId=%s concurrency=%d taskTypes=%o', this.workerId, this.concurrency, this.taskTypes);
-            return;
-        }
-
-        const cb = this.tasks[msg.taskId];
-        if (!cb) {
-            logger.warn('Worker message for unknown task: key=%s taskId=%s', msg.key, msg.taskId);
-            return;
-        }
-
-        if (msg.key === 'task.accepted') await cb.accepted(msg);
-        else if (msg.key === 'task.complete') await cb.complete(msg);
-        else if (msg.key === 'task.error') await cb.error(msg);
-        else if (msg.key === 'mcp_tool_call.complete') await cb.complete(msg);
-        else if (msg.key === 'mcp_tool_call.error') await cb.error(msg);
     }
 
     async cleanup() {
         if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
-        this.consumer?.destroy();
         if (this.statusRegistered) await markWorkerOffline(this.workerId);
         logger.info('Ejunz worker disconnected from %s', this.request.ip);
-        await Promise.all(Object.values(this.tasks).map((cb) => cb.reset().catch((e) => logger.error(e))));
     }
 }
 
