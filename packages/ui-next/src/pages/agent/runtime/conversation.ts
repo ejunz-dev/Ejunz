@@ -228,6 +228,25 @@ export function eventMessage(event: SessionEvent): ChatMessage | null {
     }
     if (event.type === 'assistant/chunk') {
         const chunk = asObject(data.chunk);
+        if (chunk.type === 'tool-call-delta') {
+            const callId = typeof chunk.id === 'string' ? chunk.id : '';
+            if (!callId) return null;
+            const name = typeof chunk.name === 'string' && chunk.name ? chunk.name : undefined;
+            const delta = typeof chunk.argumentsDelta === 'string' ? chunk.argumentsDelta : '';
+            if (!delta && name === undefined) return null;
+            return {
+                key: `tool-${callId}`,
+                role: 'tool',
+                text: `${i18n('Call')} ${name ?? 'tool'}\n${delta}`,
+                ...(name === undefined ? {} : { toolName: name }),
+                toolInput: delta,
+                eventType: event.type,
+                time: event.time,
+                callId,
+                rootCallId: callId,
+                running: true,
+            };
+        }
         const text = typeof chunk.text === 'string'
             ? chunk.text
             : typeof data.text === 'string' ? data.text : '';
@@ -355,6 +374,27 @@ export function applyEvent(messages: ChatMessage[], event: SessionEvent, origin?
         }
     }
     if (event.type === 'assistant/chunk') {
+        const chunk = asObject(asObject(event.data).chunk);
+        if (chunk.type === 'tool-call-delta') {
+            const delta = typeof chunk.argumentsDelta === 'string' ? chunk.argumentsDelta : '';
+            const index = settled.findIndex((message) => message.key === next.key);
+            if (index < 0) return [...settled, next];
+            const copy = settled.slice();
+            const previous = copy[index];
+            const toolName = next.toolName ?? previous.toolName;
+            const toolInput = (previous.toolInput ?? '') + delta;
+            const host = next.host ?? previous.host;
+            copy[index] = {
+                ...previous,
+                ...(toolName === undefined ? {} : { toolName }),
+                toolInput,
+                text: `${i18n('Call')} ${toolName ?? 'tool'}\n${toolInput}`,
+                time: next.time,
+                running: true,
+                ...(host === undefined ? {} : { host }),
+            };
+            return copy;
+        }
         const index = settled.findIndex((message) => message.key === next.key);
         if (index < 0) return [...settled, next];
         const copy = settled.slice();
