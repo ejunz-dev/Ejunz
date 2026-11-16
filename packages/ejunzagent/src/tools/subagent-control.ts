@@ -2,11 +2,15 @@
 
 
 
+import type { Context } from '@ejunz/cordis'
+
 import type { ContentBlock } from '@ejunz/ea-core/llm'
 
 import { SessionId } from '@ejunz/ea-core/session'
 
 import type {} from '@ejunz/ea-core/subagent'
+
+import { defineTool } from '@ejunz/ea-core/tools'
 
 export const name = 'tool-subagent-control'
 

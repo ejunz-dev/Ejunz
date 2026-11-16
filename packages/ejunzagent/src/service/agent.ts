@@ -1,4 +1,4 @@
-import type { TurnEndReason } from '@ejunz/ea-core/session'
+import type { SessionEvent, TurnEndReason } from '@ejunz/ea-core/session'
 
 export interface ConsumedWork {
   /**
@@ -314,7 +314,7 @@ export class Inbox {
 
 import type { LlmFailure, ResolvedRetryPolicy } from '@ejunz/ea-core/llm'
 
-import type { AgentCancelCause, Session, UserMessage } from '@ejunz/ea-core/session'
+import type { AgentCancelCause, Session, SessionId, UserMessage } from '@ejunz/ea-core/session'
 
 export type { AgentCancelCause } from '@ejunz/ea-core/session'
 
@@ -782,17 +782,14 @@ import { scopeTarget } from '@ejunz/ea-core/scope'
 
 import type { Scoped } from '@ejunz/ea-core/scope'
 
-import type { SessionEvent, SessionId } from '@ejunz/ea-core/session'
-
-import type { TypertContext, TypertLookup } from '@ejunz/ea-core/typert-protocol'
 
 declare module '@ejunz/ea-core/typert-protocol' {
   interface TypertLookupMap {
-    agent: TypertLookup<Agent, SessionId>
+    agent: import('@ejunz/ea-core/typert-protocol').TypertLookup<Agent, SessionId>
   }
 
   interface TypertContextMap {
-    agent: TypertContext<SessionId>
+    agent: import('@ejunz/ea-core/typert-protocol').TypertContext<SessionId>
   }
 }
 

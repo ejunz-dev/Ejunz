@@ -4,9 +4,15 @@
     "rootDir": "src",
     "outDir": "lib/types"
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "references": [
-    { "path": "../../src/vendor/cordis" },
-    { "path": "../../src/service/invariants" }
+    {
+      "path": "../../src/vendor/cordis"
+    },
+    {
+      "path": "../../tsconfig.flat-modules.json"
+    }
   ]
 }

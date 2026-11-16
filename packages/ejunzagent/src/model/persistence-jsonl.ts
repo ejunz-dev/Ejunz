@@ -1,3 +1,5 @@
+/// <reference path="../types/optional-deps.d.ts" />
+
 
 
 import { decodeStorageRecord, packChunkRuns, SESSION_FORMAT_VERSION } from '@ejunz/ea-core/session'

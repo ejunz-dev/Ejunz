@@ -54,7 +54,7 @@ export const Config: z<Config> = z.object({
  * the label is load-bearing (an unlabeled context would render as a user
  * prompt in derived history).
  */
-const PLUGIN_SOURCE: MessageSource = { kind: 'plugin', plugin: 'repeat-tool-reminder' }
+const PLUGIN_SOURCE: Extract<MessageSource, { kind: 'plugin' }> = { kind: 'plugin', plugin: 'repeat-tool-reminder' }
 
 /**
  * The gentle first-threshold reminder. Keyed to `thresholds[0]`, not a literal

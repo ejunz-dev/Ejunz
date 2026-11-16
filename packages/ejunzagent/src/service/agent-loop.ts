@@ -813,6 +813,8 @@ const FiberState = {
   UNLOADING: 5,
 } as const
 
+type FiberState = typeof FiberState[keyof typeof FiberState]
+
 import { randomUUID } from 'node:crypto'
 
 import z from '@ejunz/schemastery'
@@ -992,7 +994,6 @@ declare module '@ejunz/cordis' {
   }
 }
 
-export { DEFAULT_MAX_PARALLEL_TOOL_CALLS }
 
 export interface LauncherAgentIdentity {
   /** Exact session id to create fresh or resume. */

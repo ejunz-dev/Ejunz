@@ -1240,7 +1240,6 @@ import type { Session, UserMessage } from '@ejunz/ea-core/session'
 
 import type { ToolExecution, ToolExecutionResult, ToolExecutionToken } from '@ejunz/ea-core/tools'
 
-export { Config, name }
 
 function visibleBaselineSource(
   agent: Agent,

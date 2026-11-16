@@ -2,6 +2,9 @@ import type { Branded } from '@ejunz/ea-core/brand'
 
 export type AttachmentId = Branded<'AttachmentId'>
 
+/** Backward-compatible alias kept for the profile packages' wire types. */
+export type AttachmentIdType = AttachmentId
+
 export function AttachmentId(value: string): AttachmentId {
   return value as AttachmentId
 }

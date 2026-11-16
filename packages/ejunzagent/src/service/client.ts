@@ -1,3 +1,5 @@
+/// <reference path="../types/optional-deps.d.ts" />
+
 import { createHash } from 'node:crypto'
 
 
@@ -299,6 +301,13 @@ export interface StreamableHttpConfig {
 
 export type Config = StdioConfig | StreamableHttpConfig
 
+export const RECONNECT_DEFAULTS: Required<ReconnectConfig> = Object.freeze({
+  enabled: true,
+  initialDelayMs: 500,
+  maxDelayMs: 30_000,
+  maxAttempts: 10,
+})
+
 const Reconnect: s<ReconnectConfig> = s.object({
   enabled: s.boolean().default(RECONNECT_DEFAULTS.enabled),
   initialDelayMs: s.number().min(1).max(MAX_TIMER_DELAY_MS).default(RECONNECT_DEFAULTS.initialDelayMs),
@@ -423,13 +432,6 @@ export interface ReconnectConfig {
   /** Consecutive failed attempts per outage before giving up for good (default 10). */
   maxAttempts?: number
 }
-
-export const RECONNECT_DEFAULTS: Required<ReconnectConfig> = Object.freeze({
-  enabled: true,
-  initialDelayMs: 500,
-  maxDelayMs: 30_000,
-  maxAttempts: 10,
-})
 
 const GENERATION_CLOSE_TIMEOUT_MS = 5_000
 

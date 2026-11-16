@@ -1,3 +1,5 @@
+/// <reference path="../types/optional-deps.d.ts" />
+
 import { EventEmitter } from 'node:events'
 
 import { extname } from 'node:path'

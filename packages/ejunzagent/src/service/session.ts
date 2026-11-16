@@ -1368,8 +1368,6 @@ import type { Scoped } from '@ejunz/ea-core/scope'
 
 import type { Message } from '@ejunz/ea-core/llm'
 
-import type { TypertLookup } from '@ejunz/ea-core/typert-protocol'
-
 export type { AssistantMessage, ToolResultMessage, UserMessage } from '@ejunz/ea-core/llm'
 
 declare module '@ejunz/cordis' {

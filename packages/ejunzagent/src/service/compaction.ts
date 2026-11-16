@@ -36,7 +36,6 @@ import type { ContentBlock, TokenUsage } from '@ejunz/ea-core/llm'
 
 
 
-export type { CompactionId }
 
 declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {

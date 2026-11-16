@@ -164,7 +164,6 @@ export class SubagentActivationSetupRegistry {
   }
 }
 
-export default SubagentActivationSetupRegistry
 
 
 
@@ -2501,9 +2500,7 @@ export class SubagentContinuationManager {
   }
 }
 
-export type { SubagentDescriptorData }
 
-export default SubagentContinuationManager
 
 
 
@@ -3396,7 +3393,7 @@ export class SubagentRuntime extends Service {
    *   store is not mounted, or the caller cancels the listing.
    */
   listChildren(parentSessionId: SessionId, signal?: AbortSignal): Promise<SubagentListEntry[]> {
-    return listSubagentChildren(this.ctx, parentSessionId, signal)
+    return listChildren(this.ctx, parentSessionId, signal)
   }
 
   /**
@@ -3415,7 +3412,7 @@ export class SubagentRuntime extends Service {
    * @throws {@link SubagentError} under the same conditions as {@link listChildren}.
    */
   listDescendants(rootSessionId: SessionId, signal?: AbortSignal): Promise<SubagentDescendantListEntry[]> {
-    return listSubagentDescendants(this.ctx, rootSessionId, signal)
+    return listDescendants(this.ctx, rootSessionId, signal)
   }
 
   /**

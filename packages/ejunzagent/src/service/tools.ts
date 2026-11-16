@@ -1359,7 +1359,7 @@ export type ContentToolFixtureOptions<S extends ParameterSchemaSpec> = Omit<
   'output' | 'execute'
 > & {
   /** Produce the fixture's content blocks as its canonical test value. */
-  execute(args: import('./schema.ts').InferArgs<S>, exec: ToolRunContext): Promise<ContentBlock[]>
+  execute(args: InferArgs<S>, exec: ToolRunContext): Promise<ContentBlock[]>
 }
 
 export function defineContentToolFixture<const S extends ParameterSchemaSpec>(

@@ -23,6 +23,9 @@ async function imageMetadata(image: Sharp): Promise<DetectedImage> {
   if (mediaType === undefined) {
     throw new AttachmentError('Unsupported or malformed image data.', 'INVALID_IMAGE')
   }
+  if (metadata.width === undefined || metadata.height === undefined) {
+    throw new AttachmentError('Unsupported or malformed image data.', 'INVALID_IMAGE')
+  }
   return { mediaType, width: metadata.width, height: metadata.height }
 }
 

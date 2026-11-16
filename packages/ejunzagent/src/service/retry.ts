@@ -31,7 +31,6 @@ export function providerForOpenStep(
 
 
 
-export type { RetryId }
 
 declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {

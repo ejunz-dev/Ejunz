@@ -160,12 +160,11 @@ function quoteIdentifier(value: string): string {
 }
 
 import {
-  SessionQueryError,
   materializeSessionEventResultFilters,
   materializeSessionResultFilters,
 } from '@ejunz/ea-core/session-query'
 
-import type { SessionAvailability, SessionEventMetadataFilter, SessionEventResultFilter, SessionResultFilter, SessionSearchCursor } from '@ejunz/ea-core/session-query'
+import type { SessionAvailability, SessionEventMetadataFilter, SessionEventResultFilter, SessionResultFilter } from '@ejunz/ea-core/session-query'
 
 export const FTS_HIGHLIGHT_START = '\uFDD0'
 

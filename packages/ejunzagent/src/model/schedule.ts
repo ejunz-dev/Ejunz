@@ -261,7 +261,7 @@ export interface FoldedSchedules {
   /** Active records in their original create order. */
   readonly active: readonly ScheduleRecord[]
   /** Every id ever created in this session-local suffix. */
-  readonly seenIds: readonly ScheduleIdType[]
+  readonly seenIds: readonly ScheduleId[]
 }
 
 export interface EveryOccurrence {
@@ -271,8 +271,8 @@ export interface EveryOccurrence {
   readonly nextScheduledAt?: string
 }
 
-export function ScheduleId(value: string): ScheduleIdType {
-  return value as ScheduleIdType
+export function ScheduleId(value: string): ScheduleId {
+  return value as ScheduleId
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -285,7 +285,7 @@ function hasExactKeys(value: Record<string, unknown>, expected: readonly string[
   return keys.length === wanted.length && keys.every((key, index) => key === wanted[index])
 }
 
-function decodeId(value: unknown): ScheduleIdType {
+function decodeId(value: unknown): ScheduleId {
   if (typeof value !== 'string' || value.length === 0 || value.trim() !== value) {
     throw new ScheduleLogError('schedule id must be a non-empty string without surrounding whitespace')
   }
@@ -704,8 +704,8 @@ export function foldScheduleEvents(
   if (!Number.isSafeInteger(seedLength) || seedLength < 0 || seedLength > events.length) {
     throw new ScheduleLogError('schedule seedLength must be within the supplied event log')
   }
-  const active = new Map<ScheduleIdType, ScheduleRecord>()
-  const seen = new Set<ScheduleIdType>()
+  const active = new Map<ScheduleId, ScheduleRecord>()
+  const seen = new Set<ScheduleId>()
   for (const event of events.slice(seedLength)) {
     if (event.type !== 'schedule/change') continue
     const change = decodeScheduleChange(event.data)
@@ -745,7 +745,7 @@ export function foldScheduleEvents(
   })
 }
 
-export function allocateScheduleId(folded: FoldedSchedules): ScheduleIdType {
+export function allocateScheduleId(folded: FoldedSchedules): ScheduleId {
   const seen = new Set(folded.seenIds)
   let sequence = seen.size + 1
   let candidate = ScheduleId(`schedule-${sequence}`)
@@ -757,7 +757,7 @@ export function allocateScheduleId(folded: FoldedSchedules): ScheduleIdType {
 }
 
 export function createAfterScheduleRecord(
-  id: ScheduleIdType,
+  id: ScheduleId,
   prompt: string,
   afterSeconds: number,
   now: number,
@@ -781,7 +781,7 @@ export function createAfterScheduleRecord(
 }
 
 export function createAtScheduleRecord(
-  id: ScheduleIdType,
+  id: ScheduleId,
   prompt: string,
   at: AtInput,
   now: number,
@@ -824,7 +824,7 @@ export function createAtScheduleRecord(
 }
 
 export function createEveryScheduleRecord(
-  id: ScheduleIdType,
+  id: ScheduleId,
   prompt: string,
   everySeconds: number,
   now: number,
@@ -1405,7 +1405,7 @@ function corruptLogError(): ScheduleToolError {
 
 function persistenceError(
   operation: SchedulePersistenceOperation,
-  id?: ScheduleIdType,
+  id?: ScheduleId,
 ): PersistenceUncertainError {
   return {
     code: 'persistence_uncertain',
@@ -1437,7 +1437,7 @@ async function preflight(
   rootCtx: Context,
   agent: Agent,
   operation: SchedulePersistenceOperation,
-  id?: ScheduleIdType,
+  id?: ScheduleId,
 ): Promise<PersistenceUncertainError | undefined> {
   try {
     await flushSchedulePersistence(rootCtx, agent.session)

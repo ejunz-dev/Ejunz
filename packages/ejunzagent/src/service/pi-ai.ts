@@ -1,5 +1,7 @@
 import { builtinProviders, getBuiltinModels, getBuiltinProviders } from '@earendil-works/pi-ai/providers/all'
 
+import type { JsonValue } from '@ejunz/ea-core/tools'
+
 import type { BuiltinProvider } from '@earendil-works/pi-ai/providers/all'
 
 import type { ModelCost, OpenAICompletionsCompat, ThinkingLevelMap } from '@earendil-works/pi-ai'
@@ -46,6 +48,7 @@ const THINKING_FORMAT_GATE: Record<PiAiThinkingFormat, true> = {
   'qwen': true,
   'string-thinking': true,
   'ant-ling': true,
+  'baseten': true,
 }
 
 export const SUPPORTED_THINKING_FORMATS = Object.keys(THINKING_FORMAT_GATE) as readonly PiAiThinkingFormat[]
@@ -788,11 +791,11 @@ export interface PiAiReplayState {
   blocks: PiAiReplayBlock[]
 }
 
-function parseArguments(raw: string): Record<string, unknown> {
+function parseArguments(raw: string): Record<string, JsonValue> {
   try {
     const parsed: unknown = JSON.parse(raw)
     if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>
+      return parsed as Record<string, JsonValue>
     }
   } catch {
     // fall through
@@ -1209,6 +1212,11 @@ export function mapStopReason(message: AssistantMessage, contextWindow?: number)
       const text = message.errorMessage ?? 'pi-ai stream error'
       return { kind: 'error', failure: { message: text, code: classifyPiAiError(text) } }
     }
+    default:
+      return {
+        kind: 'error',
+        failure: { message: `pi-ai returned an unknown stop reason: ${String(message.stopReason)}`, code: 'PI_AI_ERROR' },
+      }
   }
 }
 

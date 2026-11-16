@@ -10,10 +10,6 @@ declare module '@ejunz/cordis' {
   }
 }
 
-import type { SessionProjectionMap } from '@ejunz/ea-core/session-projection/types'
-
-export type { SessionProjectionMap } from '@ejunz/ea-core/session-projection/types'
-
 export interface ProjectionDefinition<K extends keyof SessionProjectionMap, S> {
   /** The projection key this unit owns (its `SessionProjectionMap` entry). */
   key: K

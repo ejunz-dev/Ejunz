@@ -1,3 +1,5 @@
+/// <reference path="../types/optional-deps.d.ts" />
+
 import { toNamespacedPath } from 'node:path'
 
 type GetFileSecurityW = (

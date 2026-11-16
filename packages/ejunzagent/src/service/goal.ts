@@ -186,8 +186,8 @@ import { EjunzAgentError } from '@ejunz/ea-core/llm'
 
 export const GOAL_CHANGE_VERSION = 1
 
-export function GoalId(id: string): GoalIdType {
-  return id as GoalIdType
+export function GoalId(id: string): GoalId {
+  return id as GoalId
 }
 
 export class GoalError extends EjunzAgentError {

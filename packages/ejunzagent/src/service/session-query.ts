@@ -1160,6 +1160,8 @@ function cloneRecord(record: SessionRecord): SessionRecord {
   return { ...record, header: structuredClone(record.header) }
 }
 
+const tracing = { eventRecords, currentSurfaceEvents, traceSession, traceEvent }
+
 import { Context, Service } from '@ejunz/cordis'
 
 import { Session, snapshotSessionEvent, type SessionId } from '@ejunz/ea-core/session'
