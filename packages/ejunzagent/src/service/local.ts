@@ -1,6 +1,6 @@
 import sharp, { type Sharp } from 'sharp'
 
-import { AttachmentError } from '@ejunz/ea-core/attachment'
+
 
 import type { ImageMediaType } from '@ejunz/ea-core/attachment'
 

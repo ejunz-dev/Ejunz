@@ -1,6 +1,6 @@
-import { readFile } from 'node:fs/promises'
 
-import { join } from 'node:path'
+
+
 
 import yaml from 'js-yaml'
 
@@ -136,13 +136,13 @@ export class PresetMountError extends Error {
   }
 }
 
-import { chmod, cp, readdir, readFile, rm, stat } from 'node:fs/promises'
+import { chmod, cp, rm } from 'node:fs/promises'
 
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { dirname } from 'node:path'
 
 import { writeFileAtomic } from '@ejunz/ea-core/atomic-write'
 
-import { expandHomePath } from '@ejunz/ea-core/home-paths'
+
 
 export class InvalidPresetIdError extends Error {
   constructor(
@@ -267,7 +267,7 @@ export async function deleteComposition(
   await rm(dir, { recursive: true, force: true })
 }
 
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 
 import { join, resolve } from 'node:path'
 
@@ -385,13 +385,13 @@ import { isAbsolute } from 'node:path'
 
 import { pathToFileURL } from 'node:url'
 
-import { Context, type Fiber } from '@ejunz/cordis'
+import { type Fiber } from '@ejunz/cordis'
 
 import { Include } from '@ejunz/cordis-plugin-include'
 
 import type { EntryTree } from '@ejunz/cordis-plugin-loader'
 
-import { scopeOf, scopeParentOf, type ScopeKey } from '@ejunz/ea-core/scope'
+import { scopeParentOf } from '@ejunz/ea-core/scope'
 
 interface MountedTree {
   /** The rows the composition created. */

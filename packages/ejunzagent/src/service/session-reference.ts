@@ -40,9 +40,9 @@ export function stringifyTagSafeJson(value: unknown): string {
   return serialized.replaceAll('<', '\\u003c')
 }
 
-import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import type { SessionId, UserMessage } from '@ejunz/ea-core/session'
+
+
 
 export interface SessionReferenceSource {
   kind: 'session-reference'
@@ -101,7 +101,7 @@ export interface ReferencedConversationItem {
 
 import { isCompactCheckpointSource } from '@ejunz/ea-core/compaction'
 
-import type { SessionSurfaceSnapshot } from '@ejunz/ea-core/session-query'
+
 
 import { assertNever } from '@ejunz/ea-core/llm'
 
@@ -343,7 +343,7 @@ import { createUserMessage } from '@ejunz/ea-core/llm'
 
 import type { ContentBlock, UserMessage } from '@ejunz/ea-core/llm'
 
-import type { SessionId } from '@ejunz/ea-core/session'
+
 
 import type { SessionSurfaceSnapshot, SessionTitleObservationResult } from '@ejunz/ea-core/session-query'
 

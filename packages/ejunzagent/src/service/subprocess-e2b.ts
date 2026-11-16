@@ -1,10 +1,10 @@
-import { Buffer } from 'node:buffer'
 
-import { posix } from 'node:path'
 
-import { e2bControlEnvs } from '@ejunz/ea-core/e2b'
 
-import type { Sandbox } from '@ejunz/ea-core/e2b'
+
+
+
+
 
 import { SENSITIVE_ENV_PATTERN } from '@ejunz/ea-core/subprocess'
 
@@ -83,7 +83,7 @@ export function serializeRemoteEnvironment(
   return [...environment].map(([name, value]) => `${name}=${value}\0`).join('')
 }
 
-import { Buffer } from 'node:buffer'
+
 
 import type { SubprocessOutputRead, SubprocessOutputReader } from '@ejunz/ea-core/subprocess'
 
@@ -211,9 +211,9 @@ export class E2BOutputReader implements SubprocessOutputReader {
   }
 }
 
-import { CommandExitError, e2bControlEnvs, SandboxNotFoundError } from '@ejunz/ea-core/e2b'
 
-import type { Sandbox } from '@ejunz/ea-core/e2b'
+
+
 
 export function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
@@ -271,25 +271,13 @@ import { Buffer } from 'node:buffer'
 
 import { PassThrough, Writable } from 'node:stream'
 
-import { posix } from 'node:path'
 
-import {
-  CommandExitError,
-  e2bControlEnvs,
-  FileNotFoundError,
-  SandboxNotFoundError,
-  quoteE2BShellArg,
-} from '@ejunz/ea-core/e2b'
+
+import { CommandExitError, FileNotFoundError, SandboxNotFoundError } from '@ejunz/ea-core/e2b'
 
 import type { CommandHandle, CommandResult, Sandbox } from '@ejunz/ea-core/e2b'
 
-import type {
-  SubprocessCollect,
-  SubprocessHandle,
-  SubprocessOutcome,
-  SubprocessOutputMode,
-  SubprocessSpawnSpec,
-} from '@ejunz/ea-core/subprocess'
+import type { SubprocessCollect, SubprocessOutcome, SubprocessOutputMode } from '@ejunz/ea-core/subprocess'
 
 import type E2BRuntime from '@ejunz/ea-core/e2b'
 

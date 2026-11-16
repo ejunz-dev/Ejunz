@@ -6,7 +6,7 @@ export function JobId(id: string): JobId {
   return id as JobId
 }
 
-import type { Agent } from '@ejunz/ea-core/agent'
+
 
 import type { SessionId } from '@ejunz/ea-core/session'
 

@@ -1,10 +1,10 @@
-import { join } from 'node:path'
+
 
 import { decodeStorageRecord, packChunkRuns, SESSION_FORMAT_VERSION } from '@ejunz/ea-core/session'
 
-import type { SessionEvent, SessionHeader, SessionId, StorageRecord } from '@ejunz/ea-core/session'
+import type { StorageRecord } from '@ejunz/ea-core/session'
 
-import { SessionFormatUnsupportedError, sessionFormatVersionRefusal } from '@ejunz/ea-core/session-persistence'
+import { sessionFormatVersionRefusal } from '@ejunz/ea-core/session-persistence'
 
 export type JsonlCompression = 'zstd' | 'none'
 
@@ -621,9 +621,9 @@ export async function decompressZstdPrefix(input: Buffer): Promise<Buffer> {
   return zstdDecompressAsync(input, INCOMPLETE_FRAME_OPTIONS)
 }
 
-import { mkdtemp, rm, stat } from 'node:fs/promises'
+import { mkdtemp } from 'node:fs/promises'
 
-import { join, parse, resolve, toNamespacedPath } from 'node:path'
+import { parse, toNamespacedPath } from 'node:path'
 
 type MoveFileExW = (existing: string, replacement: string, flags: number) => number
 
@@ -846,10 +846,6 @@ function fileRevision(identity: FileRevisionIdentity): PersistenceRevision {
     identity.mtimeNs,
     identity.ctimeNs,
   ].join(':'))
-}
-
-function isENOENT(error: unknown): boolean {
-  return (error as NodeJS.ErrnoException | null)?.code === 'ENOENT'
 }
 
 export class JsonlSessionPersistence extends SessionPersistence implements PersistenceBackend<JsonlTornMarker> {

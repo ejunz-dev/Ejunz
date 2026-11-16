@@ -1,4 +1,4 @@
-import type { LlmCallConfig } from '@ejunz/ea-core/llm'
+
 
 export interface CompactionPolicyConfig {
   /** Compact at this fraction of the model's context window. Defaults to `0.8`. */
@@ -63,7 +63,7 @@ export type ResolvedCompactSpec = Omit<ResolvedTargetPolicy, 'retainRatio' | 're
 
 import { deepFreeze } from '@ejunz/ea-core/llm'
 
-import type { LlmCallConfig } from '@ejunz/ea-core/llm'
+
 
 const DEFAULT_THRESHOLD_RATIO = 0.8
 
@@ -328,15 +328,13 @@ function assertRatio(name: string, value: unknown): asserts value is number {
   }
 }
 
-import type { Context } from '@ejunz/cordis'
 
-import { contentHasImage, createUserMessage, BlockAssembler, LlmError } from '@ejunz/ea-core/llm'
 
-import type {
-  ContentBlock, FinishReason, GenerateOptions, Message, TokenUsage, ToolSchema,
-} from '@ejunz/ea-core/llm'
+import { contentHasImage, BlockAssembler, LlmError } from '@ejunz/ea-core/llm'
 
-import type { Agent } from '@ejunz/ea-core/agent'
+import type { ContentBlock, FinishReason, GenerateOptions, TokenUsage, ToolSchema } from '@ejunz/ea-core/llm'
+
+
 
 interface SummaryConfig {
   readonly summarizationProvider: string
@@ -521,27 +519,21 @@ import { randomUUID } from 'node:crypto'
 
 import { isDeepStrictEqual } from 'node:util'
 
-import {
-  CompactionId,
-  ManualCompactionError,
-  compactCheckpointSource,
-  toolPairingBalancedAfter,
-  toolPairingBalancedBefore,
-} from '@ejunz/ea-core/compaction'
+import { CompactionId, compactCheckpointSource, toolPairingBalancedAfter, toolPairingBalancedBefore } from '@ejunz/ea-core/compaction'
 
-import type { CompactionResult } from '@ejunz/ea-core/compaction'
 
-import type { CommandId } from '@ejunz/ea-core/commands/brand'
+
+
 
 import { createUserMessage, errorChain } from '@ejunz/ea-core/llm'
 
 import type { Message, UserMessage } from '@ejunz/ea-core/llm'
 
-import type { TokenMeasurement, TokenMeter } from '@ejunz/ea-core/token-meter'
+import type { TokenMeasurement } from '@ejunz/ea-core/token-meter'
 
-import type { Session, SessionEvent } from '@ejunz/ea-core/session'
+import type { SessionEvent } from '@ejunz/ea-core/session'
 
-import type { Agent } from '@ejunz/ea-core/agent'
+
 
 interface RegionDependencies {
   readonly meter: TokenMeter

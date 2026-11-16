@@ -1,4 +1,4 @@
-import type { ContentBlock } from '@ejunz/ea-core/llm'
+
 
 export type ToolCallKind = 'read' | 'edit' | 'delete' | 'move' | 'search' | 'execute' | 'fetch' | 'other'
 
@@ -232,9 +232,9 @@ export interface WebFetchResultView {
   truncated: boolean
 }
 
-import { assertNever, EjunzAgentError } from '@ejunz/ea-core/llm'
 
-import { isJsonValue, type JsonValue } from '@ejunz/ea-core/session'
+
+import { isJsonValue } from '@ejunz/ea-core/session'
 
 export type JsonSchemaScalar = string | number | boolean | null
 
@@ -807,11 +807,11 @@ export function validateJsonSchemaValue(schema: JsonSchemaNode, value: unknown, 
   return checkValue(schema, value, path)
 }
 
-import { EjunzAgentError } from '@ejunz/ea-core/llm'
 
-import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import type { JsonValue } from '@ejunz/ea-core/session'
+
+
+
 
 export interface ValueSchemaAnnotations {
   /** Human-readable description projected into JSON Schema and generated types. */
@@ -1348,9 +1348,9 @@ export function defineTool<const S extends ParameterSchemaSpec, const O extends 
   return tool
 }
 
-import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import type { JsonValue } from '@ejunz/ea-core/session'
+
+
 
 const CONTENT_VALUE_SCHEMA = { type: 'array', items: { type: 'json' } } as const
 

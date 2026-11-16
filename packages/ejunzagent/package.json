@@ -60,7 +60,7 @@
     "ea": "node --expose-internals --import tsx/esm src/entry/bin.ts",
     "postinstall": "node bin/postinstall.js",
     "build:cli": "tsdown --config tsdown.cli.config.ts --config-loader tsx && yarn run build:cli-runtime",
-    "build:lib:modules": "tsdown --config tsdown.modules.config.ts"
+    "build:lib:modules": "tsdown --config tsdown.modules.config.ts && tsdown --config tsdown.worker.config.ts"
   },
   "devDependencies": {
     "@agentclientprotocol/sdk": "0.25.1",
@@ -1126,6 +1126,15 @@
       "default": "./lib/modules/tool-subagent-control.js"
     },
     "./tool-subagent-control/package.json": "./package.json",
+    "./tool-subagent-list-agents": {
+      "types": "./lib/types/modules/tools/subagent-list-agents.d.ts",
+      "default": "./lib/modules/tool-subagent-list-agents.js"
+    },
+    "./tool-subagent-list-agents/invariant": {
+      "types": "./lib/types/modules/tools/subagent-list-agents.d.ts",
+      "default": "./lib/modules/tool-subagent-list-agents.js"
+    },
+    "./tool-subagent-list-agents/package.json": "./package.json",
     "./tool-subagent-report": {
       "types": "./lib/types/modules/tools/tool-subagent-report.d.ts",
       "default": "./lib/modules/tool-subagent-report.js"
@@ -1363,6 +1372,7 @@
       "tool-lsp": "src/tools/lsp.ts",
       "tool-session-query": "src/tools/session-query.ts",
       "tool-subagent-control": "src/tools/subagent-control.ts",
+      "tool-subagent-list-agents": "src/tools/subagent-list-agents.ts",
       "tool-todo": "src/tools/todo.ts",
       "tool-ask-user": "src/tools/tool-ask-user.ts",
       "tool-cordis": "src/tools/tool-cordis.ts",

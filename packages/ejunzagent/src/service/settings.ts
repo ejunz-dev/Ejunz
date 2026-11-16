@@ -1,4 +1,4 @@
-import type z from '@ejunz/schemastery'
+
 
 interface SchemaNode {
   type?: string

@@ -185,20 +185,15 @@ export interface ChildPort {
 
 import * as vm from 'node:vm'
 
-import type { ContentBlock } from '@ejunz/ea-core/llm'
-
 import { SessionId } from '@ejunz/ea-core/session'
 
 import { assertObjectJsonSchema, JsonSchemaError } from '@ejunz/ea-core/tools'
-
-import type { ObjectJsonSchema } from '@ejunz/ea-core/tools'
 
 import { isFatalWorkflowError, WorkflowError } from '@ejunz/ea-core/workflow'
 
 import type {
   WorkflowAgentEndInfo,
   WorkflowAgentInfo,
-  WorkflowMeta,
   WorkflowResult,
 } from '@ejunz/ea-core/workflow'
 
@@ -651,8 +646,6 @@ export class WorkflowExecution {
   }
 }
 
-import type { WorkflowAgentEndInfo, WorkflowAgentInfo, WorkflowResult } from '@ejunz/ea-core/workflow'
-
 export enum WorkerToHostType {
   /** The startup handshake: the session is listening and awaits {@link HostToWorkerType.Go}. */
   Ready = 'ready',
@@ -751,7 +744,7 @@ import type SubagentRuntime from '@ejunz/ea-core/subagent'
 
 import type { SubagentRun } from '@ejunz/ea-core/subagent'
 
-import type { WorkflowAgentEndInfo, WorkflowAgentInfo, WorkflowMeta, WorkflowResult, WorkflowRun, WorkflowRunId } from '@ejunz/ea-core/workflow'
+import type { WorkflowRun } from '@ejunz/ea-core/workflow'
 
 interface ChildRecord {
   readonly run: SubagentRun
@@ -1319,9 +1312,7 @@ function sleep(ms: number): Promise<void> {
   })
 }
 
-import { WorkflowError } from '@ejunz/ea-core/workflow'
-
-import type { WorkflowMeta, WorkflowPhase } from '@ejunz/ea-core/workflow'
+import type { WorkflowPhase } from '@ejunz/ea-core/workflow'
 
 function validateMetaShape(meta: unknown): { meta?: WorkflowMeta; violations: string[] } {
   const violations: string[] = []
@@ -1389,15 +1380,11 @@ import { randomUUID } from 'node:crypto'
 
 import { availableParallelism } from 'node:os'
 
-import * as vm from 'node:vm'
-
-import type { Context } from '@ejunz/cordis'
-
 import z from '@ejunz/schemastery'
 
-import WorkflowEngine, { WorkflowError, WorkflowRunId } from '@ejunz/ea-core/workflow'
+import WorkflowEngine, { WorkflowRunId } from '@ejunz/ea-core/workflow'
 
-import type { WorkflowRun, WorkflowRunInfo, WorkflowStartRequest } from '@ejunz/ea-core/workflow'
+import type { WorkflowRunInfo, WorkflowStartRequest } from '@ejunz/ea-core/workflow'
 
 export interface Config {
   /** The `ctx.subagents` provider children run on (default `spawn`). */
@@ -1559,8 +1546,6 @@ export default WorkerThreadWorkflowEngine
 
 import type { MessagePort } from 'node:worker_threads'
 
-import { assertNever } from '@ejunz/ea-core/llm'
-
 interface PendingChild {
   started: PromiseWithResolvers<string>
   settled: PromiseWithResolvers<ChildResult>
@@ -1705,10 +1690,6 @@ export async function runWorkerSession(port: MessagePort, init: WorkerInit): Pro
   const result = await execution.drive()
   post(WorkerToHostType.Result, { result })
 }
-
-import { parentPort, workerData } from 'node:worker_threads'
-
-void runWorkerSession(requireParentPort(parentPort), workerData as WorkerInit)
 
 import type { InvariantInstaller } from '@ejunz/ea-core/invariants'
 import type { Context as InvariantContext } from '@ejunz/cordis'

@@ -1,4 +1,4 @@
-import type { DatabaseSync } from 'node:sqlite'
+
 
 import { mkdir, open } from 'node:fs/promises'
 
@@ -165,15 +165,7 @@ import {
   materializeSessionResultFilters,
 } from '@ejunz/ea-core/session-query'
 
-import type {
-  SessionAvailability,
-  SessionEventMetadataFilter,
-  SessionEventResultFilter,
-  SessionEventSearchRequest,
-  SessionResultFilter,
-  SessionSearchCursor,
-  SessionSearchRequest,
-} from '@ejunz/ea-core/session-query'
+import type { SessionAvailability, SessionEventMetadataFilter, SessionEventResultFilter, SessionResultFilter, SessionSearchCursor } from '@ejunz/ea-core/session-query'
 
 export const FTS_HIGHLIGHT_START = '\uFDD0'
 

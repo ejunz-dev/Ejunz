@@ -1,10 +1,10 @@
-import { Context } from '@ejunz/cordis'
 
-import type { Plugin } from '@ejunz/cordis'
+
+
 
 import { scopeOf } from '@ejunz/ea-core/scope'
 
-import { assertSupportedJsonSchema, defineTool } from '@ejunz/ea-core/tools'
+import { defineTool } from '@ejunz/ea-core/tools'
 
 import type { ToolDefinition } from '@ejunz/ea-core/tools'
 
@@ -696,7 +696,7 @@ export function pluginName(plugin: Plugin): string {
 
 import type { Branded } from '@ejunz/ea-core/brand'
 
-import type { JsonValue, SessionId } from '@ejunz/ea-core/session/types'
+
 
 export type CordisDynamicPluginId = Branded<'CordisDynamicPluginId'>
 
@@ -1057,13 +1057,13 @@ declare module '@ejunz/cordis' {
 
 import { Service } from '@ejunz/cordis'
 
-import type { Context } from '@ejunz/cordis'
 
-import type { Agent } from '@ejunz/ea-core/agent'
+
+
 
 import { snapshotJsonValue } from '@ejunz/ea-core/session'
 
-import type { JsonValue } from '@ejunz/ea-core/session/types'
+
 
 import { assertSupportedJsonSchema, validateJsonSchemaValue } from '@ejunz/ea-core/tools'
 
@@ -1300,7 +1300,7 @@ function validateOutput(
   return snapshot
 }
 
-import type { Context, Fiber, Plugin } from '@ejunz/cordis'
+import type { Plugin } from '@ejunz/cordis'
 
 export async function startHostHalf(
   group: Fiber,
@@ -1331,7 +1331,7 @@ export function missingServices(ctx: Context, fiber: Fiber): string[] {
   return Object.keys(fiber.inject).filter(service => ctx.get(service) === undefined)
 }
 
-import type { Fiber } from '@ejunz/cordis'
+
 
 import type { SessionId } from '@ejunz/ea-core/session/types'
 
@@ -1754,7 +1754,7 @@ import type { Agent } from '@ejunz/ea-core/agent'
 
 import { createUserMessage } from '@ejunz/ea-core/llm'
 
-import type { JsonValue } from '@ejunz/ea-core/session/types'
+
 
 import { TypertRemoteService, Remote } from '@ejunz/ea-core/typert-protocol'
 

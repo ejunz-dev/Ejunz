@@ -1,4 +1,4 @@
-import { relative } from 'node:path'
+
 
 import z from '@ejunz/schemastery'
 
@@ -112,7 +112,7 @@ export function trimmedInstructionDigest(content: string): string {
   return instructionContentSha1(content.trim())
 }
 
-import { basename, dirname } from 'node:path'
+import { basename } from 'node:path'
 
 const SYSTEM_REMINDER_OPEN = '<system-reminder>'
 
@@ -422,7 +422,7 @@ import { stat } from 'node:fs/promises'
 
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
-import type { FileSystem, FsInfo, FsTarget, FsVersion } from '@ejunz/ea-core/fs'
+import type { FsInfo, FsTarget } from '@ejunz/ea-core/fs'
 
 import { assertNever } from '@ejunz/ea-core/llm'
 
@@ -853,13 +853,13 @@ function userGlobalDisplayPath(eaHome: string): string {
   return `${eaHomeDisplay(eaHome)}/AGENTS.md`
 }
 
-import type { Agent } from '@ejunz/ea-core/agent'
 
-import { createUserMessage } from '@ejunz/ea-core/llm'
+
+
 
 import type { Message } from '@ejunz/ea-core/llm'
 
-import type { Session, UserMessage } from '@ejunz/ea-core/session'
+
 
 import type { FileSystem, FsVersion } from '@ejunz/ea-core/fs'
 

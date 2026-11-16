@@ -1,9 +1,3 @@
-import { randomUUID } from 'node:crypto'
-
-import { DatabaseSync } from 'node:sqlite'
-
-import type { SessionEvent, SessionId, SessionHeader, SurfaceOp } from '@ejunz/ea-core/session'
-
 export const SCHEMA_VERSION = 15
 
 export const SESSION_PERSISTENCE_SQLITE_APPLICATION_ID = 0x44534850
@@ -229,7 +223,7 @@ import {
   type StoredPrefix, type StoredSuffix,
 } from '@ejunz/ea-core/session-persistence'
 
-import type { SessionEvent, SurfaceEventType, SessionId, SessionHeader, SessionPreparation } from '@ejunz/ea-core/session'
+import type { SessionEvent, SurfaceOp, SurfaceEventType, SessionId, SessionHeader, SessionPreparation } from '@ejunz/ea-core/session'
 
 function envelopeBindings(event: SessionEvent): [string | null, string | null, number | null] {
   const se = event as SessionEvent<SurfaceEventType>

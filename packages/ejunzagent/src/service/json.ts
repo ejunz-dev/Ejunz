@@ -1,6 +1,6 @@
 import { open, rename, rm } from 'node:fs/promises'
 
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 
 import { randomUUID } from 'node:crypto'
 
@@ -32,9 +32,9 @@ async function fsyncDirectory(path: string): Promise<void> {
   }
 }
 
-import { StorageError } from '@ejunz/ea-core/storage'
 
-import type { KvUnitDescriptor } from '@ejunz/ea-core/storage'
+
+
 
 export interface UnitState {
   version: number
@@ -100,9 +100,9 @@ export function parse(text: string, descriptor: KvUnitDescriptor): UnitState {
 
 import { readFile } from 'node:fs/promises'
 
-import { StorageError } from '@ejunz/ea-core/storage'
 
-import type { KvUnit, KvUnitDescriptor } from '@ejunz/ea-core/storage'
+
+
 
 export async function openJsonUnit(
   descriptor: KvUnitDescriptor,

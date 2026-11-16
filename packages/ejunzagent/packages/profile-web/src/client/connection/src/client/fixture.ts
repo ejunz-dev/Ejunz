@@ -10,8 +10,8 @@ import {
   createToolResultMessage,
   createUserMessage,
   isTokenDelta,
-} from '@ejunz/ea-core/llm/message'
-import { CallId } from '@ejunz/ea-core/llm/brand'
+} from '@ejunz/ea-core/llm'
+import { CallId } from '@ejunz/ea-core/llm'
 import type {
   AssistantMessage,
   ContentBlock,

@@ -886,7 +886,7 @@ export function renderEveryReminderBatchFraming(
   ].join('\n')
 }
 
-import type { Context } from '@ejunz/cordis'
+
 
 import type { Session } from '@ejunz/ea-core/session'
 
@@ -910,7 +910,7 @@ export async function flushSchedulePersistence(ctx: Context, session: Session): 
   }
 }
 
-import type { Agent } from '@ejunz/ea-core/agent'
+
 
 const tails = new WeakMap<Agent, Promise<void>>()
 
@@ -926,9 +926,9 @@ export async function runScheduleTransaction<T>(agent: Agent, operation: () => P
   }
 }
 
-import type { Context } from '@ejunz/cordis'
 
-import type { Agent } from '@ejunz/ea-core/agent'
+
+
 
 import { createUserMessage } from '@ejunz/ea-core/llm'
 
@@ -1233,9 +1233,9 @@ export class ScheduleRuntime {
   }
 }
 
-import type { Context } from '@ejunz/cordis'
 
-import type { Agent } from '@ejunz/ea-core/agent'
+
+
 
 import type { ContentBlock } from '@ejunz/ea-core/llm'
 

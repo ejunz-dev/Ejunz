@@ -6,9 +6,9 @@ export function CompactionId(id: string): CompactionId {
   return id as CompactionId
 }
 
-import type { MessageSource } from '@ejunz/ea-core/llm/message'
+import type { MessageSource } from '@ejunz/ea-core/llm'
 
-import type { CommandId } from '@ejunz/ea-core/commands/brand'
+
 
 const COMPACT_CHECKPOINT_MARKER = Object.freeze({ kind: 'plugin', plugin: 'compact' } as const)
 
@@ -34,7 +34,7 @@ export function isCompactCheckpointSource(source: MessageSource): boolean {
 
 import type { ContentBlock, TokenUsage } from '@ejunz/ea-core/llm'
 
-import type { CommandId } from '@ejunz/ea-core/commands/brand'
+
 
 export type { CompactionId }
 
@@ -142,7 +142,7 @@ export interface CompactionResult {
   shadowedTokenCount: number
 }
 
-import type { Session, SessionEvent } from '@ejunz/ea-core/session'
+import type { SessionEvent } from '@ejunz/ea-core/session'
 
 interface BalanceCache {
   /** Surface rewrite generation this state describes. */

@@ -4323,11 +4323,11 @@ export const STATE_LABELS = {
   [FiberState.UNLOADING]: 'unloading',
 } as const satisfies Record<FiberState, string>
 
-import type { Context, Fiber } from '@ejunz/cordis'
+import type { Fiber } from '@ejunz/cordis'
 
 import type { ScopeKey } from '@ejunz/ea-core/scope'
 
-import type { Agent } from '@ejunz/ea-core/agent'
+
 
 import type {} from '@ejunz/ea-core/cordis-host-runner'
 
@@ -4717,13 +4717,13 @@ return {
 - After a technical failure, use cordis_inspect_self to read the exact Package source and its message/stack. Define a corrected Package under the same Plugin and retry autonomously.
 - Use the cordis-plugin-development Skill for other failure causes, repair procedures, and complete extension patterns.`
 
-import type { Context } from '@ejunz/cordis'
+
 
 import { HOST_BUILTIN_INSPECTION } from '@ejunz/ea-core/cordis-host-runner'
 
 import type { HostCordisInspectProviderRegistration } from '@ejunz/ea-core/cordis-host-runner'
 
-import type { JsonValue } from '@ejunz/ea-core/session'
+
 
 const EMPTY_INPUT = { type: 'object', properties: {}, additionalProperties: false } as const
 

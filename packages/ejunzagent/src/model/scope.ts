@@ -1,4 +1,4 @@
-import type { Context } from '@ejunz/cordis'
+
 
 export interface ScopeLayer {
   /** Whether every table in this layer is empty. */

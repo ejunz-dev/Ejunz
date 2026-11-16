@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import { SessionId } from '@ejunz/ea-core/session'
 
-import { defineDomain, domainTable } from '@ejunz/ea-core/storage'
+import { defineDomain, domainTable } from '@ejunz/ea-core/storage-domain'
 
 export const checkpointRow = z.object({
   ver: z.number().int().nonnegative(),
@@ -32,17 +32,17 @@ export const projectionCacheDomainSpec = defineDomain({
 
 import { Context, Service } from '@ejunz/cordis'
 
-import z from '@ejunz/schemastery'
+import s from '@ejunz/schemastery'
 
 import { snapshotJsonValue } from '@ejunz/ea-core/session'
 
-import type { Session, SessionEvent, SessionHeader, SessionId } from '@ejunz/ea-core/session'
+import type { Session, SessionEvent, SessionHeader } from '@ejunz/ea-core/session'
 
 import type {} from '@ejunz/ea-core/session-persistence'
 
 import type { ProjectionCheckpoint, ProjectionSnapshot } from '@ejunz/ea-core/session-projection'
 
-import type { KvTable } from '@ejunz/ea-core/storage'
+import type { KvTable } from '@ejunz/ea-core/storage-domain'
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -57,9 +57,9 @@ export interface Config {
   writeIntervalMs: number
 }
 
-export const Config: z<Config> = z.object({
-  writeEveryEvents: z.natural().min(1).required(),
-  writeIntervalMs: z.natural().min(1).required(),
+export const Config: s<Config> = s.object({
+  writeEveryEvents: s.natural().min(1).required(),
+  writeIntervalMs: s.natural().min(1).required(),
 })
 
 interface DirtyState {
@@ -72,7 +72,7 @@ interface DirtyState {
 export class SessionProjectionCache extends Service {
   static inject = ['storageDomain', 'sessionProjections', 'sessionPersistence', 'sessions']
 
-  static Config: z<Config> = Config
+  static Config: s<Config> = Config
 
   private table?: KvTable<SessionId, CheckpointRecord>
   private readonly dirty = new Map<Session, DirtyState>()

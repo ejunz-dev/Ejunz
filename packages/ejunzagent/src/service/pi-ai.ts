@@ -2,15 +2,7 @@ import { builtinProviders, getBuiltinModels, getBuiltinProviders } from '@earend
 
 import type { BuiltinProvider } from '@earendil-works/pi-ai/providers/all'
 
-import type {
-  Api,
-  Model,
-  ModelCost,
-  ModelThinkingLevel,
-  OpenAICompletionsCompat,
-  Provider,
-  ThinkingLevelMap,
-} from '@earendil-works/pi-ai'
+import type { ModelCost, OpenAICompletionsCompat, ThinkingLevelMap } from '@earendil-works/pi-ai'
 
 const NO_COST: ModelCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 
@@ -379,7 +371,7 @@ export function resolveRouteModels(request: RouteCatalogRequest): RouteCatalog {
 
 import { createProvider } from '@earendil-works/pi-ai'
 
-import type { Api, ApiKeyAuth, Model, Provider, ProviderStreams } from '@earendil-works/pi-ai'
+import type { ApiKeyAuth, ProviderStreams } from '@earendil-works/pi-ai'
 
 import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy'
 
@@ -478,7 +470,7 @@ export function buildProvider(spec: ProviderSpec): Provider {
   })
 }
 
-import type { CacheRetention, ModelThinkingLevel, Provider, ThinkingBudgets, Transport } from '@earendil-works/pi-ai'
+import type { CacheRetention, Provider, ThinkingBudgets, Transport } from '@earendil-works/pi-ai'
 
 import z from '@ejunz/schemastery'
 
@@ -490,7 +482,7 @@ import { MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
 
 import { resolveRetryPolicy, RetryPolicySchema } from '@ejunz/ea-core/llm'
 
-import type { ResolvedRetryPolicy, RetryPolicyConfig } from '@ejunz/ea-core/llm'
+import type { RetryPolicyConfig } from '@ejunz/ea-core/llm'
 
 export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300_000
 
@@ -773,11 +765,11 @@ export function resolveProfiles(
   return resolved
 }
 
-import { LlmError } from '@ejunz/ea-core/llm'
 
-import type { Message, ModelMessageSource } from '@ejunz/ea-core/llm'
 
-import type { Api, AssistantMessage, Usage as PiUsage } from '@earendil-works/pi-ai'
+import type { ModelMessageSource } from '@ejunz/ea-core/llm'
+
+
 
 type PiAiReplayBlock =
   | { type: 'text'; textSignature?: string }
@@ -965,11 +957,11 @@ export function toPiAssistant(message: Message): AssistantMessage {
     : replayedAssistant(message, source, source.replayState)
 }
 
-import { CallId, contentHasImage, LlmError } from '@ejunz/ea-core/llm'
 
-import type { ContentBlock, GenerateOptions, Message } from '@ejunz/ea-core/llm'
 
-import type { AttachmentStore } from '@ejunz/ea-core/attachment'
+import type { ContentBlock, Message } from '@ejunz/ea-core/llm'
+
+
 
 import type { Context as PiContext, ImageContent, Message as PiMessage, TextContent, Tool as PiTool } from '@earendil-works/pi-ai'
 
@@ -1136,9 +1128,9 @@ async function toPiContextWithImages(options: GenerateOptions, attachments: Atta
   return piContext(options, messages)
 }
 
-import { CallId, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, isContextWindowExceededError, isQuotaExceededError, LlmError, QUOTA_EXCEEDED_CODE } from '@ejunz/ea-core/llm'
+import { CallId, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, isContextWindowExceededError, isQuotaExceededError, QUOTA_EXCEEDED_CODE } from '@ejunz/ea-core/llm'
 
-import type { FinishReason, StreamChunk, TokenUsage } from '@ejunz/ea-core/llm'
+import type { FinishReason, TokenUsage } from '@ejunz/ea-core/llm'
 
 import { isContextOverflow } from '@earendil-works/pi-ai'
 
@@ -1318,13 +1310,7 @@ import type {
   ThinkingLevel,
 } from '@earendil-works/pi-ai'
 
-import {
-  attributionHeaders,
-  contentHasImage,
-  LlmAdapter,
-  LlmError,
-  ReasoningEffortId,
-} from '@ejunz/ea-core/llm'
+import { contentHasImage, LlmAdapter, ReasoningEffortId } from '@ejunz/ea-core/llm'
 
 import type {
   GenerateOptions,
@@ -1621,7 +1607,7 @@ export class PiAiAdapter extends LlmAdapter {
   }
 }
 
-import { INVALID_CREDENTIAL_CODE, LlmError, normalizeApiKey } from '@ejunz/ea-core/llm'
+import { INVALID_CREDENTIAL_CODE, normalizeApiKey } from '@ejunz/ea-core/llm'
 
 import type { LlmDiscoveredModel, LlmModelDiscoveryRequest } from '@ejunz/ea-core/llm'
 

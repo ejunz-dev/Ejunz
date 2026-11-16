@@ -6,7 +6,7 @@ export function RetryId(id: string): RetryId {
   return id as RetryId
 }
 
-import type { SessionEvent } from '@ejunz/ea-core/session'
+
 
 export function providerForOpenStep(
   events: readonly SessionEvent[],
@@ -29,7 +29,7 @@ export function providerForOpenStep(
   return undefined
 }
 
-import type { LlmFailure } from '@ejunz/ea-core/llm/types'
+
 
 export type { RetryId }
 

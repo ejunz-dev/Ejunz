@@ -101,14 +101,6 @@ const reportSchema = {
   additionalProperties: false,
 }
 
-function normalizedText(value) {
-  return typeof value === 'string' && value.length > 0 && value === value.trim()
-}
-
-function normalizedList(value) {
-  return Array.isArray(value) && value.every(normalizedText)
-}
-
 function validateReport(report) {
   if (report === null || typeof report !== 'object' || Array.isArray(report)) {
     throw new Error('Ralph child returned no structured round report')

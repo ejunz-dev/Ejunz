@@ -1,4 +1,4 @@
-import type { SessionEvent, TurnEndReason } from '@ejunz/ea-core/session'
+import type { TurnEndReason } from '@ejunz/ea-core/session'
 
 export interface ConsumedWork {
   /**
@@ -75,7 +75,7 @@ export function foldConsumedWork(events: readonly SessionEvent[]): ConsumedWork 
   return { ...end === undefined ? {} : { end }, droppedUnrun }
 }
 
-import type { UserMessage } from '@ejunz/ea-core/llm/types'
+
 
 export type InboxTarget = 'next-turn' | 'next-step'
 
@@ -98,7 +98,7 @@ declare module '@ejunz/ea-core/session/types' {
 
 import type { MessageId } from '@ejunz/ea-core/llm'
 
-import type { Session, SessionEventMap, UserMessage } from '@ejunz/ea-core/session'
+import type { SessionEventMap } from '@ejunz/ea-core/session'
 
 type InboxState = Record<InboxTarget, UserMessage[]>
 
@@ -308,13 +308,13 @@ export class Inbox {
   }
 }
 
-import type { Context } from '@ejunz/cordis'
 
-import type { Scoped } from '@ejunz/ea-core/scope'
 
-import type { LlmCallConfig, LlmFailure, ResolvedRetryPolicy } from '@ejunz/ea-core/llm'
 
-import type { AgentCancelCause, Session, SessionId, UserMessage } from '@ejunz/ea-core/session'
+
+import type { LlmFailure, ResolvedRetryPolicy } from '@ejunz/ea-core/llm'
+
+import type { AgentCancelCause, Session, UserMessage } from '@ejunz/ea-core/session'
 
 export type { AgentCancelCause } from '@ejunz/ea-core/session'
 
@@ -585,11 +585,11 @@ declare module '@ejunz/cordis' {
   }
 }
 
-import type { Context, Events } from '@ejunz/cordis'
+import type { Events } from '@ejunz/cordis'
 
-import { scopeTarget } from '@ejunz/ea-core/scope'
 
-import type { Scoped } from '@ejunz/ea-core/scope'
+
+
 
 import type { AssembleContext } from '@ejunz/ea-core/system-prompt'
 
@@ -702,7 +702,7 @@ export function assembleContextFor(agent: Agent, signal?: AbortSignal): Assemble
   return { agent, scope: agent, ...signal === undefined ? {} : { signal } }
 }
 
-import type { Context } from '@ejunz/cordis'
+
 
 import type { LlmCallConfig, ReasoningEffortId } from '@ejunz/ea-core/llm'
 

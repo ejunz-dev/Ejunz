@@ -1,6 +1,6 @@
 import { assertNever } from '@ejunz/ea-core/llm'
 
-import type { UserMessage } from '@ejunz/ea-core/llm'
+
 
 const IANA_TIME_ZONE = /^[A-Za-z][A-Za-z0-9_+.-]*(?:\/[A-Za-z0-9_+.-]+)+$/
 

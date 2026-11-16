@@ -1,11 +1,8 @@
-import type { Context } from '@ejunz/cordis'
 
-import { EjunzAgentError } from '@ejunz/ea-core/llm'
 
-import {
-  SessionQueryError,
-  type SessionQueryErrorCode,
-} from '@ejunz/ea-core/session-query'
+
+
+import { type SessionQueryErrorCode } from '@ejunz/ea-core/session-query'
 
 interface ModelSafeServiceFailure {
   readonly code: SessionQueryErrorCode | 'SESSION_QUERY_TOOL_FAILED'
@@ -173,23 +170,15 @@ export const serviceBoundary = {
   sanitizeError,
 }
 
-import type { Context } from '@ejunz/cordis'
 
-import { EjunzAgentError } from '@ejunz/ea-core/llm'
 
-import {
-  SessionId,
-  type SessionEvent,
-  type SessionHeader,
-  type SessionId as SessionIdValue,
-} from '@ejunz/ea-core/session'
 
-import type {
-  SessionLineageNode,
-  SessionRecord,
-} from '@ejunz/ea-core/session-query'
 
-import type { ToolRunContext } from '@ejunz/ea-core/tools'
+import { type SessionHeader } from '@ejunz/ea-core/session'
+
+import type { SessionLineageNode } from '@ejunz/ea-core/session-query'
+
+
 
 interface Caller {
   readonly id: SessionIdValue
@@ -431,13 +420,7 @@ import {
   type SessionId as SessionIdValue,
 } from '@ejunz/ea-core/session'
 
-import {
-  SessionQueryError,
-  type SessionAvailability,
-  type SessionEventMetadataFilter,
-  type SessionEventSurface,
-  type SessionResultFilter,
-} from '@ejunz/ea-core/session-query'
+import { type SessionAvailability, type SessionEventMetadataFilter, type SessionResultFilter } from '@ejunz/ea-core/session-query'
 
 interface SessionSearchArgs {
   query: string
@@ -727,26 +710,15 @@ export const toolInput = {
   assertNonNegativeSafeInteger,
 }
 
-import {
-  extractSessionEventText,
-  type SessionEventSearchHit,
-  type SessionEventTraceObservation,
-  type SessionEventWindow,
-  type SessionLineageTrace,
-  type SessionRecord,
-  type SessionSearchHit,
-} from '@ejunz/ea-core/session-query'
+import { extractSessionEventText, type SessionEventSearchHit, type SessionEventTraceObservation, type SessionEventWindow, type SessionLineageTrace, type SessionSearchHit } from '@ejunz/ea-core/session-query'
 
-import type {
-  SessionEvent,
-  SessionId,
-} from '@ejunz/ea-core/session'
+import type { SessionEvent } from '@ejunz/ea-core/session'
 
 import type { GenericCallView } from '@ejunz/ea-core/tools'
 
-type TitleView = Awaited<ReturnType<typeof cwdAccess.readTitle>>
+type CwdTitleView = Awaited<ReturnType<typeof cwdAccess.readTitle>>
 
-type CompleteTitleMap = Awaited<ReturnType<typeof cwdAccess.readTitles>>
+type CwdTitleMap = Awaited<ReturnType<typeof cwdAccess.readTitles>>
 
 type AuthorizedDescendants = ReturnType<typeof cwdAccess.authorizeDescendants>
 
@@ -773,7 +745,7 @@ interface EventTargetCallArgs extends SessionTargetCallArgs {
 
 function formatSessionSearch(
   collected: SearchCollection<SessionSearchHit>,
-  titles: CompleteTitleMap,
+  titles: CwdTitleMap,
   authorizedParents: ReadonlySet<SessionId>,
 ): string {
   if (collected.items.length === 0) return formatEmptySessionSearch()
@@ -810,7 +782,7 @@ function formatEmptySessionSearch(): string {
 
 function formatEventSearch(
   sessionId: SessionId,
-  title: TitleView,
+  title: CwdTitleView,
   collected: SearchCollection<SessionEventSearchHit>,
 ): string {
   const lines = [`Session ${sessionId} — ${cwdAccess.titleText(title)}`]
@@ -836,7 +808,7 @@ function formatSessionTrace(
   ancestors: readonly SessionRecord[],
   ancestorBoundary: boolean,
   descendants: AuthorizedDescendants,
-  titles: CompleteTitleMap,
+  titles: CwdTitleMap,
 ): string {
   const lines = [
     `Session ${trace.target.header.id} — ${cwdAccess.titleText(titles.get(trace.target.header.id))}`,
@@ -859,7 +831,7 @@ function formatSessionTrace(
 function renderDescendants(
   lines: string[],
   nodes: AuthorizedDescendants,
-  titles: CompleteTitleMap,
+  titles: CwdTitleMap,
 ): void {
   for (const { node, depth } of cwdAccess.visitDescendants(nodes)) {
     const indent = '  '.repeat(depth)
@@ -874,7 +846,7 @@ function renderDescendants(
 
 function formatEventTrace(
   sessionId: SessionId,
-  title: TitleView,
+  title: CwdTitleView,
   trace: SessionEventTraceObservation,
 ): string {
   return [
@@ -890,7 +862,7 @@ function formatEventTrace(
 
 function formatEventRead(
   sessionId: SessionId,
-  title: TitleView,
+  title: CwdTitleView,
   window: SessionEventWindow,
 ): string {
   const before = window.events.filter(event => event.seq < window.target.seq)
@@ -979,11 +951,11 @@ export const presentation = {
   presentEventTargetCall,
 }
 
-import type { Context } from '@ejunz/cordis'
+
 
 import { EjunzAgentError } from '@ejunz/ea-core/llm'
 
-import type { SessionId } from '@ejunz/ea-core/session'
+
 
 import {
   SessionQueryError,
@@ -995,7 +967,7 @@ import {
 
 import type { ToolRunContext } from '@ejunz/ea-core/tools'
 
-type SessionSearchArgs = Parameters<typeof toolInput.buildSessionFilters>[0]
+type SessionToolArgs = Parameters<typeof toolInput.buildSessionFilters>[0]
 
 interface EventSearchArgs {
   session_id?: string
@@ -1021,14 +993,14 @@ interface EventReadArgs extends EventTargetArgs {
   after?: number
 }
 
-interface SearchCollection<T> {
+interface SessionToolSearchCollection<T> {
   readonly items: T[]
   readonly capped: boolean
 }
 
 async function executeSessionSearch(
   ctx: Context,
-  args: SessionSearchArgs,
+  args: SessionToolArgs,
   exec: ToolRunContext,
   maxResults: number,
 ): Promise<string> {
@@ -1219,7 +1191,7 @@ async function collectPages<T>(
     readonly nextCursor?: SessionSearchCursor
   }>,
   accept: (item: T) => boolean,
-): Promise<SearchCollection<T>> {
+): Promise<SessionToolSearchCollection<T>> {
   const items: T[] = []
   const seen = new Set<SessionSearchCursor>()
   let cursor: SessionSearchCursor | undefined

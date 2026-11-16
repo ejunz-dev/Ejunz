@@ -28,7 +28,7 @@ declare module '@ejunz/ea-core/session-projection/types' {
 
 import { z } from 'zod'
 
-import { isTokenDelta } from '@ejunz/ea-core/llm/message'
+import { isTokenDelta } from '@ejunz/ea-core/llm'
 
 import type { ProjectionDefinition } from '@ejunz/ea-core/session-projection'
 

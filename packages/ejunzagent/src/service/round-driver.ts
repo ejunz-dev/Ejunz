@@ -1,4 +1,4 @@
-import type { ContentBlock } from '@ejunz/ea-core/llm'
+
 
 /** Runtime mirror: FiberState is a cordis const enum with no runtime export. */
 const FiberState = {
@@ -10,7 +10,7 @@ const FiberState = {
   UNLOADING: 5,
 } as const
 
-import type { GoalView } from '@ejunz/ea-core/goal'
+
 
 export function renderGoalRoundPrompt(goal: GoalView, round: number): ContentBlock[] {
   return [{

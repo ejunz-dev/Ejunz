@@ -1,6 +1,6 @@
 import type { ContentBlock as AcpContentBlock } from '@agentclientprotocol/sdk'
 
-import type { TurnEndReason } from '@ejunz/ea-core/session'
+
 
 export function turnEndToStopReason(reason: TurnEndReason): StopReason {
   switch (reason.kind) {

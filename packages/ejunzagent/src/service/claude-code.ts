@@ -2,16 +2,9 @@ import { EventEmitter } from 'node:events'
 
 import { extname } from 'node:path'
 
-import type {
-  SpawnedProcess,
-  SpawnOptions,
-} from '@anthropic-ai/claude-agent-sdk'
+import type { SpawnedProcess } from '@anthropic-ai/claude-agent-sdk'
 
-import {
-  scrubbedParentEnv,
-  type SubprocessHandle,
-  type SubprocessSpawnSpec,
-} from '@ejunz/ea-core/subprocess'
+
 
 const WINDOWS_BATCH_EXECUTABLE_ENV = 'EA_CLAUDE_CODE_EXECUTABLE'
 
@@ -192,11 +185,6 @@ export interface ClaudeCodeRunSpec {
   readonly spawn: (spec: SubprocessSpawnSpec) => SubprocessHandle
   /** Diagnostic sink for a post-publication error flattened into a result. */
   readonly onError?: (error: Error, stopReason: SubagentStopReason) => void
-}
-
-function thrown(value: unknown): Error {
-  /* v8 ignore next -- typed SDK and subprocess failures reject with Error. */
-  return value instanceof Error ? value : new Error(String(value))
 }
 
 export function textTask(prompt: readonly ContentBlock[]): string {

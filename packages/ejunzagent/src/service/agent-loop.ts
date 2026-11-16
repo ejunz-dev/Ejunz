@@ -2,11 +2,11 @@ import { createUserMessage } from '@ejunz/ea-core/llm'
 
 import type { ContextSnapshotSection } from '@ejunz/ea-core/llm'
 
-import type { Session, UserMessage } from '@ejunz/ea-core/session'
+
 
 import { isReplacementSurfaceEvent } from '@ejunz/ea-core/session'
 
-import type { Context } from '@ejunz/cordis'
+
 
 const SOURCE = '@ejunz/ea-core/system-prompt'
 
@@ -74,11 +74,11 @@ export class RuntimeContextProjection {
   }
 }
 
-import type { Context } from '@ejunz/cordis'
+
 
 import { assertNever, createToolResultMessage, type ToolCallBlock } from '@ejunz/ea-core/llm'
 
-import type { Session, UserMessage } from '@ejunz/ea-core/session'
+
 
 import { TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER, type ToolExecutionInput, type ToolExecutionMode, type ToolExecutionResult, type ToolRunContext } from './tools.js'
 
@@ -319,36 +319,19 @@ function appendToolResult(
   }, { surfaceOp: 'append', sourceEventSeqs: [callSeq] })
 }
 
-import type {
-  Agent,
-  AgentCancelCause,
-  AgentEventDispatch,
-  AgentOptions,
-  AgentStatus,
-  CancelOptions,
-  InboxTarget,
-  PreStepDecision,
-  RequestErrorAction,
-} from '@ejunz/ea-core/agent'
+import type { AgentCancelCause, AgentEventDispatch, AgentStatus, CancelOptions, InboxTarget, PreStepDecision, RequestErrorAction } from '@ejunz/ea-core/agent'
 
 import { Inbox, agentEvents, assembleContextFor } from '@ejunz/ea-core/agent'
 
 import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@ejunz/ea-core/llm'
 
-import {
-  BlockAssembler,
-  LlmError,
-  createAssistantMessage,
-  deepFreeze,
-  errorChain,
-  markAgentLoopRequest,
-} from '@ejunz/ea-core/llm'
+import { BlockAssembler, LlmError, createAssistantMessage, deepFreeze, markAgentLoopRequest } from '@ejunz/ea-core/llm'
 
 import type { Scope } from '@ejunz/ea-core/scope'
 
 import { createScope } from '@ejunz/ea-core/scope'
 
-import type { EpochHeader, RequestContext, Session, SessionId, TurnEndReason, UserMessage } from '@ejunz/ea-core/session'
+import type { EpochHeader, RequestContext, TurnEndReason, UserMessage } from '@ejunz/ea-core/session'
 
 import { canonicalHeader, headerEquals } from '@ejunz/ea-core/session'
 
@@ -356,7 +339,7 @@ import { joinContextSections, renderContextSections, renderPrompt } from '@ejunz
 
 import type { PromptAssembly } from '@ejunz/ea-core/system-prompt'
 
-import type { Context } from '@ejunz/cordis'
+
 
 type Phase =
   | { kind: 'idle'; lastTurn: number }

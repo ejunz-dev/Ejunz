@@ -397,11 +397,6 @@ export interface CodexRunSpec {
   readonly onError?: (error: Error, stopReason: SubagentStopReason) => void
 }
 
-function thrown(value: unknown): Error {
-  /* v8 ignore next -- typed subprocess/wire failures reject with Error. */
-  return value instanceof Error ? value : new Error(String(value))
-}
-
 export function textTask(prompt: readonly ContentBlock[]): string[] {
   if (prompt.length === 0) {
     throw new Error('subagent-codex: the one-shot task must contain only text blocks')

@@ -126,7 +126,7 @@ export abstract class SessionTelemetryBackend extends Service implements Session
   abstract shutdown(): Promise<void>
 }
 
-import type { Context } from '@ejunz/cordis'
+
 
 import type { Session, SessionEvent } from '@ejunz/ea-core/session'
 

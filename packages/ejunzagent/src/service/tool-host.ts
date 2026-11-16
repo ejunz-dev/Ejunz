@@ -1,4 +1,4 @@
-import type { JsonValue } from '@ejunz/ea-core/tools'
+
 
 export type { JsonValue } from '@ejunz/ea-core/tools'
 
@@ -54,7 +54,7 @@ export interface HostToolClient {
   call(name: string, args: HostArguments, context: HostCallContext, signal: AbortSignal): Promise<JsonValue>
 }
 
-import type { JsonValue } from '@ejunz/ea-core/tools'
+
 
 function invalid(detail: string): never {
   throw new Error(`host tool catalog is invalid: ${detail}`)
@@ -96,7 +96,7 @@ export function parseHostCatalog(value: JsonValue | undefined): HostCatalog {
 
 import type { LlmDomainRuntime } from '@ejunz/ea-core/llm'
 
-import type { JsonValue } from '@ejunz/ea-core/tools'
+
 
 export interface HostToolBridge {
   /**
@@ -237,7 +237,7 @@ export function createHostToolClient(bridge: HostToolBridge): HostToolClient {
 
 import { Context, Service } from '@ejunz/cordis'
 
-import type { JsonValue } from '@ejunz/ea-core/tools'
+
 
 declare module '@ejunz/cordis' {
   interface Context {
@@ -397,7 +397,7 @@ export function registerHostTools(options: RegisterHostToolsOptions): () => void
   }
 }
 
-import type { Context } from '@ejunz/cordis'
+
 
 export const name = 'tool-host'
 

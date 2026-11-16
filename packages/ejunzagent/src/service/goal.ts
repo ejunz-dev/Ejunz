@@ -83,7 +83,7 @@ declare module '@ejunz/ea-core/session-projection/types' {
   }
 }
 
-import type { Agent } from '@ejunz/ea-core/agent'
+
 
 export type GoalOperation =
   | 'create'
@@ -204,7 +204,7 @@ export class GoalError extends EjunzAgentError {
 
 import type { MessageSource } from '@ejunz/ea-core/llm'
 
-import type { SessionEvent } from '@ejunz/ea-core/session'
+
 
 const SNAPSHOT_OPERATIONS: ReadonlySet<Exclude<GoalOperation, 'clear'>> = new Set([
   'create',

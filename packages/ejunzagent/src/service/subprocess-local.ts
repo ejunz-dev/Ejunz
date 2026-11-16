@@ -84,14 +84,7 @@ import { scrubbedParentEnv } from '@ejunz/ea-core/subprocess'
 
 import { MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
 
-import type {
-  CollectedOutput,
-  SubprocessCollect,
-  SubprocessHandle,
-  SubprocessOutcome,
-  SubprocessOutputMode,
-  SubprocessSpawnSpec,
-} from '@ejunz/ea-core/subprocess'
+import type { CollectedOutput, SubprocessCollect, SubprocessOutcome, SubprocessOutputMode } from '@ejunz/ea-core/subprocess'
 
 export function childEnv(extra?: Readonly<NodeJS.ProcessEnv>): NodeJS.ProcessEnv {
   const env = scrubbedParentEnv()

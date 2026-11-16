@@ -4,7 +4,7 @@ import { mkdir, open } from 'node:fs/promises'
 
 import { dirname, resolve } from 'node:path'
 
-import { StorageError } from '@ejunz/ea-core/storage'
+
 
 export const STORAGE_SQLITE_SCHEMA_VERSION = 1
 
@@ -72,11 +72,11 @@ export function recordTableName(unit: string, table: string): string {
   return `u_${unit}_${table}`
 }
 
-import type { DatabaseSync, StatementSync } from 'node:sqlite'
+import type { StatementSync } from 'node:sqlite'
 
-import { StorageError } from '@ejunz/ea-core/storage'
 
-import type { KvUnit, KvUnitDescriptor } from '@ejunz/ea-core/storage'
+
+
 
 interface TableStatements {
   upsert: StatementSync
@@ -219,7 +219,7 @@ import type { Context } from '@ejunz/cordis'
 
 import z from '@ejunz/schemastery'
 
-import type { DatabaseSync } from 'node:sqlite'
+
 
 import { StorageError, UNIT_NAME_RE, storageBackendServiceKey } from '@ejunz/ea-core/storage'
 

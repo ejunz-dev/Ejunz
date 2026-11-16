@@ -48,15 +48,9 @@ export function SessionSearchCursor(value: string): SessionSearchCursor {
   return value as SessionSearchCursor
 }
 
-import type {
-  SessionEvent,
-  SessionEventType,
-  SessionHeader,
-  SessionId,
-  SurfaceEvent,
-} from '@ejunz/ea-core/session'
+import type { SessionEventType } from '@ejunz/ea-core/session'
 
-import type { SessionTitleSnapshot } from '@ejunz/ea-core/session-title'
+
 
 export type SessionEventSurface = 'current' | 'shadowed' | 'log-only'
 
@@ -286,7 +280,7 @@ export interface SessionSearchHit extends SessionRecord {
   bestMatch: SessionEventSearchHit
 }
 
-import type { SessionHeader } from '@ejunz/ea-core/session'
+
 
 export function assertSessionHeadersCompatible(a: SessionHeader, b: SessionHeader): void {
   if (
@@ -305,9 +299,9 @@ export function assertSessionHeadersCompatible(a: SessionHeader, b: SessionHeade
   }
 }
 
-import type { Context, Fiber } from '@ejunz/cordis'
+import type { Fiber } from '@ejunz/cordis'
 
-import type { Session, SessionEvent, SessionHeader, SessionId } from '@ejunz/ea-core/session'
+import type { SessionHeader } from '@ejunz/ea-core/session'
 
 import SessionPersistence, { SessionPersistenceCorruptionError } from '@ejunz/ea-core/session-persistence'
 
@@ -608,7 +602,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'unknown error'
 }
 
-import type { SessionEvent } from '@ejunz/ea-core/session'
+
 
 export function extractSessionEventText(event: SessionEvent): string {
   switch (event.type) {
@@ -686,9 +680,9 @@ function joinText(parts: readonly string[]): string {
   return parts.map(part => part.trim()).filter(Boolean).join('\n')
 }
 
-import { foldSurface } from '@ejunz/ea-core/session'
 
-import type { SessionEvent, SessionId } from '@ejunz/ea-core/session'
+
+
 
 export function buildSessionEventRecords(
   sessionId: SessionId,
@@ -951,9 +945,9 @@ function isRuntimeArray(value: unknown): boolean {
   return Array.isArray(value)
 }
 
-import { foldSurface, isSurfaceEvent, snapshotSessionEvent } from '@ejunz/ea-core/session'
+import { foldSurface, isSurfaceEvent } from '@ejunz/ea-core/session'
 
-import type { SessionEvent, SessionId, SurfaceEvent, SurfaceEventType } from '@ejunz/ea-core/session'
+import type { SessionEvent, SurfaceEvent, SurfaceEventType } from '@ejunz/ea-core/session'
 
 interface EventLogAnalysis {
   records: SessionEventRecord[]

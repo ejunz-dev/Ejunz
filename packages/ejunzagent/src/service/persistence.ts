@@ -6,11 +6,11 @@ export function SessionPersistenceRevision(value: string): SessionPersistenceRev
   return value as SessionPersistenceRevision
 }
 
-import { Context, Service } from '@ejunz/cordis'
+import { Service } from '@ejunz/cordis'
 
-import { SessionPreparation } from '@ejunz/ea-core/session'
 
-import type { SessionEvent, SessionId, SessionHeader } from '@ejunz/ea-core/session'
+
+
 
 export type { SessionHeader } from '@ejunz/ea-core/session'
 
@@ -211,7 +211,7 @@ export abstract class SessionPersistence extends Service {
 
 export default SessionPersistence
 
-import type { Session, SessionId } from '@ejunz/ea-core/session'
+
 
 interface PreparedSource {
   readonly session: Session
@@ -545,7 +545,7 @@ function rejectObservation(reject: (reason?: unknown) => void, reason: unknown):
   reject(reason)
 }
 
-import type { SessionEvent } from '@ejunz/ea-core/session'
+
 
 export interface SessionWriteBehindOptions {
   /** Maximum intentional batching wait after an idle queue receives work. */

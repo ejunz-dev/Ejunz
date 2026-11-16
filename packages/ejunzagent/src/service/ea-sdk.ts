@@ -6,7 +6,7 @@ import type { ContentBlock } from '@ejunz/ea-core/llm'
 
 import { SessionId, type SessionEvent, type TurnEndReason } from '@ejunz/ea-core/session'
 
-import type { SubagentResult, SubagentRun, SubagentStartRequest, SubagentStopReason } from '@ejunz/ea-core/subagent'
+import type { SubagentResult, SubagentRun, SubagentStopReason } from '@ejunz/ea-core/subagent'
 
 import { AssistantOutputFold, settleRunResult, subprocessRunHandle } from '@ejunz/ea-core/subagent'
 

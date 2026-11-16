@@ -126,11 +126,11 @@ import { chmod, link, lstat, mkdir, open, readFile, realpath, readdir, rename, r
 
 import type { BigIntStats, Dirent, Stats } from 'node:fs'
 
-import { basename, dirname, join, resolve } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 
 import { TextDecoder } from 'node:util'
 
-import { FsError, FsTargetKey, FsVersion } from '@ejunz/ea-core/fs'
+import { FsTargetKey } from '@ejunz/ea-core/fs'
 
 const BINARY_SAMPLE_BYTES = 8192
 

@@ -1,4 +1,4 @@
-import type { ChildProcess } from 'node:child_process'
+
 
 function exitsWithin(child: ChildProcess, ms: number): Promise<boolean> {
   if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true)
@@ -70,9 +70,9 @@ export async function disposeRuntimeProcess(
   await forceTerminateWithin(child, graces.disposeGraceMs)
 }
 
-import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import type { SessionEvent } from '@ejunz/ea-core/session'
+
+
 
 export interface EjunzAgentNotification {
   /** The JSON-RPC notification method name. */

@@ -7,11 +7,11 @@ export class SubagentError extends EjunzAgentError {
   }
 }
 
-import type { Context } from '@ejunz/cordis'
 
-import type { AgentSetupCommit } from '@ejunz/ea-core/agent'
 
-import { errorChain } from '@ejunz/ea-core/llm'
+
+
+
 
 export type ContinuableSetupContribution = (childCtx: Context) => () => void
 
@@ -166,9 +166,9 @@ export class SubagentActivationSetupRegistry {
 
 export default SubagentActivationSetupRegistry
 
-import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import type { SessionEvent } from '@ejunz/ea-core/session'
+
+
 
 export class AssistantOutputFold {
   private message: ContentBlock[] | undefined
@@ -219,7 +219,7 @@ export function finalAssistantOutput(events: readonly SessionEvent[]): ContentBl
   return fold.collect()
 }
 
-import type { Agent } from '@ejunz/ea-core/agent'
+
 
 declare module '@ejunz/ea-core/agent' {
   interface AgentOptions {
@@ -249,13 +249,13 @@ export function assertSubagentMaxDepth(maxDepth: unknown): void {
   }
 }
 
-import type { Context } from '@ejunz/cordis'
 
-import type { Agent, AgentOptions, CreateAgentOptions } from '@ejunz/ea-core/agent'
 
-import type { Session, SessionId } from '@ejunz/ea-core/session'
 
-import type { ToolRestriction } from '@ejunz/ea-core/tools'
+
+
+
+
 
 import type {} from '@ejunz/ea-core/user-approval'
 
@@ -428,9 +428,9 @@ declare module '@ejunz/ea-core/session-projection/types' {
 
 import { snapshotJsonValue } from '@ejunz/ea-core/session'
 
-import type { SessionEvent } from '@ejunz/ea-core/session'
 
-import type { ToolRestriction } from '@ejunz/ea-core/tools'
+
+
 
 declare module '@ejunz/ea-core/session/types' {
   interface SessionEventMap {
@@ -680,7 +680,7 @@ export function foldSubagentDescriptor(events: readonly SessionEvent[]): Subagen
 
 import { Session } from '@ejunz/ea-core/session'
 
-import type { SessionEvent, SessionId } from '@ejunz/ea-core/session'
+
 
 export function seedDescriptorTurn(
   childId: SessionId,
@@ -692,15 +692,15 @@ export function seedDescriptorTurn(
   return [...staged.events]
 }
 
-import type { Agent, AgentOptions } from '@ejunz/ea-core/agent'
+
 
 import type { Branded } from '@ejunz/ea-core/brand'
 
-import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import type { SessionEvent, SessionId } from '@ejunz/ea-core/session'
 
-import type { ObjectJsonSchema, ToolRestriction } from '@ejunz/ea-core/tools'
+
+
+import type { ObjectJsonSchema } from '@ejunz/ea-core/tools'
 
 export type SubagentRunId = Branded<'SubagentRunId'>
 
@@ -932,17 +932,17 @@ export interface SubagentProvider {
   prepareContinuable?(request: ContinuableCreateRequest): Promise<ContinuableCreateSpec>
 }
 
-import { randomUUID } from 'node:crypto'
 
-import type { Context } from '@ejunz/cordis'
 
-import type { Agent } from '@ejunz/ea-core/agent'
 
-import type { ContentBlock } from '@ejunz/ea-core/llm'
+
+
+
+
 
 import { foldConsumedWork } from '@ejunz/ea-core/agent'
 
-import type { SessionEvent, SessionId } from '@ejunz/ea-core/session'
+
 
 export interface ActivationTerminal {
   /** Why this epoch's last ordinary turn ended, or `error` when teardown failed. */
@@ -1126,25 +1126,19 @@ function renderThrown(value: unknown): string {
 
 import { randomUUID } from 'node:crypto'
 
-import type { Context } from '@ejunz/cordis'
 
-import type {
-  Agent,
-  AgentHandle,
-  AgentOptions,
-  AgentSetupCommit,
-  CreateAgentOptions,
-} from '@ejunz/ea-core/agent'
+
+import type { AgentHandle, AgentOptions, AgentSetupCommit, CreateAgentOptions } from '@ejunz/ea-core/agent'
 
 import { boundContextSummary, createUserMessage, errorChain } from '@ejunz/ea-core/llm'
 
-import type { ContentBlock, MessageId, MessageSource } from '@ejunz/ea-core/llm'
+import type { MessageSource } from '@ejunz/ea-core/llm'
 
 import { SessionId } from '@ejunz/ea-core/session'
 
-import type { SessionEvent } from '@ejunz/ea-core/session'
 
-import type { SessionPersistence } from '@ejunz/ea-core/session-persistence'
+
+
 
 import type { ToolRestriction } from '@ejunz/ea-core/tools'
 
@@ -2511,9 +2505,9 @@ export type { SubagentDescriptorData }
 
 export default SubagentContinuationManager
 
-import type { Context } from '@ejunz/cordis'
 
-import type { Session, SessionEvent, SessionHeader, SessionId } from '@ejunz/ea-core/session'
+
+import type { SessionHeader } from '@ejunz/ea-core/session'
 
 import type { SessionPersistence } from '@ejunz/ea-core/session-persistence'
 
@@ -3006,7 +3000,7 @@ import { accessSync, constants, statSync } from 'node:fs'
 
 import { isAbsolute, resolve } from 'node:path'
 
-import type { ContentBlock } from '@ejunz/ea-core/llm'
+
 
 export const NO_START_CAPABILITIES: SubagentCapabilities = Object.freeze({
   outputSchema: false,
@@ -3135,7 +3129,7 @@ export function subprocessRunHandle(parts: SubprocessRunHandleParts): SubagentRu
   }
 }
 
-import type { ContentBlock } from '@ejunz/ea-core/llm'
+
 
 import type { JobOutcome } from '@ejunz/ea-core/jobs'
 
@@ -3190,7 +3184,7 @@ import type { ContentBlock, MessageId } from '@ejunz/ea-core/llm'
 
 import type { Agent } from '@ejunz/ea-core/agent'
 
-import type { SessionId } from '@ejunz/ea-core/session'
+
 
 declare module '@ejunz/cordis' {
   interface Context {

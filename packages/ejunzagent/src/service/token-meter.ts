@@ -1,6 +1,6 @@
-import type { ContentBlock, Message } from '@ejunz/ea-core/llm'
+import type { ContentBlock } from '@ejunz/ea-core/llm'
 
-import type { EpochHeader } from '@ejunz/ea-core/session'
+
 
 const CHARS_PER_TOKEN = 4
 
@@ -51,9 +51,9 @@ export function estimateHeader(header: EpochHeader | undefined): number {
   return estimateSystemTokens(header) + estimateToolsTokens(header)
 }
 
-import { deriveEventMessage, isSurfaceEvent } from '@ejunz/ea-core/session'
 
-import type { SessionEvent } from '@ejunz/ea-core/session'
+
+
 
 import type {} from '@ejunz/ea-core/compaction'
 
@@ -152,9 +152,9 @@ declare module '@ejunz/ea-core/session-projection/types' {
 
 import { z } from 'zod'
 
-import { canonicalHeader } from '@ejunz/ea-core/session'
 
-import type { ProjectionDefinition } from '@ejunz/ea-core/session-projection'
+
+
 
 interface ContextBreakdownState {
   systemTokens: number
@@ -200,7 +200,7 @@ ProjectionDefinition<'contextBreakdown', ContextBreakdownState> = {
   stateVersion: 2,
 }
 
-import type { TokenUsage } from '@ejunz/ea-core/llm'
+
 
 export type TokenMeterConfig = Record<string, never>
 
@@ -231,11 +231,11 @@ export interface TokenSurfaceNode {
   readonly tokens: number
 }
 
-import { z } from 'zod'
 
-import type { TokenUsage } from '@ejunz/ea-core/llm'
 
-import type { SessionEvent } from '@ejunz/ea-core/session'
+
+
+
 
 import type { ProjectionDefinition } from '@ejunz/ea-core/session-projection'
 
@@ -435,7 +435,7 @@ export function foldSurfaceTokens(
 
 import { Context, Service } from '@ejunz/cordis'
 
-import z from '@ejunz/schemastery'
+import s from '@ejunz/schemastery'
 
 import { BlockAssembler, deepFreeze } from '@ejunz/ea-core/llm'
 
@@ -492,7 +492,7 @@ declare module '@ejunz/cordis' {
 export class TokenMeter extends Service {
   // Schemastery preserves untrusted loader keys on an empty object schema;
   // the public type excludes settings while validateConfigKeys rejects them.
-  static Config: z<TokenMeterConfig> = z.object({}) as unknown as z<TokenMeterConfig>
+  static Config: s<TokenMeterConfig> = s.object({}) as unknown as s<TokenMeterConfig>
 
   private readonly states = new WeakMap<Session, ReplayState>()
 

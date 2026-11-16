@@ -154,18 +154,7 @@ export function isJsonValue(value: unknown): boolean {
 
 import type { Branded } from '@ejunz/ea-core/brand'
 
-import type {
-  AssistantMessage,
-  CallId,
-  LlmCallConfig,
-  LlmCallConfigAdapterDefaults,
-  LlmFailure,
-  StreamChunk,
-  TokenUsage,
-  ToolResultMessage,
-  ToolSchema,
-  UserMessage,
-} from '@ejunz/ea-core/llm'
+import type { AssistantMessage, LlmCallConfig, LlmCallConfigAdapterDefaults, LlmFailure, TokenUsage, UserMessage } from '@ejunz/ea-core/llm'
 
 export type SessionId = Branded<'SessionId'>
 
@@ -750,7 +739,7 @@ export function decodeStorageRecord(value: unknown): SessionEvent[] {
   return expandRow(validateRow(value, tag))
 }
 
-import type { Message } from '@ejunz/ea-core/llm'
+
 
 const SURFACE_EVENT_TYPES = new Set<string>([
   'user/message',
@@ -1206,7 +1195,7 @@ export class SessionPreparation implements Disposable {
   }
 }
 
-import { MessageId, freezeMessage, type CallId } from '@ejunz/ea-core/llm'
+import { MessageId, freezeMessage } from '@ejunz/ea-core/llm'
 
 import type { ToolResultMessage } from '@ejunz/ea-core/llm'
 

@@ -1,8 +1,8 @@
 import type { Branded } from '@ejunz/ea-core/brand'
 
-import type { MessageId } from '@ejunz/ea-core/llm/brand'
 
-import type { SessionId } from '@ejunz/ea-core/session/types'
+
+
 
 export type MessageFeedbackVersion = Branded<'MessageFeedbackVersion'>
 
@@ -126,9 +126,9 @@ import { z } from 'zod'
 
 import type { MessageId } from '@ejunz/ea-core/llm/brand'
 
-import type { SessionId } from '@ejunz/ea-core/session/types'
 
-import { defineDomain, domainTable } from '@ejunz/ea-core/storage'
+
+import { defineDomain, domainTable } from '@ejunz/ea-core/storage-domain'
 
 const nonNegativeSafeInteger = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 
@@ -211,7 +211,7 @@ import type { SessionHeader, SessionId } from '@ejunz/ea-core/session/types'
 
 import type { SessionInspection } from '@ejunz/ea-core/session-persistence'
 
-import type { KvTable } from '@ejunz/ea-core/storage'
+import type { KvTable } from '@ejunz/ea-core/storage-domain'
 
 import { TypertRemoteService, Remote } from '@ejunz/ea-core/typert-protocol'
 

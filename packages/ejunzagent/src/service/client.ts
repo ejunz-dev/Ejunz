@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto'
 
-import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
+
 
 import { ListToolsResultSchema } from '@modelcontextprotocol/sdk/types.js'
 
 import { z } from 'zod'
 
-import type { Context } from '@ejunz/cordis'
+
 
 import type { ToolDefinition, ToolExecution } from '@ejunz/ea-core/tools'
 
@@ -233,11 +233,11 @@ function extractText(mcpContent: JsonValue[], toolName: string): string {
   return parts.join('\n') || `(${toolName} returned no text content)`
 }
 
-import type { Context } from '@ejunz/cordis'
 
-import z from '@ejunz/schemastery'
 
-import { MAX_TIMER_DELAY_MS } from '@ejunz/ea-core/timeout'
+import s from '@ejunz/schemastery'
+
+
 
 import type {} from '@ejunz/ea-core/tools'
 
@@ -299,35 +299,35 @@ export interface StreamableHttpConfig {
 
 export type Config = StdioConfig | StreamableHttpConfig
 
-const Reconnect: z<ReconnectConfig> = z.object({
-  enabled: z.boolean().default(RECONNECT_DEFAULTS.enabled),
-  initialDelayMs: z.number().min(1).max(MAX_TIMER_DELAY_MS).default(RECONNECT_DEFAULTS.initialDelayMs),
-  maxDelayMs: z.number().min(1).max(MAX_TIMER_DELAY_MS).default(RECONNECT_DEFAULTS.maxDelayMs),
-  maxAttempts: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(RECONNECT_DEFAULTS.maxAttempts),
+const Reconnect: s<ReconnectConfig> = s.object({
+  enabled: s.boolean().default(RECONNECT_DEFAULTS.enabled),
+  initialDelayMs: s.number().min(1).max(MAX_TIMER_DELAY_MS).default(RECONNECT_DEFAULTS.initialDelayMs),
+  maxDelayMs: s.number().min(1).max(MAX_TIMER_DELAY_MS).default(RECONNECT_DEFAULTS.maxDelayMs),
+  maxAttempts: s.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(RECONNECT_DEFAULTS.maxAttempts),
 })
 
-export const Config = z.union([
-  z.object({
-    transport: z.const('stdio'),
-    serverName: z.string().required().pattern(SERVER_NAME_PATTERN),
-    command: z.string().required(),
-    args: z.array(String).default([]),
-    env: z.dict(String).default({}),
-    cwd: z.string().default(''),
-    toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
-    failOnStartupError: z.boolean().default(false),
+export const Config = s.union([
+  s.object({
+    transport: s.const('stdio'),
+    serverName: s.string().required().pattern(SERVER_NAME_PATTERN),
+    command: s.string().required(),
+    args: s.array(String).default([]),
+    env: s.dict(String).default({}),
+    cwd: s.string().default(''),
+    toolCallTimeoutMs: s.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
+    failOnStartupError: s.boolean().default(false),
     reconnect: Reconnect,
   }),
-  z.object({
-    transport: z.const('streamable-http'),
-    serverName: z.string().required().pattern(SERVER_NAME_PATTERN),
-    url: z.string().required(),
-    headers: z.dict(String).default({}),
-    toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
-    failOnStartupError: z.boolean().default(false),
+  s.object({
+    transport: s.const('streamable-http'),
+    serverName: s.string().required().pattern(SERVER_NAME_PATTERN),
+    url: s.string().required(),
+    headers: s.dict(String).default({}),
+    toolCallTimeoutMs: s.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
+    failOnStartupError: s.boolean().default(false),
     reconnect: Reconnect,
   }),
-]) as unknown as z<Config>
+]) as unknown as s<Config>
 
 export async function apply(ctx: Context, config: Config): Promise<void> {
   // Fail loud at load: reconnect misconfiguration (including programmatic

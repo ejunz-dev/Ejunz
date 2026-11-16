@@ -580,14 +580,9 @@ export interface WireInitializeResult {
   readonly capabilities: WireServerCapabilities
 }
 
-import type {
-  LspHover,
-  LspLocation,
-  LspOperation,
-  LspRange,
-} from '@ejunz/ea-core/lsp'
+import type { LspHover, LspLocation, LspRange } from '@ejunz/ea-core/lsp'
 
-import { LspError } from '@ejunz/ea-core/lsp'
+
 
 import { assertNever } from '@ejunz/ea-core/llm'
 
@@ -748,13 +743,9 @@ function malformedResponse(message: string): LspError {
   return new LspError(message, 'LSP_MALFORMED_RESPONSE')
 }
 
-import { LspError } from '@ejunz/ea-core/lsp'
 
-import type {
-  LspOperation,
-  LspProviderQuery,
-  LspQueryResult,
-} from '@ejunz/ea-core/lsp'
+
+import type { LspOperation } from '@ejunz/ea-core/lsp'
 
 import { deadline } from '@ejunz/ea-core/timeout'
 

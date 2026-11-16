@@ -278,12 +278,6 @@ interface SessionTitleWorkState {
   active?: ActiveProviderWork
 }
 
-function assertPositiveInteger(name: keyof Config, value: number): void {
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error(`session-title: ${name} must be a positive integer`)
-  }
-}
-
 export class SessionTitleService extends Service {
   static inject = ['sessions']
   static Config: z<Config> = z.object({

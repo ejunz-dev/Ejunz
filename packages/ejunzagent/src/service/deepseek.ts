@@ -118,9 +118,9 @@ export interface WireError {
   error?: { message?: string; type?: string; code?: string }
 }
 
-import { contentHasImage, LlmError } from '@ejunz/ea-core/llm'
+import { contentHasImage } from '@ejunz/ea-core/llm'
 
-import type { ContentBlock, GenerateOptions, Message } from '@ejunz/ea-core/llm'
+import type { Message } from '@ejunz/ea-core/llm'
 
 export interface RequestDefaults {
   thinking?: 'enabled' | 'disabled' | undefined
@@ -289,7 +289,7 @@ export function serializeRequest(
 
 import { EventSourceParserStream } from 'eventsource-parser/stream'
 
-import { LlmError } from '@ejunz/ea-core/llm'
+
 
 export const DONE = '[DONE]'
 
@@ -307,9 +307,9 @@ export async function* parseSse(
   throw new LlmError('SSE stream ended without [DONE]', 'STREAM_CLOSED')
 }
 
-import { CallId, EMPTY_RESPONSE_CODE, LlmError } from '@ejunz/ea-core/llm'
+import { CallId, EMPTY_RESPONSE_CODE } from '@ejunz/ea-core/llm'
 
-import type { ContentBlock, FinishReason, StreamChunk, TokenUsage } from '@ejunz/ea-core/llm'
+import type { ContentBlock, FinishReason, TokenUsage } from '@ejunz/ea-core/llm'
 
 interface OpenBlock {
   index: number
@@ -463,7 +463,7 @@ export async function* translate(payloads: AsyncIterable<string>): AsyncGenerato
   throw new LlmError('SSE payload stream ended without [DONE]', 'STREAM_CLOSED')
 }
 
-import { attributionHeaders, CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError, isQuotaExceededError, LlmAdapter, LlmError, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId } from '@ejunz/ea-core/llm'
+import { attributionHeaders, CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError, isQuotaExceededError, LlmAdapter, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId } from '@ejunz/ea-core/llm'
 
 import type {
   GenerateOptions,
@@ -478,7 +478,7 @@ import type { CredentialRef } from '@ejunz/ea-core/credentials'
 
 import { idleWatchdog, timeoutOf } from '@ejunz/ea-core/timeout'
 
-import type { AnonymousUserId } from '@ejunz/ea-core/anonymous-user-id'
+
 
 export interface DeepSeekCatalogModel {
   /** Wire model id accepted by the configured endpoint. */

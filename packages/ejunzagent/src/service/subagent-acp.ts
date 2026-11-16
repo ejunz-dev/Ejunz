@@ -21,7 +21,7 @@ import { SessionId } from '@ejunz/ea-core/session'
 
 import { AssistantOutputFold } from '@ejunz/ea-core/subagent'
 
-import type { SubagentResult, SubagentRun, SubagentStartRequest, SubagentStopReason } from '@ejunz/ea-core/subagent'
+import type { SubagentResult, SubagentRun, SubagentStopReason } from '@ejunz/ea-core/subagent'
 
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@ejunz/ea-core/subprocess'
 

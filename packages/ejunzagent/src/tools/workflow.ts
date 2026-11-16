@@ -1,8 +1,6 @@
 import type { SessionId } from '@ejunz/ea-core/session/types'
 
-import type {
-  WorkflowAgentOutcome, WorkflowRunId, WorkflowStopReason,
-} from '@ejunz/ea-core/workflow/types'
+import type { WorkflowAgentOutcome } from '@ejunz/ea-core/workflow/types'
 
 export interface ToolWorkflowRunStartData {
   readonly runId: WorkflowRunId
