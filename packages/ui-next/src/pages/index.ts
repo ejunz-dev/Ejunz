@@ -10,6 +10,7 @@ registerPage('domain_user', () => import('./domain_user'));
 registerPage('domain_permission', () => import('./domain_permission'));
 registerPage('domain_group', () => import('./domain_group'));
 registerPage('home_settings', () => import('./home_settings'));
+registerPage('home_security', () => import('./home_security'));
 registerPage('base_domain', () => import('./basedomain'));
 registerPage('user_login', () => import('./login'));
 registerPage('user_sudo', () => import('./user_sudo'));

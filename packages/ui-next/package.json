@@ -110,6 +110,7 @@
     "markdown-it-table-of-contents": "^1.1.0",
     "md-editor-rt": "^6.1.0",
     "path-to-regexp": "^8.4.2",
+    "qrcode": "^1.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "simple-git": "^3.36.0",
