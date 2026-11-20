@@ -154,6 +154,9 @@ export const RouterProvider: React.FC<React.PropsWithChildren> = ({ children }) 
 
   useEffect(() => {
     const handler = (e: PopStateEvent) => {
+      // The component gallery owns its own history state and synchronizes
+      // location locally; do not fetch page data for its back/forward events.
+      if (/^\/(?:components|templates)(?:\/|$)/.test(window.location.pathname)) return;
       const url: string =
         (e.state as { url?: string } | null)?.url
         ?? window.location.pathname + window.location.search;
