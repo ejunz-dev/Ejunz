@@ -2,7 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
 import { endpointOrigins, endpoints, isInjected, routeMapStore } from '../globals';
-import { useSetPageData } from './page-data';
+import { usePageData, useSetPageData } from './page-data';
 
 interface InternalState {
   status: 'idle' | 'loading' | 'error';
@@ -46,6 +46,7 @@ export const RouterProvider: React.FC<React.PropsWithChildren> = ({ children }) 
   const [state, dispatch] = useReducer(routerReducer, { status: 'idle', error: null });
   const abortRef = useRef<AbortController | null>(null);
   const genRef = useRef(0);
+  const pageData = usePageData();
   const setData = useSetPageData();
 
   const isSameOrigin = useCallback((url: string) => {
@@ -160,11 +161,14 @@ export const RouterProvider: React.FC<React.PropsWithChildren> = ({ children }) 
       const url: string =
         (e.state as { url?: string } | null)?.url
         ?? window.location.pathname + window.location.search;
+      const target = new URL(url, window.location.href);
+      const loaded = new URL(pageData.url, window.location.href);
+      if (target.pathname === loaded.pathname && target.search === loaded.search) return;
       fetchPage(url);
     };
     window.addEventListener('popstate', handler);
     return () => window.removeEventListener('popstate', handler);
-  }, [fetchPage]);
+  }, [fetchPage, pageData.url]);
 
   // If no server-side injection, fetch initial page data from the API
   useEffect(() => {
