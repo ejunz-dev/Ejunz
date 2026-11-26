@@ -93,6 +93,7 @@
     "src/",
     "locales/",
     "index.html",
+    "pub/",
     "public/",
     "vite.config.ts"
   ],
