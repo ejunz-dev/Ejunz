@@ -6,7 +6,7 @@ import c2k from 'koa2-connect/ts';
 import { createServer, type Plugin } from 'vite';
 import type { Context } from 'cordis';
 import {
-    Handler, HandlerCommon, NotFoundError, param, serializer, Types,
+    Handler, HandlerCommon, NotFoundError, serializer,
 } from '@ejunz/framework';
 
 const host = globalThis as any;
@@ -187,8 +187,8 @@ async function buildVersions() {
 class UiNextConstantHandler extends Handler {
     noCheckPermView = true;
 
-    @param('name', Types.Filename)
-    async all(domainId: string, name: string) {
+    async all() {
+        const name = String(this.request.params.name || '');
         if (!(name in vfs)) throw new NotFoundError(name);
         this.response.type = 'application/javascript';
         this.response.body = vfs[name];
