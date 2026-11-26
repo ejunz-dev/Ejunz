@@ -399,7 +399,7 @@ export async function apply(ctx: Context) {
                     },
                     url: context.handler.context.req.url!,
                     route_map: ctx.server.routeMap,
-                    endpoint: (ctx as any).setting?.get?.('server.url') || undefined,
+                    endpoint: undefined,
                 }, serializer(false, context.handler));
                 const ts = Date.now();
                 const devAssetUrl = (name: string) => `/plugins/0/${name}?_=${ts}`;
@@ -450,7 +450,7 @@ export async function apply(ctx: Context) {
                     },
                     url: context.handler.context.req.url!,
                     route_map: ctx.server.routeMap,
-                    endpoint: (ctx as any).setting?.get?.('server.url') || undefined,
+                    endpoint: undefined,
                     plugins_url: `/plugins/${hashes['plugins.js'] || HASH_FALLBACK}/plugins.js`,
                 }, serializer(false, context.handler));
                 const prodAssetUrl = (name: string) => `/plugins/${hashes[name] || HASH_FALLBACK}/${name}`;
