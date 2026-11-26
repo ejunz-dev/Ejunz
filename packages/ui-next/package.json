@@ -12,6 +12,11 @@
       "import": "./index.ts",
       "default": "./index.ts"
     },
+    "./plugin": {
+      "types": "./plugin.d.ts",
+      "import": "./index.ts",
+      "default": "./index.ts"
+    },
     "./package.json": "./package.json",
     "./api": {
       "types": "./api.ts",
@@ -82,6 +87,7 @@
   },
   "files": [
     "index.ts",
+    "plugin.d.ts",
     "api.ts",
     "css.d.ts",
     "src/",

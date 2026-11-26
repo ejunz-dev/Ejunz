@@ -1,15 +1,33 @@
+import { createHash } from 'node:crypto';
 import fs from 'fs';
 import path from 'path';
 import esbuild from 'esbuild';
 import c2k from 'koa2-connect/ts';
 import { createServer, type Plugin } from 'vite';
-import { HandlerCommon, serializer } from '@ejunz/framework';
+import type { Context } from 'cordis';
 import {
-    Context, Handler, Logger,
-    NotFoundError, param, PERM, PRIV, SettingModel, sha1, size, Types,
-} from 'ejun';
+    Handler, HandlerCommon, NotFoundError, param, serializer, Types,
+} from '@ejunz/framework';
 
-const logger = new Logger('ui-next');
+const host = globalThis as any;
+const logger = {
+    info: console.info.bind(console),
+    debug: console.debug.bind(console),
+    error: console.error.bind(console),
+    success: console.info.bind(console),
+};
+const sha1 = (content: string) => createHash('sha1').update(content).digest('hex');
+const size = (value: number) => {
+    if (value < 1024) return `${value} B`;
+    const units = ['KB', 'MB', 'GB'];
+    let amount = value / 1024;
+    let unit = units.shift()!;
+    while (amount >= 1024 && units.length) {
+        amount /= 1024;
+        unit = units.shift()!;
+    }
+    return `${amount.toFixed(1)} ${unit}`;
+};
 
 const PENDING_HTML = `<html>
 <head>
@@ -28,7 +46,7 @@ const buildInject = (data: string) => `<script id="__EJUNZ_INJECTION__" type="ap
 
 function getAddonEntries(): Record<string, string> {
     const entries: Record<string, string> = {};
-    for (const [name, addon] of Object.entries(global.addons)) {
+    for (const [name, addon] of Object.entries(host.addons)) {
         const uiEntry = ['ui/index.ts', 'ui/index.tsx', 'ui/index.js', 'ui/index.jsx']
             .map((f) => path.resolve(addon as string, f))
             .find((f) => fs.existsSync(f));
@@ -115,22 +133,31 @@ function addFile(name: string, content: string) {
 
 async function buildI18n() {
     const localeList: Record<string, { name: string, flag: string }> = {};
-    for (const lang in global.Ejunz.locales) {
+    let loadedInterfaceLocale = false;
+    for (const lang in host.Ejunz.locales) {
         if (!/^[a-zA-Z_]+$/.test(lang)) continue;
-        if (!global.Ejunz.locales[lang].__interface) continue;
-        addFile(`lang-${lang}.js`, `window.EjunzLocale=${JSON.stringify(global.Ejunz.locales[lang][Symbol.for('iterate')])};`);
-        const id = global.Ejunz.locales[lang].__id;
-        if (id) localeList[id] = { name: global.Ejunz.locales[lang].__langname, flag: global.Ejunz.locales[lang].__flag };
+        if (!host.Ejunz.locales[lang].__interface) continue;
+        addFile(`lang-${lang}.js`, `window.EjunzLocale=${JSON.stringify(host.Ejunz.locales[lang][Symbol.for('iterate')])};`);
+        const id = host.Ejunz.locales[lang].__id;
+        if (id) localeList[id] = { name: host.Ejunz.locales[lang].__langname, flag: host.Ejunz.locales[lang].__flag };
+        loadedInterfaceLocale = true;
+    }
+    if (!loadedInterfaceLocale) {
+        for (const [lang, name] of Object.entries({ zh: '简体中文', zh_TW: '繁體中文', en: 'English', ko: '한국어' })) {
+            addFile(`lang-${lang}.js`, 'window.EjunzLocale={};');
+            localeList[lang] = { name, flag: '' };
+        }
     }
     addFile('locale-list.js', `window.EjunzLocaleList=${JSON.stringify(localeList)};`);
 }
 
 async function buildCodeLangs() {
-    addFile('code-langs.js', `window.EjunzCodeLangs=${JSON.stringify(SettingModel.langs)};`);
+    const langs = (globalThis as typeof globalThis & { Ejunz?: { langs?: unknown[] } }).Ejunz?.langs || [];
+    addFile('code-langs.js', `window.EjunzCodeLangs=${JSON.stringify(langs)};`);
 }
 
 async function buildVersions() {
-    const versions: Record<string, string> = { ...global.Ejunz.version };
+    const versions: Record<string, string> = { ...host.Ejunz.version };
     try {
         const { simpleGit } = require('simple-git') as typeof import('simple-git');
         const fetchAddonVersion = async (name: string, addonPath: string) => {
@@ -147,7 +174,7 @@ async function buildVersions() {
             }
         };
         await Promise.all(
-            Object.entries(global.addons)
+            Object.entries(host.addons)
                 .filter(([name]) => name !== 'ejun') // already handled in loader.ts
                 .map(([name, addonPath]) => fetchAddonVersion(name, addonPath as string)),
         );
@@ -282,7 +309,7 @@ const injectedScripts = (resolve: (name: string) => string, viewLang: string) =>
 ].map((name) => `<script src="${resolve(name)}"></script>`);
 
 function buildNavItems(handler: any) {
-    const nodes = global.Ejunz?.ui?.getNodes?.('Nav') || [];
+    const nodes = host.Ejunz?.ui?.getNodes?.('Nav') || [];
     return nodes.filter((item: any) => item.checker(handler)).map((item: any) => {
         const rawArgs = typeof item.args === 'function' ? item.args(handler) : item.args || {};
         const args = Object.fromEntries(Object.entries(rawArgs).filter(([key, value]) => key !== 'prefix' && key !== 'displayName' && ['string', 'number', 'boolean'].includes(typeof value)));
@@ -296,10 +323,8 @@ function buildNavItems(handler: any) {
 }
 
 function buildNavDropdown(handler: any) {
-    const nodes = global.Ejunz?.ui?.getNodes?.('NavDropdown') || [];
-    const badge = handler.user?.hasPriv(PRIV.USER_PRIV_MOD_BADGE)
-        ? 'SU'
-        : handler.user?.hasPerm(PERM.USER_PERM_MOD_BADGE) ? 'MOD' : null;
+    const nodes = host.Ejunz?.ui?.getNodes?.('NavDropdown') || [];
+    const badge = handler.UiContext?.navDropdown?.badge ?? null;
     const items = nodes.filter((item: any) => item.checker(handler)).map((item: any) => {
         const rawArgs = typeof item.args === 'function' ? item.args(handler) : item.args || {};
         const args = Object.fromEntries(Object.entries(rawArgs).filter(([key, value]) => key !== 'prefix' && key !== 'displayName' && ['string', 'number', 'boolean'].includes(typeof value)));
@@ -374,7 +399,7 @@ export async function apply(ctx: Context) {
                     },
                     url: context.handler.context.req.url!,
                     route_map: ctx.server.routeMap,
-                    endpoint: ctx.setting.get('server.url') || undefined,
+                    endpoint: (ctx as any).setting?.get?.('server.url') || undefined,
                 }, serializer(false, context.handler));
                 const ts = Date.now();
                 const devAssetUrl = (name: string) => `/plugins/0/${name}?_=${ts}`;
@@ -425,7 +450,7 @@ export async function apply(ctx: Context) {
                     },
                     url: context.handler.context.req.url!,
                     route_map: ctx.server.routeMap,
-                    endpoint: ctx.setting.get('server.url') || undefined,
+                    endpoint: (ctx as any).setting?.get?.('server.url') || undefined,
                     plugins_url: `/plugins/${hashes['plugins.js'] || HASH_FALLBACK}/plugins.js`,
                 }, serializer(false, context.handler));
                 const prodAssetUrl = (name: string) => `/plugins/${hashes[name] || HASH_FALLBACK}/${name}`;
